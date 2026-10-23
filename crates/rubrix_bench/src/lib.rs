@@ -17,8 +17,6 @@ const BATCH_TARGET: Duration = Duration::from_millis(5);
 pub struct Measurement {
     pub median: f64,
     pub p95: f64,
-    pub samples: usize,
-    pub iterations: u64,
 }
 
 /// Times `run` the way Pierre's `benchmark/measure.ts` does: a
@@ -41,11 +39,9 @@ pub fn measure<R>(mut run: impl FnMut() -> R) -> Measurement {
 
     let mut samples = Vec::new();
     let mut elapsed = Duration::ZERO;
-    let mut iterations = 0;
     while elapsed < BUDGET || samples.len() < MIN_SAMPLES {
         let took = time_batch(&mut run, batch);
         elapsed += took;
-        iterations += batch;
         samples.push(took.as_secs_f64() / batch as f64);
     }
     samples.sort_by(f64::total_cmp);
@@ -59,8 +55,6 @@ pub fn measure<R>(mut run: impl FnMut() -> R) -> Measurement {
     Measurement {
         median,
         p95: samples[p95_index],
-        samples: samples.len(),
-        iterations,
     }
 }
 
@@ -111,7 +105,7 @@ fn line_count(text: &str) -> usize {
 }
 
 /// The benchmark tiers, smallest first.
-pub const TIERS: [&str; 3] = ["tiny", "small", "large"];
+const TIERS: [&str; 3] = ["tiny", "small", "large"];
 
 /// The fixtures of every language directory under `bench/fixtures`,
 /// sorted by language and then by tier. A language joins the
