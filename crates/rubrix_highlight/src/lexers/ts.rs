@@ -1,21 +1,13 @@
-//! The TypeScript and JavaScript lexer. One lexer serves `.ts`,
-//! `.mts`, `.cts`, `.js`, `.mjs`, and `.cjs`, and also `.tsx` and
-//! `.jsx`.
+//! The TypeScript and JavaScript lexer, for `.ts`, `.mts`, `.cts`,
+//! `.js`, `.mjs`, and `.cjs`, and also `.tsx` and `.jsx`.
 //!
 //! JSX tags get no rules, so `<div className="a">` lexes as
-//! operators, names, and a string. A `/` straight after a `<` never
-//! starts a regex, which keeps `</div>` from opening one.
-//!
-//! Template literals nest to any depth and run across lines. The
-//! state keeps an open template and one brace counter per open
-//! `${`. A `/` is a regex unless the last significant token ends a
-//! value: a name, a number, a string, a closing `)`, `]`, or `}`, or
-//! `this` and `super`. A regex never spans lines.
+//! operators, names, and a string.
 //!
 //! Classes, interfaces, enums, and type aliases bind
-//! `type.definition`. Pierre's TypeScript lexer calls such a name
-//! `type.class`, which `Kind` does not have. Names are not checked
-//! for being parameters, so `variable.parameter` is never emitted.
+//! `type.definition`, because `Kind` has no `type.class`. Names are
+//! not checked for being parameters, so `variable.parameter` is
+//! never emitted.
 
 use alloc::vec::Vec;
 
@@ -33,31 +25,21 @@ enum Open {
     Quoted(u8),
 }
 
-/// The last significant token of the text so far, which decides how
-/// the next token reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 enum Prev {
-    /// An operator, an opening bracket, or the text's start. A `/`
-    /// here opens a regex.
     Other,
-    /// Ends a value, so a `/` here divides.
     Value,
-    /// A `.` or `?.`, so a name here is a property.
     Dot,
-    /// `function`.
     Fn,
-    /// `class`, `interface`, `enum`, `type`, `namespace`.
     Type,
-    /// `new`.
     New,
-    /// `import` or `export`.
     Module,
 }
 
 const OPEN_MASK: u64 = 0xF;
 const PREV_SHIFT: u32 = 4;
-const FRAME: usize = 4;
+const BRACE_COUNT: usize = 4;
 
 fn load(state: &State) -> (Open, Prev, Vec<u32>) {
     let word = state.word();
@@ -78,15 +60,15 @@ fn load(state: &State) -> (Open, Prev, Vec<u32>) {
         6 => Prev::Module,
         _ => Prev::Other,
     };
-    let frames = state
+    let template_braces = state
         .tail()
-        .chunks_exact(FRAME)
+        .chunks_exact(BRACE_COUNT)
         .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect();
-    (open, prev, frames)
+    (open, prev, template_braces)
 }
 
-fn store(open: Open, prev: Prev, frames: &[u32]) -> State {
+fn store(open: Open, prev: Prev, template_braces: &[u32]) -> State {
     let open = match open {
         Open::Code => 0,
         Open::Block => 1,
@@ -96,11 +78,13 @@ fn store(open: Open, prev: Prev, frames: &[u32]) -> State {
         Open::Quoted(_) => 5,
     };
     let word = open | (prev as u64) << PREV_SHIFT;
-    if frames.is_empty() {
+    if template_braces.is_empty() {
         return State::from_word(word);
     }
-    let tail: Vec<u8> =
-        frames.iter().flat_map(|f| f.to_le_bytes()).collect();
+    let tail: Vec<u8> = template_braces
+        .iter()
+        .flat_map(|f| f.to_le_bytes())
+        .collect();
     State::with_tail(word, &tail)
 }
 
@@ -109,13 +93,13 @@ pub(crate) fn lex(
     state: &State,
     out: &mut Runs<'_>,
 ) -> State {
-    let (mut open, prev, frames) = load(state);
+    let (mut open, prev, template_braces) = load(state);
     let mut lexer = Lexer {
         s: line.as_bytes(),
         i: 0,
         out,
         prev,
-        frames,
+        template_braces,
     };
     while lexer.i < lexer.s.len() {
         open = match open {
@@ -126,7 +110,7 @@ pub(crate) fn lex(
             Open::Quoted(quote) => lexer.string(quote),
         };
     }
-    store(open, lexer.prev, &lexer.frames)
+    store(open, lexer.prev, &lexer.template_braces)
 }
 
 struct Lexer<'s, 'o, 'r> {
@@ -134,9 +118,7 @@ struct Lexer<'s, 'o, 'r> {
     i: usize,
     out: &'o mut Runs<'r>,
     prev: Prev,
-    /// The count of unclosed `{` inside each open `${`, innermost
-    /// last.
-    frames: Vec<u32>,
+    template_braces: Vec<u32>,
 }
 
 impl Lexer<'_, '_, '_> {
@@ -147,6 +129,10 @@ impl Lexer<'_, '_, '_> {
 
     fn at(&self, offset: usize) -> Option<u8> {
         self.s.get(self.i + offset).copied()
+    }
+
+    fn closes_jsx_tag(&self) -> bool {
+        self.i > 0 && self.s[self.i - 1] == b'<'
     }
 
     fn peek(&self, mut i: usize) -> Option<u8> {
@@ -200,7 +186,7 @@ impl Lexer<'_, '_, '_> {
                 self.emit(self.i + 1, Kind::PunctuationBracket);
             }
             b'{' => {
-                if let Some(depth) = self.frames.last_mut() {
+                if let Some(depth) = self.template_braces.last_mut() {
                     *depth = depth.saturating_add(1);
                 }
                 self.emit(self.i + 1, Kind::PunctuationBracket);
@@ -229,9 +215,9 @@ impl Lexer<'_, '_, '_> {
     }
 
     fn close_brace(&mut self) -> Open {
-        match self.frames.last_mut() {
+        match self.template_braces.last_mut() {
             Some(0) => {
-                self.frames.pop();
+                self.template_braces.pop();
                 self.emit(self.i + 1, Kind::PunctuationSpecial);
                 self.template()
             }
@@ -261,11 +247,10 @@ impl Lexer<'_, '_, '_> {
                 self.block(doc)
             }
             _ => {
-                let after_angle =
-                    self.i > 0 && self.s[self.i - 1] == b'<';
-                let regex = (prev != Prev::Value && !after_angle)
-                    .then(|| regex_end(self.s, self.i))
-                    .flatten();
+                let regex = (prev != Prev::Value
+                    && !self.closes_jsx_tag())
+                .then(|| regex_end(self.s, self.i))
+                .flatten();
                 if let Some(end) = regex {
                     self.emit(end, Kind::StringRegex);
                     self.prev = Prev::Value;
@@ -300,8 +285,6 @@ impl Lexer<'_, '_, '_> {
         }
     }
 
-    /// Marks the `@tag`, `{type}`, and name parts of the JSDoc text
-    /// from the cursor to `end`.
     fn doc_tags(&mut self, end: usize) {
         let s = self.s;
         let mut from = self.i;
@@ -404,7 +387,7 @@ impl Lexer<'_, '_, '_> {
                 _ if s.get(k + 1) == Some(&b'{') => {
                     self.emit(k, Kind::String);
                     self.emit(k + 2, Kind::PunctuationSpecial);
-                    self.frames.push(0);
+                    self.template_braces.push(0);
                     self.prev = Prev::Other;
                     return Open::Code;
                 }
@@ -636,8 +619,6 @@ fn keyword(word: &[u8]) -> Option<Word> {
     })
 }
 
-/// Whether a word that is a keyword only in some places is one here,
-/// from the token before it and the next byte after blanks.
 fn is_keyword_here(
     word: &[u8],
     prev: Prev,
@@ -761,8 +742,6 @@ fn blanks_end(s: &[u8], mut i: usize, end: usize) -> usize {
     i
 }
 
-/// The index after the `}` that closes the `{` at `open`, when it
-/// closes before `end`.
 fn brace_end(s: &[u8], open: usize, end: usize) -> Option<usize> {
     if open >= end || s[open] != b'{' {
         return None;
@@ -787,8 +766,6 @@ const fn is_doc_name(b: u8) -> bool {
     b.is_ascii_alphanumeric() || matches!(b, b'_' | b'$' | b'.')
 }
 
-/// The end of the regex literal that starts with the `/` at `i`,
-/// flags included, when it closes on the line.
 fn regex_end(s: &[u8], i: usize) -> Option<usize> {
     let mut j = i + 1;
     let mut class = false;
@@ -862,10 +839,14 @@ mod tests {
         ];
         for open in opens {
             for prev in prevs {
-                for frames in [vec![], vec![0], vec![3, 0, u32::MAX]]
+                for template_braces in
+                    [vec![], vec![0], vec![3, 0, u32::MAX]]
                 {
-                    let state = store(open, prev, &frames);
-                    assert_eq!(load(&state), (open, prev, frames));
+                    let state = store(open, prev, &template_braces);
+                    assert_eq!(
+                        load(&state),
+                        (open, prev, template_braces)
+                    );
                 }
             }
         }
@@ -880,10 +861,10 @@ mod tests {
         for word in [u64::MAX, 7, 15 << 4, 1 << 40] {
             for tail in [&[][..], &[1, 2, 3], &[1, 0, 0, 0, 9]] {
                 let state = State::with_tail(word, tail);
-                let (open, prev, frames) = load(&state);
+                let (open, prev, template_braces) = load(&state);
                 assert_eq!(
-                    load(&store(open, prev, &frames)),
-                    (open, prev, frames)
+                    load(&store(open, prev, &template_braces)),
+                    (open, prev, template_braces)
                 );
             }
         }
