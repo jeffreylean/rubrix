@@ -460,9 +460,11 @@ mod runs {
         }
 
         pub(crate) fn push(&mut self, end: usize, kind: Kind) {
-            let Some(end) = self.advance_clamped(end) else {
+            if end == self.consumed {
                 return;
-            };
+            }
+            self.advance(end);
+            let end = end as u32;
             match self.out[self.base..].last_mut() {
                 Some(run) if run.kind == kind => run.end = end,
                 _ => self.out.push(Run { end, kind }),
@@ -470,36 +472,27 @@ mod runs {
         }
 
         pub(crate) fn space(&mut self, end: usize) {
-            if let Some(end) = self.advance_clamped(end)
-                && let Some(run) = self.out[self.base..].last_mut()
-            {
-                run.end = end;
+            self.advance(end);
+            if let Some(run) = self.out[self.base..].last_mut() {
+                run.end = end as u32;
             }
         }
 
-        fn advance_clamped(&mut self, end: usize) -> Option<u32> {
+        fn advance(&mut self, end: usize) {
             debug_assert!(end >= self.consumed, "runs go backwards");
             debug_assert!(
                 self.line.is_char_boundary(end),
                 "a run ends inside a char or past the line"
             );
-            let mut end = end.clamp(self.consumed, self.line.len());
-            while !self.line.is_char_boundary(end) {
-                end += 1;
-            }
-            (end > self.consumed).then(|| {
-                self.consumed = end;
-                end as u32
-            })
+            self.consumed = end;
         }
 
-        pub(super) fn finish(mut self) {
+        pub(super) fn finish(self) {
             let len = self.line.len();
             debug_assert_eq!(
                 self.consumed, len,
                 "runs must cover the line"
             );
-            self.push(len, Kind::Plain);
             if self.out.len() == self.base && len > 0 {
                 debug_assert!(
                     self.line.trim_ascii().is_empty(),
