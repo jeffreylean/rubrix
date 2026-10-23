@@ -81,28 +81,9 @@ impl Highlights {
         };
         let force_to = if resume < new_count { resume } else { 0 };
 
-        self.lines.move_gap(first);
-        let first_start = self.lines.start(first);
-        let removed_span = self.lines.start(end) - first_start;
-        for _ in 0..removed {
-            self.garbage += self.lines.take_after_gap().runs.len();
-        }
-        let region_end = first + inserted;
-        let mut start = first_start;
-        for line in first..region_end {
-            self.lines.insert_at_gap(
-                start,
-                Line::new(0, 0..0, State::default()),
-            );
-            start = start
-                .checked_add(lines.line(line).len() as u32 + 1)
-                .expect("text of 4 GiB or more");
-        }
-        let total = (self.lines.total() - removed_span)
-            .checked_add(start - first_start)
-            .expect("text of 4 GiB or more");
-        self.lines.set_total(total);
+        self.splice(edit, lines);
 
+        let region_end = first + inserted;
         let mut expected = boundary;
         let mut line = first;
         let converged = loop {
@@ -153,6 +134,39 @@ impl Highlights {
     /// current.
     pub fn stale_from(&self) -> Option<u32> {
         (self.exact < self.line_count()).then_some(self.exact)
+    }
+
+    fn splice(
+        &mut self,
+        edit: LineEdit,
+        lines: &(impl Lines + ?Sized),
+    ) {
+        let LineEdit {
+            first,
+            removed,
+            inserted,
+        } = edit;
+        self.lines.move_gap(first);
+        let first_start = self.lines.start(first);
+        let removed_span =
+            self.lines.start(first + removed) - first_start;
+        for _ in 0..removed {
+            self.garbage += self.lines.take_after_gap().runs.len();
+        }
+        let mut start = first_start;
+        for line in first..first + inserted {
+            self.lines.insert_at_gap(
+                start,
+                Line::new(0, 0..0, State::default()),
+            );
+            start = start
+                .checked_add(lines.line(line).len() as u32 + 1)
+                .expect("text of 4 GiB or more");
+        }
+        let total = (self.lines.total() - removed_span)
+            .checked_add(start - first_start)
+            .expect("text of 4 GiB or more");
+        self.lines.set_total(total);
     }
 
     fn catch_up(&mut self, upto: u32, lines: &(impl Lines + ?Sized)) {

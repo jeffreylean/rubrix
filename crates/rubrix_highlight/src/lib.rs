@@ -517,15 +517,15 @@ mod table {
             (self.front.len() + self.back.len()) as u32
         }
 
+        fn back_index(&self, line: usize) -> usize {
+            self.front.len() + self.back.len() - 1 - line
+        }
+
         pub(crate) fn get(&self, line: u32) -> &Line {
             let line = line as usize;
             match self.front.get(line) {
                 Some(found) => found,
-                None => {
-                    &self.back[self.front.len() + self.back.len()
-                        - 1
-                        - line]
-                }
+                None => &self.back[self.back_index(line)],
             }
         }
 
@@ -534,8 +534,7 @@ mod table {
             if line < self.front.len() {
                 &mut self.front[line]
             } else {
-                let at =
-                    self.front.len() + self.back.len() - 1 - line;
+                let at = self.back_index(line);
                 &mut self.back[at]
             }
         }

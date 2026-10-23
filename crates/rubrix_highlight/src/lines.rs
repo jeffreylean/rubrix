@@ -26,6 +26,6 @@ impl<S: AsRef<str>> Lines for [S] {
 
 impl<S: AsRef<str>> Lines for Vec<S> {
     fn line(&self, n: u32) -> &str {
-        self[n as usize].as_ref()
+        self.as_slice().line(n)
     }
 }
