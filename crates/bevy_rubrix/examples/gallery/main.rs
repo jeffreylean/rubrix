@@ -1,5 +1,6 @@
 //! `RUBRIX_DRIVE=<script>` runs a drive script, see [`drive`].
-//! `RUBRIX_NO_VSYNC=1` presents without vsync, for perf runs.
+//! `RUBRIX_NO_VSYNC=1` presents without vsync, for perf runs, and
+//! `0` presents with it. A scripted run defaults to without.
 
 mod drive;
 mod pages;
@@ -169,12 +170,10 @@ fn main() -> AppExit {
             return AppExit::from_code(2);
         }
     };
-    let present_mode =
-        if std::env::var("RUBRIX_NO_VSYNC").is_ok_and(|v| v == "1") {
-            PresentMode::AutoNoVsync
-        } else {
-            PresentMode::AutoVsync
-        };
+    let present_mode = present_mode(
+        drive.is_some(),
+        std::env::var("RUBRIX_NO_VSYNC").ok().as_deref(),
+    );
     let mut app = App::new();
     app.add_plugins((
         DefaultPlugins.set(WindowPlugin {
@@ -203,6 +202,20 @@ fn main() -> AppExit {
         app.add_plugins(drive);
     }
     app.run()
+}
+
+/// A scripted run presents without vsync unless `RUBRIX_NO_VSYNC=0`
+/// says otherwise. Hyprland sends an unfocused window about one frame
+/// per second under vsync, and a screenshot taken then is black.
+fn present_mode(
+    scripted: bool,
+    no_vsync: Option<&str>,
+) -> PresentMode {
+    match no_vsync {
+        Some("1") => PresentMode::AutoNoVsync,
+        None if scripted => PresentMode::AutoNoVsync,
+        _ => PresentMode::AutoVsync,
+    }
 }
 
 fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
@@ -309,4 +322,34 @@ fn page() -> AnyView<Bevy, Palette> {
             .padding(UiRect::all(px(20.0))),
     )
     .boxed()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_scripted_run_skips_vsync_unless_told_not_to() {
+        assert_eq!(
+            present_mode(true, None),
+            PresentMode::AutoNoVsync
+        );
+        assert_eq!(
+            present_mode(true, Some("0")),
+            PresentMode::AutoVsync
+        );
+        assert_eq!(
+            present_mode(true, Some("1")),
+            PresentMode::AutoNoVsync
+        );
+    }
+
+    #[test]
+    fn an_interactive_run_keeps_vsync_unless_asked() {
+        assert_eq!(present_mode(false, None), PresentMode::AutoVsync);
+        assert_eq!(
+            present_mode(false, Some("1")),
+            PresentMode::AutoNoVsync
+        );
+    }
 }

@@ -29,5 +29,5 @@ Preconditions: `doctor.sh` is clean and the out dir is empty.
 ## Gotchas
 
 - A screenshot taken in the first frames can be black. Scripts `wait` before the first one.
-- Under vsync an unfocused window runs at about 1 frame per second, so `launch.sh` turns vsync off by default.
+- Under vsync an unfocused window runs at about 1 frame per second and screenshots come out black, so a scripted run turns vsync off unless `RUBRIX_NO_VSYNC=0`.
 - The label rows are 24 px tall by design. Scroll distances in pixels map to rows at 24 px each.

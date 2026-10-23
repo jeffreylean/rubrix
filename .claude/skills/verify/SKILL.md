@@ -19,7 +19,7 @@ It builds the gallery in release, runs it from `<out dir>`, floats and places it
 
 - Ready means `drive: exit ok` and `exit=0`. A script ends with `exit`. Without it the window stays open.
 - Build a shared target directory per head: `export CARGO_TARGET_DIR=$HOME/.cache/rubrix-target/<head SHA>`. Never put it under `/tmp`.
-- `launch.sh` sets `RUBRIX_NO_VSYNC=1` unless you set it. An unfocused window under vsync ran at 1 frame per second here (1024 ms per frame, measured), so a script with `wait 120` would stall. Set `RUBRIX_NO_VSYNC=0` only to prove the vsync default, and expect it to be slow.
+- A scripted run presents without vsync. An unfocused window under vsync ran at 1 frame per second here (1024 ms per frame, measured), and its screenshots came out black. Set `RUBRIX_NO_VSYNC=0` only to prove the vsync default, and expect slow, black frames.
 - Two galleries can run at once. Give each its own drive script and out dir.
 - `TIMEOUT=<seconds>` (default 300) kills a script that hangs.
 

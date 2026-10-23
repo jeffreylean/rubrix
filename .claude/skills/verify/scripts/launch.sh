@@ -11,10 +11,7 @@ mkdir -p "$out"
 target=$(cd "$repo" && cargo metadata --format-version 1 --no-deps | jq -r .target_directory)
 
 cd "$out"
-# Hyprland gives this window no focus, and an unfocused window under vsync
-# runs near 1 frame per second (measured: 1024 ms per frame), so launch
-# without vsync unless the caller says RUBRIX_NO_VSYNC=0.
-RUBRIX_NO_VSYNC=${RUBRIX_NO_VSYNC:-1} RUBRIX_DRIVE=$script "$target/release/examples/gallery" > log.txt 2>&1 &
+RUBRIX_DRIVE=$script "$target/release/examples/gallery" > log.txt 2>&1 &
 pid=$!
 echo "$pid" > pid
 trap 'kill "$pid" 2>/dev/null || true' INT TERM
