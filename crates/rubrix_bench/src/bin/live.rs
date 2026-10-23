@@ -4,11 +4,11 @@
 //!
 //! Each scenario applies one edit to highlights that are current,
 //! times only the `edit` call, and then reads the last line and
-//! undoes the edit outside the timer. `changed lines` is what `edit`
-//! returns for the window of the scenario. The template scenarios
-//! open a block comment on line 1, which changes the state of every
-//! line below it. The viewport is the first 120 lines and the distant
-//! viewport the last 120.
+//! undoes the edit outside the timer. `changed lines` is the length
+//! of the range `edit` returns for the window of the scenario. The
+//! template scenarios open a block comment on line 1, which changes
+//! the state of every line below it. The viewport is the first 120
+//! lines and the distant viewport the last 120.
 //!
 //! `--json <path>` also writes the table as JSON.
 

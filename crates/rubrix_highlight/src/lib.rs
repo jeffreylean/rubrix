@@ -337,7 +337,7 @@ impl Highlights {
             end,
         );
         self.lines.insert_at_gap(start as u32, line);
-        self.lines.set_total((start + raw.len() + 1) as u32);
+        self.lines.set_end((start + raw.len() + 1) as u32);
         self.exact = self.lines.len();
     }
 
@@ -376,8 +376,8 @@ impl Highlights {
 
     /// Checks these highlights against the text they describe: the
     /// same lines at the same byte offsets, each passing
-    /// [`check_line`]. A stale line fails, so read the last line
-    /// with [`Highlights::runs`] first.
+    /// [`check_line`]. It checks structure and offsets, not kinds,
+    /// so it cannot tell a stale line from a current one.
     pub fn check(&self, text: &str) -> Result<(), CheckError> {
         let mut start = 0;
         let mut count = 0;
@@ -495,13 +495,15 @@ mod table {
     /// the lines after it in `back` in reverse, so `back` ends with
     /// the line right after the gap. A line in `front` keeps its
     /// byte offset in `pos`. A line in `back` keeps its distance from
-    /// the end of the text, `total - start`, which an edit at the
+    /// the end of the text, `end - start`, which an edit at the
     /// gap leaves alone, so no edit rebases the lines after it.
+    /// `end` is where a line past the last would start: the length
+    /// of the text plus one.
     #[derive(Clone, Debug)]
     pub(crate) struct Table {
         front: Vec<Line>,
         back: Vec<Line>,
-        total: u32,
+        end: u32,
     }
 
     impl Table {
@@ -509,7 +511,7 @@ mod table {
             Table {
                 front: Vec::with_capacity(lines),
                 back: Vec::new(),
-                total: 0,
+                end: 0,
             }
         }
 
@@ -539,18 +541,14 @@ mod table {
             }
         }
 
-        /// The byte offset where the line starts. `start(len())` is
-        /// one past the end of the text, as if a `\n` followed it.
         pub(crate) fn start(&self, line: u32) -> u32 {
             match self.front.get(line as usize) {
                 Some(found) => found.pos,
-                None if line == self.len() => self.total,
-                None => self.total - self.get(line).pos,
+                None if line == self.len() => self.end,
+                None => self.end - self.get(line).pos,
             }
         }
 
-        /// The state the line starts from, which is the state the
-        /// line before it ends in. Takes `0..=len()`.
         pub(crate) fn start_state(&self, line: u32) -> &State {
             match line {
                 0 => &INITIAL,
@@ -558,15 +556,13 @@ mod table {
             }
         }
 
-        /// Moves the gap to sit before `line`, which takes
-        /// `0..=len()`.
         pub(crate) fn move_gap(&mut self, line: u32) {
             let line = line as usize;
             if line < self.front.len() {
                 let moved = self.back.len();
                 self.back.extend(self.front.drain(line..).rev());
                 for line in &mut self.back[moved..] {
-                    line.pos = self.total - line.pos;
+                    line.pos = self.end - line.pos;
                 }
             } else {
                 let keep =
@@ -574,18 +570,15 @@ mod table {
                 let moved = self.front.len();
                 self.front.extend(self.back.drain(keep..).rev());
                 for line in &mut self.front[moved..] {
-                    line.pos = self.total - line.pos;
+                    line.pos = self.end - line.pos;
                 }
             }
         }
 
-        /// Removes the line right after the gap.
         pub(crate) fn take_after_gap(&mut self) -> Line {
             self.back.pop().expect("no line after the gap")
         }
 
-        /// Puts `line` right before the gap, starting at byte
-        /// `start`.
         pub(crate) fn insert_at_gap(
             &mut self,
             start: u32,
@@ -595,15 +588,12 @@ mod table {
             self.front.push(line);
         }
 
-        /// Sets the length of the text plus one. After an edit at
-        /// the gap, this is the only thing that moves the starts of
-        /// the lines past it.
-        pub(crate) fn set_total(&mut self, total: u32) {
-            self.total = total;
+        pub(crate) fn set_end(&mut self, end: u32) {
+            self.end = end;
         }
 
-        pub(crate) fn total(&self) -> u32 {
-            self.total
+        pub(crate) fn end(&self) -> u32 {
+            self.end
         }
 
         pub(crate) fn iter_mut(

@@ -23,8 +23,8 @@ pub struct LineEdit {
 
 impl Highlights {
     /// Brings the highlights up to date with an edit that has
-    /// already changed `lines`, and returns the lines it lexed that
-    /// lie in `window`.
+    /// already changed `lines`, and returns a range that covers
+    /// every line it lexed inside `window`.
     ///
     /// `lines` holds the text after the edit. The edit's own lines
     /// are lexed at once, whatever `window` is. Lexing then goes on
@@ -163,10 +163,10 @@ impl Highlights {
                 .checked_add(lines.line(line).len() as u32 + 1)
                 .expect("text of 4 GiB or more");
         }
-        let total = (self.lines.total() - removed_span)
+        let end = (self.lines.end() - removed_span)
             .checked_add(start - first_start)
             .expect("text of 4 GiB or more");
-        self.lines.set_total(total);
+        self.lines.set_end(end);
     }
 
     fn catch_up(&mut self, upto: u32, lines: &(impl Lines + ?Sized)) {
