@@ -34,6 +34,30 @@ mod lexers {
     pub(crate) mod toml;
     pub(crate) mod ts;
     pub(crate) mod yaml;
+
+    /// ASCII letters, `_`, and every byte of a non-ASCII char, so a
+    /// token never ends inside a char.
+    const fn is_ident_start(b: u8) -> bool {
+        b.is_ascii_alphabetic() || b == b'_' || b >= 0x80
+    }
+
+    const fn is_ident_continue(b: u8) -> bool {
+        is_ident_start(b) || b.is_ascii_digit()
+    }
+
+    fn ident_end(s: &[u8], mut i: usize) -> usize {
+        while i < s.len() && is_ident_continue(s[i]) {
+            i += 1;
+        }
+        i
+    }
+
+    fn space_end(s: &[u8], mut i: usize) -> usize {
+        while i < s.len() && s[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        i
+    }
 }
 
 use alloc::vec::Vec;
@@ -468,6 +492,14 @@ mod runs {
             match self.out[self.base..].last_mut() {
                 Some(run) if run.kind == kind => run.end = end,
                 _ => self.out.push(Run { end, kind }),
+            }
+        }
+
+        /// Covers whitespace up to byte `end` with the run before it.
+        pub(crate) fn space(&mut self, end: usize) {
+            self.advance(end);
+            if let Some(run) = self.out[self.base..].last_mut() {
+                run.end = end as u32;
             }
         }
 
