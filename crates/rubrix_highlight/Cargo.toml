@@ -9,5 +9,8 @@ repository.workspace = true
 [package.metadata.rubrix]
 no_std = true
 
+[dependencies]
+memchr = { version = "2.8", default-features = false }
+
 [lints]
 workspace = true

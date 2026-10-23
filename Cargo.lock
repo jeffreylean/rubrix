@@ -4677,8 +4677,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rubrix_bench"
+version = "0.0.3"
+dependencies = [
+ "rubrix_highlight",
+]
+
+[[package]]
 name = "rubrix_highlight"
 version = "0.0.3"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "rustc-hash"
