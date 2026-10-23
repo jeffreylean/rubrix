@@ -1,0 +1,13 @@
+[package]
+name = "rubrix_highlight"
+description = "Syntax highlighting for rubrix."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[package.metadata.rubrix]
+no_std = true
+
+[lints]
+workspace = true
