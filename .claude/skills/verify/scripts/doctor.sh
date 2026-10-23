@@ -29,6 +29,6 @@ else
   echo "MISSING crates/bevy_rubrix/examples/gallery/main.rs in $repo"; status=1
 fi
 
-running=$(pgrep -x gallery | tr '\n' ' ')
+running=$(pgrep -x gallery | paste -sd' ')
 echo "info galleries running now: ${running:-none} (never kill one you did not start)"
 exit "$status"

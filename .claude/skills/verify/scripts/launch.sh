@@ -14,7 +14,20 @@ cd "$out"
 RUBRIX_DRIVE=$script "$target/release/examples/gallery" > log.txt 2>&1 &
 pid=$!
 echo "$pid" > pid
-trap 'kill "$pid" 2>/dev/null || true' INT TERM
+settled=0
+stop_gallery() {
+  local rc=$?
+  if [ "$settled" -eq 0 ]; then
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    rm -f pid
+    cat log.txt
+    echo "launch failed with exit $rc, gallery $pid stopped" >&2
+  fi
+}
+trap stop_gallery EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 addr=""
 for _ in $(seq 1 100); do
@@ -43,6 +56,7 @@ if ! timeout "${TIMEOUT:-300}" tail --pid="$pid" -f /dev/null; then
 fi
 rc=0
 wait "$pid" || rc=$?
+settled=1
 rm -f pid
 cat log.txt
 echo "exit=$rc"
