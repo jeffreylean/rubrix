@@ -170,7 +170,9 @@ pub fn lex_line(
 /// Panics if `text` is 4 GiB or longer.
 pub fn highlight(lang: Lang, text: &str) -> Highlights {
     assert!(text.len() < u32::MAX as usize, "text of 4 GiB or more");
-    let mut highlights = Highlights::new(lang, text.len());
+    let newlines =
+        memchr::memchr_iter(b'\n', text.as_bytes()).count();
+    let mut highlights = Highlights::new(lang, newlines + 1);
     let mut start = 0;
     for end in memchr::memchr_iter(b'\n', text.as_bytes()) {
         highlights.push_line(start, &text[start..end]);
@@ -293,11 +295,11 @@ struct Line {
 }
 
 impl Highlights {
-    pub(crate) fn new(lang: Lang, text_len: usize) -> Highlights {
+    pub(crate) fn new(lang: Lang, lines: usize) -> Highlights {
         Highlights {
             lang,
-            lines: Vec::with_capacity(text_len / 24 + 1),
-            runs: Vec::with_capacity(text_len / 4 + 1),
+            lines: Vec::with_capacity(lines),
+            runs: Vec::with_capacity(lines * 8),
         }
     }
 
