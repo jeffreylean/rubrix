@@ -1,3 +1,4 @@
 log present_mode
+wait 30
 screenshot novsync.png
 exit

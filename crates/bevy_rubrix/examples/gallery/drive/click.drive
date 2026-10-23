@@ -1,9 +1,9 @@
 click 100 62
-wait 5
+wait 120
 log page
 screenshot click.png
 click 100 771
-wait 10
+wait 30
 log theme
 screenshot click-theme.png
 exit

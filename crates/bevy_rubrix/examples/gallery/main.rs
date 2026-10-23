@@ -1,17 +1,22 @@
 //! `RUBRIX_DRIVE=<script>` runs a drive script, see [`drive`].
 //! `RUBRIX_NO_VSYNC=1` presents without vsync, for perf runs, and
-//! `0` presents with it. A scripted run defaults to without.
+//! `0` presents with it. A scripted run defaults to without, and any
+//! other value exits with code 2.
 
 mod drive;
 mod pages;
 
 use core::time::Duration;
+use std::ffi::OsStr;
 
 use bevy::DefaultPlugins;
-use bevy::app::{App, AppExit, PluginGroup, Startup, Update};
+use bevy::app::{App, AppExit, Plugin, PluginGroup, Startup, Update};
 use bevy::asset::{AssetId, Assets};
 use bevy::camera::Camera2d;
 use bevy::color::Color;
+use bevy::ecs::component::Component;
+use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::Children;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
@@ -21,7 +26,7 @@ use bevy::ecs::world::World;
 use bevy::math::{UVec2, Vec2};
 use bevy::text::Font;
 use bevy::time::{Real, Time};
-use bevy::ui::{JustifyContent, UiRect, percent, px};
+use bevy::ui::{JustifyContent, ScrollPosition, UiRect, percent, px};
 use bevy::window::{
     PresentMode, PrimaryWindow, Window, WindowPlugin,
     WindowResolution,
@@ -146,7 +151,71 @@ pub struct Selected(pub usize);
 #[derive(Resource, Clone, Copy)]
 pub struct Mode(pub Palette);
 
+#[derive(Component)]
+struct PageArea;
+
+#[derive(Resource)]
+struct SavedScroll {
+    area: Entity,
+    offsets: Vec<Vec2>,
+}
+
+fn page_areas(world: &mut World) -> Vec<Entity> {
+    world
+        .query_filtered::<Entity, With<PageArea>>()
+        .iter(world)
+        .collect()
+}
+
+fn scrollers(world: &World, area: Entity) -> Vec<Entity> {
+    let mut found = Vec::new();
+    let mut stack = vec![area];
+    while let Some(node) = stack.pop() {
+        if world.get::<ScrollPosition>(node).is_some() {
+            found.push(node);
+        }
+        if let Some(children) = world.get::<Children>(node) {
+            stack.extend(children.iter().rev());
+        }
+    }
+    found
+}
+
+fn save_scroll(world: &mut World) {
+    let Some(&area) = page_areas(world).first() else {
+        return;
+    };
+    let offsets = scrollers(world, area)
+        .into_iter()
+        .filter_map(|node| world.get::<ScrollPosition>(node))
+        .map(|position| **position)
+        .collect();
+    world.insert_resource(SavedScroll { area, offsets });
+}
+
+fn restore_scroll(world: &mut World) {
+    let old = world.resource::<SavedScroll>().area;
+    let Some(area) =
+        page_areas(world).into_iter().find(|area| *area != old)
+    else {
+        return;
+    };
+    let saved = world
+        .remove_resource::<SavedScroll>()
+        .expect("the system runs while a save is held");
+    for (node, offset) in
+        scrollers(world, area).into_iter().zip(saved.offsets)
+    {
+        if let Some(mut position) =
+            world.get_mut::<ScrollPosition>(node)
+        {
+            **position = offset;
+        }
+    }
+}
+
 fn toggle_theme(world: &mut World) {
+    save_scroll(world);
     let palette = Palette {
         dark: !world.resource::<Mode>().0.dark,
     };
@@ -170,10 +239,16 @@ fn main() -> AppExit {
             return AppExit::from_code(2);
         }
     };
-    let present_mode = present_mode(
+    let present_mode = match present_mode(
         drive.is_some(),
-        std::env::var("RUBRIX_NO_VSYNC").ok().as_deref(),
-    );
+        std::env::var_os("RUBRIX_NO_VSYNC").as_deref(),
+    ) {
+        Ok(mode) => mode,
+        Err(error) => {
+            println!("{error}");
+            return AppExit::from_code(2);
+        }
+    };
     let mut app = App::new();
     app.add_plugins((
         DefaultPlugins.set(WindowPlugin {
@@ -188,11 +263,8 @@ fn main() -> AppExit {
         }),
         FynixPlugin::<Palette>::default(),
         RubrixPlugin,
+        ShellPlugin,
     ))
-    .insert_resource(Theme(DARK))
-    .insert_resource(Mode(DARK))
-    .insert_resource(Selected(0))
-    .init_resource::<Copied>()
     .add_systems(Startup, setup)
     .add_systems(
         Update,
@@ -209,12 +281,35 @@ fn main() -> AppExit {
 /// per second under vsync, and a screenshot taken then is black.
 fn present_mode(
     scripted: bool,
-    no_vsync: Option<&str>,
-) -> PresentMode {
+    no_vsync: Option<&OsStr>,
+) -> Result<PresentMode, String> {
     match no_vsync {
-        Some("1") => PresentMode::AutoNoVsync,
-        None if scripted => PresentMode::AutoNoVsync,
-        _ => PresentMode::AutoVsync,
+        None if scripted => Ok(PresentMode::AutoNoVsync),
+        None => Ok(PresentMode::AutoVsync),
+        Some(value) if value == OsStr::new("1") => {
+            Ok(PresentMode::AutoNoVsync)
+        }
+        Some(value) if value == OsStr::new("0") => {
+            Ok(PresentMode::AutoVsync)
+        }
+        Some(value) => Err(format!(
+            "RUBRIX_NO_VSYNC must be unset, 0 or 1, not {value:?}"
+        )),
+    }
+}
+
+pub struct ShellPlugin;
+
+impl Plugin for ShellPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(Theme(DARK))
+            .insert_resource(Mode(DARK))
+            .insert_resource(Selected(0))
+            .init_resource::<Copied>()
+            .add_systems(
+                Update,
+                restore_scroll.run_if(resource_exists::<SavedScroll>),
+            );
     }
 }
 
@@ -319,7 +414,8 @@ fn page() -> AnyView<Bevy, Palette> {
             .grow(1.0)
             .height(percent(100.0))
             .min_width(px(0.0))
-            .padding(UiRect::all(px(20.0))),
+            .padding(UiRect::all(px(20.0)))
+            .with(PageArea),
     )
     .boxed()
 }
@@ -328,28 +424,51 @@ fn page() -> AnyView<Bevy, Palette> {
 mod tests {
     use super::*;
 
+    fn mode(value: &str) -> Option<&OsStr> {
+        Some(OsStr::new(value))
+    }
+
     #[test]
     fn a_scripted_run_skips_vsync_unless_told_not_to() {
         assert_eq!(
             present_mode(true, None),
-            PresentMode::AutoNoVsync
+            Ok(PresentMode::AutoNoVsync)
         );
         assert_eq!(
-            present_mode(true, Some("0")),
-            PresentMode::AutoVsync
+            present_mode(true, mode("0")),
+            Ok(PresentMode::AutoVsync)
         );
         assert_eq!(
-            present_mode(true, Some("1")),
-            PresentMode::AutoNoVsync
+            present_mode(true, mode("1")),
+            Ok(PresentMode::AutoNoVsync)
         );
     }
 
     #[test]
     fn an_interactive_run_keeps_vsync_unless_asked() {
-        assert_eq!(present_mode(false, None), PresentMode::AutoVsync);
         assert_eq!(
-            present_mode(false, Some("1")),
-            PresentMode::AutoNoVsync
+            present_mode(false, None),
+            Ok(PresentMode::AutoVsync)
         );
+        assert_eq!(
+            present_mode(false, mode("1")),
+            Ok(PresentMode::AutoNoVsync)
+        );
+    }
+
+    #[test]
+    fn a_value_other_than_0_or_1_is_refused() {
+        for scripted in [true, false] {
+            for value in ["true", "", "2", " 1"] {
+                let error = present_mode(scripted, mode(value))
+                    .expect_err(value);
+                assert!(
+                    error.contains(
+                        "RUBRIX_NO_VSYNC must be unset, 0 or 1"
+                    ),
+                    "{error}"
+                );
+            }
+        }
     }
 }

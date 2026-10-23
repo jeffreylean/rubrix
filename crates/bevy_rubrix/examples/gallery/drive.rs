@@ -20,11 +20,18 @@
 //! Positions are logical pixels in the window. A scroll `dy` below
 //! zero moves the content up, so the page scrolls down. Every step
 //! prints `drive: <step> ok` when it is done.
+//!
+//! A scroll goes to what is under the pointer, so a `click` on the
+//! page list leaves the pointer there until a `move` takes it back.
+//! `resize` asks Hyprland for the size and is done when the window
+//! reports it, or exits with code 2 after two seconds. `exit` stops
+//! a `record` still running.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::str::FromStr;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::{fmt, fs, mem};
 
 use bevy::app::{App, AppExit, First, Plugin};
@@ -46,17 +53,19 @@ use bevy::input::mouse::{
     MouseButton, MouseButtonInput, MouseScrollUnit, MouseWheel,
 };
 use bevy::input::touch::TouchPhase;
-use bevy::math::Vec2;
+use bevy::math::{UVec2, Vec2};
 use bevy::picking::PickingSystems;
 use bevy::render::view::screenshot::{
     Screenshot, ScreenshotCaptured, save_to_disk,
 };
+use bevy::ui::ScrollPosition;
 use bevy::window::{CursorMoved, PrimaryWindow, Window, WindowEvent};
 
 use crate::pages::PAGES;
 use crate::{Copied, Mode, PAGE_CENTER, Ready, Selected};
 
 const DRAG_FRAMES: usize = 4;
+const RESIZE_WAIT: Duration = Duration::from_secs(2);
 
 #[derive(Debug, PartialEq)]
 pub struct ParseError {
@@ -432,8 +441,19 @@ enum Busy {
     Input(VecDeque<Vec<Input>>, &'static str),
     Wait(u32),
     Screenshot,
+    Resize {
+        want: UVec2,
+        line: usize,
+        deadline: Instant,
+    },
     Exit,
     Done,
+}
+
+#[derive(Clone, Copy)]
+enum Shot {
+    Step,
+    Frame,
 }
 
 struct Frames {
@@ -454,6 +474,7 @@ pub struct Drive {
     frames: Option<Frames>,
     recording: Option<Recording>,
     pending_shots: usize,
+    pending_frames: usize,
     said: Vec<String>,
 }
 
@@ -494,10 +515,6 @@ fn advance(world: &mut World) {
     });
 }
 
-fn landed(_: On<ScreenshotCaptured>, mut drive: ResMut<Drive>) {
-    drive.pending_shots = drive.pending_shots.saturating_sub(1);
-}
-
 impl Drive {
     fn new(lines: Vec<Line>) -> Self {
         Self {
@@ -507,6 +524,7 @@ impl Drive {
             frames: None,
             recording: None,
             pending_shots: 0,
+            pending_frames: 0,
             said: Vec::new(),
         }
     }
@@ -546,7 +564,38 @@ impl Drive {
                 self.busy = Busy::Screenshot;
             }
             Busy::Screenshot => self.done("screenshot"),
-            Busy::Exit if self.pending_shots > 0 => {
+            Busy::Resize {
+                want,
+                line,
+                deadline,
+            } => {
+                let size = window_size(world);
+                if size == Some(want) {
+                    self.done("resize");
+                } else if Instant::now() >= deadline {
+                    let now = size.map_or("missing".into(), |size| {
+                        format!("{}x{}", size.x, size.y)
+                    });
+                    self.fail(
+                        world,
+                        line,
+                        &format!(
+                            "resize {}x{} did not take effect, the \
+                             window is {now}",
+                            want.x, want.y
+                        ),
+                    );
+                } else {
+                    self.busy = Busy::Resize {
+                        want,
+                        line,
+                        deadline,
+                    };
+                }
+            }
+            Busy::Exit
+                if self.pending_shots + self.pending_frames > 0 =>
+            {
                 self.busy = Busy::Exit
             }
             Busy::Exit => {
@@ -651,7 +700,7 @@ impl Drive {
             }
             Step::Screenshot(path) => match make_parent(&path) {
                 Ok(()) => {
-                    self.capture(world, path);
+                    self.capture(world, path, Shot::Step);
                     self.busy = Busy::Screenshot;
                 }
                 Err(error) => self.fail(world, number, &error),
@@ -739,13 +788,16 @@ impl Drive {
                 self.done(name);
             }
             Step::Resize { width, height } => {
-                for mut window in world
-                    .query_filtered::<&mut Window, With<PrimaryWindow>>()
-                    .iter_mut(world)
-                {
-                    window.resolution.set(width as f32, height as f32);
+                match hyprland_resize(width, height) {
+                    Ok(()) => {
+                        self.busy = Busy::Resize {
+                            want: UVec2::new(width, height),
+                            line: number,
+                            deadline: Instant::now() + RESIZE_WAIT,
+                        };
+                    }
+                    Err(error) => self.fail(world, number, &error),
                 }
-                self.done(name);
             }
             Step::Open(paths) => {
                 let page = &PAGES[world.resource::<Selected>().0];
@@ -770,7 +822,10 @@ impl Drive {
                 self.say(line);
                 self.done(name);
             }
-            Step::Exit => self.busy = Busy::Exit,
+            Step::Exit => {
+                self.recording = None;
+                self.busy = Busy::Exit;
+            }
         }
     }
 
@@ -843,15 +898,39 @@ impl Drive {
         }
     }
 
-    fn capture(&mut self, world: &mut World, path: PathBuf) {
+    fn pending(&mut self, shot: Shot) -> &mut usize {
+        match shot {
+            Shot::Step => &mut self.pending_shots,
+            Shot::Frame => &mut self.pending_frames,
+        }
+    }
+
+    fn capture(
+        &mut self,
+        world: &mut World,
+        path: PathBuf,
+        shot: Shot,
+    ) {
         world
             .spawn(Screenshot::primary_window())
             .observe(save_to_disk(path))
-            .observe(landed);
-        self.pending_shots += 1;
+            .observe(
+                move |_: On<ScreenshotCaptured>,
+                      mut drive: ResMut<Drive>| {
+                    let pending = drive.pending(shot);
+                    *pending = pending.saturating_sub(1);
+                },
+            );
+        *self.pending(shot) += 1;
     }
 
+    /// Bevy drops a second capture of one window in a frame without
+    /// firing `ScreenshotCaptured`, so no frame is recorded while a
+    /// `screenshot` step waits.
     fn record(&mut self, world: &mut World) {
+        if matches!(self.busy, Busy::Screenshot) {
+            return;
+        }
         let Some(recording) = &mut self.recording else {
             return;
         };
@@ -859,7 +938,7 @@ impl Drive {
             .dir
             .join(format!("frame-{:05}.png", recording.next));
         recording.next += 1;
-        self.capture(world, path);
+        self.capture(world, path, Shot::Frame);
     }
 }
 
@@ -871,6 +950,50 @@ where
 {
     world.write_message(message.clone().into());
     world.write_message(message);
+}
+
+fn window_size(world: &mut World) -> Option<UVec2> {
+    let window = world
+        .query_filtered::<&Window, With<PrimaryWindow>>()
+        .iter(world)
+        .next()?;
+    Some(UVec2::new(
+        window.width().round() as u32,
+        window.height().round() as u32,
+    ))
+}
+
+fn hyprland_resize(width: u32, height: u32) -> Result<(), String> {
+    if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none() {
+        return Err(
+            "resize needs Hyprland, which sizes the window".into()
+        );
+    }
+    let dispatch = format!(
+        "hl.dsp.window.resize({{ window = \"pid:{}\", x = {width}, \
+         y = {height} }})",
+        std::process::id()
+    );
+    let output = Command::new("hyprctl")
+        .args(["dispatch", &dispatch])
+        .output()
+        .map_err(|error| format!("cannot run hyprctl: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "hyprctl failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+fn scroll_offset(world: &mut World) -> f32 {
+    world
+        .query::<&ScrollPosition>()
+        .iter(world)
+        .map(|position| position.y)
+        .fold(0.0, f32::max)
 }
 
 fn make_parent(path: &Path) -> Result<(), String> {
@@ -906,8 +1029,9 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
                 .iter(world)
                 .next()?
                 .present_mode;
-            format!("present_mode {mode:?}")
+            format!("present_mode requested {mode:?}")
         }
+        "scroll" => format!("scroll {}", scroll_offset(world)),
         "theme" => {
             format!("theme {}", world.resource::<Mode>().0.name())
         }
@@ -919,7 +1043,7 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
 mod tests {
     use core::time::Duration;
 
-    use bevy::app::PostUpdate;
+    use bevy::app::{Last, PostUpdate};
     use bevy::asset::AssetApp;
     use bevy::camera::visibility::{
         InheritedVisibility, VisibilitySystems,
@@ -928,19 +1052,20 @@ mod tests {
         Camera, Camera2d, ComputedCameraValues, RenderTargetInfo,
     };
     use bevy::ecs::message::Messages;
-    use bevy::ecs::system::Query;
+    use bevy::ecs::query::Added;
+    use bevy::ecs::system::{Commands, Query};
+    use bevy::image::Image;
     use bevy::input::InputPlugin;
     use bevy::math::UVec2;
     use bevy::picking::DefaultPickingPlugins;
     use bevy::time::TimeUpdateStrategy;
     use bevy::transform::TransformPlugin;
-    use bevy::ui::{ScrollPosition, UiPlugin, percent, px};
+    use bevy::ui::UiPlugin;
     use bevy::window::WindowPlugin;
-    use bevy_fynix::views::{FrameProps, column};
-    use bevy_fynix::{FynixPlugin, Theme, mount};
+    use bevy_fynix::{FynixPlugin, mount};
 
     use super::*;
-    use crate::{DARK, Palette};
+    use crate::{Palette, ShellPlugin, shell, toggle_theme};
 
     fn steps(script: &str) -> Vec<Step> {
         parse(script)
@@ -1106,11 +1231,12 @@ exit
         .insert_resource(TimeUpdateStrategy::ManualDuration(
             Duration::from_millis(10),
         ))
-        .insert_resource(Theme(DARK))
-        .insert_resource(Mode(DARK))
-        .insert_resource(Selected(0))
-        .init_resource::<Copied>()
+        .add_plugins(ShellPlugin)
         .init_asset::<bevy::image::Image>()
+        .init_asset::<bevy::image::TextureAtlasLayout>()
+        .init_asset::<bevy::text::Font>()
+        .init_resource::<bevy::text::FontAtlasSet>()
+        .init_resource::<bevy::text::LayoutCx>()
         .init_resource::<bevy::text::TextPipeline>()
         .init_resource::<bevy::text::FontCx>()
         .init_resource::<bevy::text::ScaleCx>()
@@ -1120,8 +1246,7 @@ exit
             PostUpdate,
             show_everything
                 .in_set(VisibilitySystems::VisibilityPropagate),
-        )
-        .set_error_handler(bevy::ecs::error::ignore);
+        );
         app.world_mut().spawn((
             Camera2d,
             Camera {
@@ -1135,13 +1260,7 @@ exit
                 ..Default::default()
             },
         ));
-        mount::<Palette>(
-            app.world_mut(),
-            column(((PAGES[0].build)(),))
-                .width(percent(100.0))
-                .height(percent(100.0))
-                .min_height(px(0.0)),
-        );
+        mount::<Palette>(app.world_mut(), shell());
         for _ in 0..3 {
             app.update();
         }
@@ -1164,11 +1283,7 @@ exit
     }
 
     fn scrolled(app: &mut App) -> f32 {
-        app.world_mut()
-            .query::<&ScrollPosition>()
-            .iter(app.world())
-            .map(|position| position.y)
-            .fold(0.0, f32::max)
+        scroll_offset(app.world_mut())
     }
 
     #[test]
@@ -1209,6 +1324,99 @@ exit
         assert!(said.contains(&"accept: page pass".to_string()));
         assert!(said.contains(&"accept: page fail".to_string()));
         assert!(said.contains(&"theme dark".to_string()));
+    }
+
+    fn scroll_areas(app: &mut App) -> Vec<Entity> {
+        app.world_mut()
+            .query_filtered::<Entity, With<ScrollPosition>>()
+            .iter(app.world())
+            .collect()
+    }
+
+    #[test]
+    fn a_theme_change_keeps_the_page_scrolled() {
+        let mut app = headless("scroll 0 -400\nexit");
+        run(&mut app);
+        assert_eq!(scrolled(&mut app), 400.0);
+        let before = scroll_areas(&mut app);
+        toggle_theme(app.world_mut());
+        for _ in 0..5 {
+            app.update();
+        }
+        assert!(!app.world().resource::<Mode>().0.dark);
+        assert_ne!(scroll_areas(&mut app), before, "built again");
+        assert_eq!(scrolled(&mut app), 400.0);
+    }
+
+    fn capture_one_a_frame(
+        mut commands: Commands,
+        shots: Query<Entity, Added<Screenshot>>,
+    ) {
+        let mut shots = shots.iter();
+        if let Some(entity) = shots.next() {
+            commands.trigger(ScreenshotCaptured {
+                entity,
+                image: Image::default(),
+            });
+        }
+        for entity in shots {
+            commands.entity(entity).despawn();
+        }
+    }
+
+    #[test]
+    fn a_screenshot_and_an_exit_finish_while_a_recording_runs() {
+        let dir = std::env::current_exe()
+            .expect("a test binary")
+            .with_file_name(format!(
+                "drive-test-{}",
+                std::process::id()
+            ));
+        let shown = dir.display();
+        let mut app = headless(&format!(
+            "record start {shown}/one\nscroll 0 -20\nscreenshot \
+             {shown}/shot.png\nrecord stop\nrecord start \
+             {shown}/two\nexit"
+        ));
+        app.add_systems(Last, capture_one_a_frame);
+        let exits = run(&mut app);
+        let said = app.world().resource::<Drive>().said.clone();
+        let shot = dir.join("shot.png").exists();
+        fs::remove_dir_all(&dir).ok();
+        assert_eq!(exits, vec![AppExit::Success], "{said:?}");
+        assert!(shot, "the screenshot step saved its file");
+    }
+
+    #[test]
+    fn a_shipped_script_waits_before_its_first_screenshot() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("examples/gallery/drive");
+        let mut seen = 0;
+        for entry in fs::read_dir(&dir).expect("the drive directory")
+        {
+            let path = entry.expect("a directory entry").path();
+            let text = fs::read_to_string(&path).expect("a script");
+            if path.file_name() == Some("bad-script.drive".as_ref()) {
+                assert!(parse(&text).is_err());
+                continue;
+            }
+            seen += 1;
+            let steps = steps(&text);
+            let first = steps
+                .iter()
+                .position(|step| matches!(step, Step::Screenshot(_)));
+            if let Some(first) = first {
+                let waited = steps[..first].iter().any(
+                    |step| matches!(step, Step::Wait(frames) if *frames >= 10),
+                );
+                assert!(
+                    waited,
+                    "{} takes a screenshot before it waits",
+                    path.display()
+                );
+            }
+        }
+        assert!(seen >= 10, "found {seen} shipped scripts");
     }
 
     #[test]

@@ -1,0 +1,9 @@
+page about
+wait 30
+record start video
+scroll 0 -20
+scroll 0 -20
+scroll 0 -20
+screenshot inrec.png
+record stop
+exit

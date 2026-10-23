@@ -1,3 +1,4 @@
+wait 30
 type hello
 key ctrl+a
 key ctrl+c

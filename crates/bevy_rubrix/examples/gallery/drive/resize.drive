@@ -1,0 +1,6 @@
+page about
+wait 30
+resize 800 600
+wait 30
+screenshot resize.png
+exit
