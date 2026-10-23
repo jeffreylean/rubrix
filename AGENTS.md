@@ -14,6 +14,7 @@ cd rubrix
 The CI jobs that build Bevy install `libudev-dev`, `libwayland-dev`, and `libxkbcommon-dev` (the `apt-get install` line in `.github/workflows/rust.yml`). `scripts/check-no-std.sh` also needs `jq`, which the GitHub runner image already has. On Debian or Ubuntu:
 
 ```sh
+sudo apt-get update
 sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev jq
 ```
 
