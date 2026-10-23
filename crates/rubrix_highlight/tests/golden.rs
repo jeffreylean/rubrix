@@ -1,7 +1,3 @@
-//! Lexes each source under `tests/golden/<lang>/` with the language
-//! its directory names and compares the rows with `<name>.golden`.
-//! `UPDATE_GOLDEN=1 cargo test -p rubrix_highlight` rewrites them.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -21,8 +17,6 @@ impl Case {
         path.display().to_string()
     }
 
-    /// Each line's content, split here rather than taken from the
-    /// highlights under test.
     fn lines(&self) -> impl Iterator<Item = &str> {
         self.text
             .split('\n')
@@ -116,8 +110,6 @@ fn first_difference<'a>(
     }
 }
 
-/// Lexing from any line, with the state saved for it, gives the same
-/// runs and states as lexing the whole text.
 #[test]
 fn resume() {
     for case in cases() {
@@ -147,7 +139,6 @@ fn resume() {
     }
 }
 
-/// `\r\n` endings give the runs and states that `\n` endings give.
 #[test]
 fn crlf() {
     for case in cases() {

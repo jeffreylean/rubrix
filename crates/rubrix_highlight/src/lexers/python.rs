@@ -1,6 +1,3 @@
-//! Python, lexed as plain text until this language's lexer
-//! replaces this file.
-
 use crate::{Runs, State};
 
 pub(crate) fn lex(

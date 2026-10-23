@@ -1,6 +1,3 @@
-/// One list makes the enum, `ALL`, the names, and the extension
-/// table. A name is also the language's directory under
-/// `tests/golden/` and `bench/fixtures/`.
 macro_rules! langs {
     ($(
         $(#[doc = $doc:literal])*
@@ -119,7 +116,6 @@ fn base_name(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
-/// `python`, `python3`, or a versioned name such as `python3.12`.
 fn is_python(program: &str) -> bool {
     program.strip_prefix("python").is_some_and(|version| {
         version.bytes().all(|b| b.is_ascii_digit() || b == b'.')

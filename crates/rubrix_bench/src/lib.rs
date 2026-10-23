@@ -1,6 +1,3 @@
-//! Sampling, fixture discovery, and table output shared by the
-//! benchmark binaries under `src/bin/`.
-
 use std::fmt::Write as _;
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
@@ -69,7 +66,6 @@ fn time_batch<R>(
     start.elapsed()
 }
 
-/// A fixture file under `bench/fixtures/<lang>/<tier>.*`.
 pub struct Fixture {
     /// The directory name, which is the language's `Lang::name`.
     pub lang: String,
@@ -104,12 +100,10 @@ fn line_count(text: &str) -> usize {
     text.bytes().filter(|&b| b == b'\n').count() + 1
 }
 
-/// The benchmark tiers, smallest first.
 const TIERS: [&str; 3] = ["tiny", "small", "large"];
 
 /// The fixtures of every language directory under `bench/fixtures`,
-/// sorted by language and then by tier. A language joins the
-/// benchmarks by adding its directory, with no code change.
+/// sorted by language and then by tier.
 pub fn fixtures() -> io::Result<Vec<Fixture>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../bench/fixtures");
@@ -151,7 +145,6 @@ fn file_name(path: &Path) -> &str {
         .unwrap_or_default()
 }
 
-/// Throughput in MiB per second for `bytes` processed in `seconds`.
 pub fn mib_per_sec(bytes: usize, seconds: f64) -> f64 {
     bytes as f64 / (1024.0 * 1024.0) / seconds
 }

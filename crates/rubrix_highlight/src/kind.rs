@@ -1,7 +1,5 @@
 use core::fmt;
 
-/// One list makes the enum, `ALL`, `COUNT`, the name table, and
-/// `from_name`, so no second list of kinds can drift from it.
 macro_rules! kinds {
     ($($(#[doc = $doc:literal])* $variant:ident = $name:literal,)*) => {
         /// What a run of text is, as a flat dotted name such as
@@ -149,21 +147,29 @@ impl fmt::Display for Kind {
     }
 }
 
+/// Dotted kinds with no parent. Pierre's themes style these two and
+/// have no `diff` key.
+const DOTTED_ROOTS: [Kind; 2] = [Kind::DiffMinus, Kind::DiffPlus];
+
 const PARENTS: [Option<Kind>; Kind::COUNT] = {
     let mut table = [None; Kind::COUNT];
     let mut i = 0;
     while i < Kind::COUNT {
-        table[i] = parent_of(Kind::NAMES[i].as_bytes());
+        table[i] = parent_of(Kind::ALL[i]);
         i += 1;
     }
     table
 };
 
-/// Runs at compile time, so a dotted name whose prefix is not a kind
-/// fails the build. Only the `diff.` kinds have no parent, because
-/// Pierre's themes style `diff.plus` and `diff.minus` with no
-/// `diff` key.
-const fn parent_of(name: &[u8]) -> Option<Kind> {
+const fn parent_of(kind: Kind) -> Option<Kind> {
+    let mut i = 0;
+    while i < DOTTED_ROOTS.len() {
+        if DOTTED_ROOTS[i] as u8 == kind as u8 {
+            return None;
+        }
+        i += 1;
+    }
+    let name = kind.name().as_bytes();
     let mut dot = name.len();
     while dot > 0 {
         dot -= 1;
@@ -176,11 +182,7 @@ const fn parent_of(name: &[u8]) -> Option<Kind> {
                 }
                 i += 1;
             }
-            assert!(
-                bytes_eq(prefix, b"diff"),
-                "a dotted kind's prefix must be a kind"
-            );
-            return None;
+            panic!("a dotted kind's prefix must be a kind");
         }
     }
     None
@@ -202,7 +204,7 @@ const fn bytes_eq(a: &[u8], b: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::Kind;
+    use super::{DOTTED_ROOTS, Kind};
 
     #[test]
     fn names_round_trip() {
@@ -214,14 +216,13 @@ mod tests {
 
     #[test]
     fn parent_chains_end_at_roots() {
-        let dotted_roots = [Kind::DiffMinus, Kind::DiffPlus];
         for kind in Kind::ALL {
             let root = kind.root();
             assert_eq!(root.parent(), None);
             assert!(kind.name().starts_with(root.name()));
             assert!(
                 !root.name().contains('.')
-                    || dotted_roots.contains(&root),
+                    || DOTTED_ROOTS.contains(&root),
                 "{kind} ends at {root}"
             );
             if let Some(parent) = kind.parent() {

@@ -1,6 +1,3 @@
-//! Lexes real files found by walking directories, and checks that
-//! every line's runs cover it exactly and end on char boundaries.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -10,7 +7,6 @@ fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// Every file under `dir`, recursively and sorted, skipping `target`.
 fn files(dir: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
     let mut dirs = vec![dir.to_path_buf()];
@@ -63,8 +59,6 @@ fn fynix_sources() {
     }
 }
 
-/// Each fixture is lexed with the language `Lang::detect` picks,
-/// which must be the one its directory names.
 #[test]
 fn bench_fixtures() {
     let fixtures: Vec<PathBuf> =
@@ -90,8 +84,6 @@ fn bench_fixtures() {
     }
 }
 
-/// Lexing any prefix of a golden line from that line's start state,
-/// as an editor does while a line is typed, keeps the runs in form.
 #[test]
 fn line_prefixes() {
     let root =

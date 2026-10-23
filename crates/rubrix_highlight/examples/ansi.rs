@@ -115,8 +115,6 @@ fn main() -> ExitCode {
     }
 }
 
-/// Writes every line in colour, followed by its own terminator, so
-/// the output holds every byte of `text`.
 fn write_colour(
     out: &mut impl Write,
     highlights: &Highlights,
@@ -144,9 +142,6 @@ fn write_colour(
     Ok(())
 }
 
-/// The SGR code for a kind, from the nearest kind on its parent
-/// chain that has one. Plain text, identifiers, operators, and
-/// punctuation print without codes.
 fn colour(kind: Kind) -> Option<&'static str> {
     let mut next = Some(kind);
     while let Some(kind) = next {

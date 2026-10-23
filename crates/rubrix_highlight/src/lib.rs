@@ -36,10 +36,8 @@ mod lexers {
     pub(crate) mod ts;
     pub(crate) mod yaml;
 
-    /// ASCII letters, `_`, and every byte of a non-ASCII char, so a
-    /// token never ends inside a char.
     const fn is_ident_start(b: u8) -> bool {
-        b.is_ascii_alphabetic() || b == b'_' || b >= 0x80
+        b.is_ascii_alphabetic() || b == b'_' || !b.is_ascii()
     }
 
     const fn is_ident_continue(b: u8) -> bool {
@@ -86,18 +84,8 @@ mod state {
     /// The lexer state at a line boundary, which the next line
     /// starts from. The default is the state at the start of a text.
     ///
-    /// Each lexer defines what its state means. `word` holds bounded
-    /// data such as a mode, a comment depth, or a raw-string hash
-    /// count. `tail` holds data with no size bound, such as a
-    /// template-literal brace stack or a heredoc delimiter, and is
-    /// `None` on almost every line, so comparing and cloning a state
-    /// costs about a nanosecond.
-    ///
-    /// The fields are private to this module, so every state is
-    /// built through the constructors below. An empty tail is always
-    /// `None`, so equal states compare equal. A lexer reads any word
-    /// and tail it did not write, such as another language's state,
-    /// as some state of its own and never panics.
+    /// A lexer reads a state it did not write, such as another
+    /// language's, as some state of its own and never panics.
     #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
     pub struct State {
         word: u64,
@@ -123,7 +111,6 @@ mod state {
             State { word, tail }
         }
 
-        /// Keeps this state's tail, sharing its allocation.
         pub(crate) fn with_word(&self, word: u64) -> State {
             State {
                 word,
@@ -295,17 +282,13 @@ impl core::error::Error for CheckError {}
 pub struct Highlights {
     lang: Lang,
     lines: Vec<Line>,
-    /// Every line's runs, in line order. A line owns
-    /// `runs[first..first + count]`.
     runs: Vec<Run>,
 }
 
 #[derive(Clone, Debug)]
 struct Line {
-    /// The byte offset of the line in the text.
     start: u32,
-    first: u32,
-    count: u32,
+    runs: Range<u32>,
     end: State,
 }
 
@@ -318,9 +301,6 @@ impl Highlights {
         }
     }
 
-    /// Lexes and appends the line that starts at byte `start` of the
-    /// text. `raw` runs up to the line's `\n` or the end of the
-    /// text, and may end in the `\r` of a `\r\n`.
     pub(crate) fn push_line(&mut self, start: usize, raw: &str) {
         let content = raw.strip_suffix('\r').unwrap_or(raw);
         let first = self.runs.len();
@@ -331,8 +311,7 @@ impl Highlights {
         let end = lex_line(self.lang, content, state, &mut self.runs);
         self.lines.push(Line {
             start: start as u32,
-            first: first as u32,
-            count: (self.runs.len() - first) as u32,
+            runs: first as u32..self.runs.len() as u32,
             end,
         });
     }
@@ -357,8 +336,8 @@ impl Highlights {
 
     /// The runs saved when the line was last lexed.
     pub fn stored_runs(&self, line: u32) -> &[Run] {
-        let Line { first, count, .. } = self.lines[line as usize];
-        &self.runs[first as usize..(first + count) as usize]
+        let runs = &self.lines[line as usize].runs;
+        &self.runs[runs.start as usize..runs.end as usize]
     }
 
     /// The state the line starts from. Takes `0..=line_count()`, and
@@ -459,16 +438,11 @@ mod runs {
 
     use crate::{Kind, Run};
 
-    /// Builds one line's runs in the canonical form, and is the only
-    /// way a lexer emits them. Its fields are private to this module.
     pub(crate) struct Runs<'a> {
         out: &'a mut Vec<Run>,
         line: &'a str,
-        /// The index of this line's first run in `out`.
         base: usize,
-        /// Bytes before `pos` are covered, or are leading whitespace
-        /// that the line's first token takes.
-        pos: usize,
+        consumed: usize,
     }
 
     impl<'a> Runs<'a> {
@@ -481,15 +455,12 @@ mod runs {
                 out,
                 line,
                 base,
-                pos: 0,
+                consumed: 0,
             }
         }
 
-        /// Ends a token of `kind` at byte `end`. A token of the
-        /// previous run's kind extends that run, and an empty token
-        /// adds nothing.
         pub(crate) fn push(&mut self, end: usize, kind: Kind) {
-            let Some(end) = self.advance(end) else {
+            let Some(end) = self.advance_clamped(end) else {
                 return;
             };
             match self.out[self.base..].last_mut() {
@@ -498,45 +469,34 @@ mod runs {
             }
         }
 
-        /// Covers whitespace up to byte `end` with the run before it.
         pub(crate) fn space(&mut self, end: usize) {
-            if let Some(end) = self.advance(end)
+            if let Some(end) = self.advance_clamped(end)
                 && let Some(run) = self.out[self.base..].last_mut()
             {
                 run.end = end;
             }
         }
 
-        /// Moves to byte `end` and returns it as a run end, or `None`
-        /// when that covers no new byte.
-        ///
-        /// A lexer that ends a run backwards, past the line, or
-        /// inside a char fails a debug assertion. A release build
-        /// moves the end forward to the next char boundary in the
-        /// line instead, so a lexer bug costs colour and never breaks
-        /// the runs.
-        fn advance(&mut self, end: usize) -> Option<u32> {
-            debug_assert!(end >= self.pos, "runs go backwards");
+        fn advance_clamped(&mut self, end: usize) -> Option<u32> {
+            debug_assert!(end >= self.consumed, "runs go backwards");
             debug_assert!(
                 self.line.is_char_boundary(end),
                 "a run ends inside a char or past the line"
             );
-            let mut end = end.clamp(self.pos, self.line.len());
+            let mut end = end.clamp(self.consumed, self.line.len());
             while !self.line.is_char_boundary(end) {
                 end += 1;
             }
-            (end > self.pos).then(|| {
-                self.pos = end;
+            (end > self.consumed).then(|| {
+                self.consumed = end;
                 end as u32
             })
         }
 
-        /// Covers what the lexer left, and gives a line of only
-        /// whitespace one plain run.
         pub(super) fn finish(mut self) {
             let len = self.line.len();
             debug_assert_eq!(
-                self.pos, len,
+                self.consumed, len,
                 "runs must cover the line"
             );
             self.push(len, Kind::Plain);

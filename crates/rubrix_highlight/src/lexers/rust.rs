@@ -1,43 +1,22 @@
-//! Rust: keywords, identifiers, capitalised types, lifetimes and
-//! chars, strings, raw strings with any number of hashes, byte and C
-//! strings, nested block comments, doc comments, numbers with
-//! suffixes, attributes, macro calls, operators, and punctuation.
-//! Strings, raw strings, block comments, and attributes continue
-//! across lines.
-
 use memchr::{memchr, memchr2};
 
 use super::{ident_end, is_ident_start, space_end};
 use crate::{Kind, Runs, State};
 
-/// What a line break leaves open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Open {
     Code,
-    /// A block comment nested `depth` deep.
-    Comment {
-        depth: u32,
-        doc: bool,
-    },
-    /// A `"`, `b"`, or `c"` string.
+    Comment { depth: u32, doc: bool },
     Str,
-    /// A raw string that `"` and `hashes` `#` close.
-    Raw {
-        hashes: u32,
-    },
+    Raw { hashes: u32 },
 }
 
-/// The lexer state at a line break: what is open, and how many
-/// brackets deep the line is inside an attribute.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Mode {
     open: Open,
     attr: u32,
 }
 
-// The state word: bits 0..2 hold the `Open` tag, bit 2 the doc
-// flag, bits 8..32 the attribute depth, and bits 32..64 the comment
-// depth or the hash count.
 const TAG: u64 = 0b11;
 const DOC: u64 = 0b100;
 const ATTR_SHIFT: u32 = 8;
@@ -76,14 +55,10 @@ impl Mode {
     }
 }
 
-/// The token before the current one, where it changes how an
-/// identifier reads.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Prev {
     Other,
-    /// The `fn` keyword, so the next identifier is a definition.
     Fn,
-    /// A `.`, so the next identifier is a field or a method.
     Dot,
 }
 
@@ -119,8 +94,6 @@ struct Lexer<'s, 'o, 'r> {
     s: &'s [u8],
     i: usize,
     out: &'o mut Runs<'r>,
-    /// Brackets open inside an attribute. While it is above 0, every
-    /// token is part of the attribute's one run.
     attr: u32,
     prev: Prev,
 }
@@ -136,8 +109,6 @@ impl Lexer<'_, '_, '_> {
         self.s.get(self.i + offset).copied()
     }
 
-    /// Lexes tokens until the line ends or a string or block comment
-    /// opens, and returns what is open.
     fn code(&mut self) -> Open {
         while self.i < self.s.len() {
             let b = self.s[self.i];
@@ -282,7 +253,6 @@ impl Lexer<'_, '_, '_> {
         Open::Raw { hashes }
     }
 
-    /// A char literal, a lifetime or label, or a stray `'`.
     fn quote(&mut self) {
         let s = self.s;
         if let Some(end) = char_end(s, self.i) {
@@ -323,7 +293,6 @@ impl Lexer<'_, '_, '_> {
         self.emit(j, Kind::Number);
     }
 
-    /// An attribute opener, or a lone `#`.
     fn hash(&mut self) {
         let opener = match (self.at(1), self.at(2)) {
             (Some(b'['), _) => 2,
@@ -337,7 +306,6 @@ impl Lexer<'_, '_, '_> {
         self.emit(self.i + opener, Kind::Attribute);
     }
 
-    /// A macro metavariable such as `$x`, or a lone `$`.
     fn dollar(&mut self) {
         if self.at(1).is_some_and(is_ident_start) {
             let end = ident_end(self.s, self.i + 1);
@@ -361,8 +329,6 @@ impl Lexer<'_, '_, '_> {
         self.emit(self.i + len, Kind::Operator);
     }
 
-    /// An identifier, keyword, or string prefix. Returns what opens
-    /// when the word starts a string.
     fn word(&mut self, prev: Prev) -> Option<Open> {
         let s = self.s;
         let end = ident_end(s, self.i);
@@ -441,8 +407,6 @@ fn keyword(word: &[u8]) -> Option<Kind> {
     })
 }
 
-/// The kind of a name that is not a keyword, from its shape and the
-/// tokens around it. The name ends at byte `end` of `s`.
 fn name_kind(s: &[u8], name: &[u8], end: usize, prev: Prev) -> Kind {
     let next = s.get(end).copied();
     let path = next == Some(b':') && s.get(end + 1) == Some(&b':');
@@ -459,7 +423,7 @@ fn name_kind(s: &[u8], name: &[u8], end: usize, prev: Prev) -> Kind {
             Kind::Property
         }
     } else if is_capitalised(name) {
-        if is_constant(name) {
+        if is_screaming_case(name) {
             Kind::Constant
         } else {
             Kind::Type
@@ -483,9 +447,7 @@ fn is_capitalised(name: &[u8]) -> bool {
     }
 }
 
-/// `SCREAMING_CASE`: two or more uppercase letters and no lowercase
-/// ones.
-fn is_constant(name: &[u8]) -> bool {
+fn is_screaming_case(name: &[u8]) -> bool {
     let upper =
         name.iter().filter(|b| b.is_ascii_uppercase()).count();
     upper > 1
@@ -501,8 +463,6 @@ fn digits_end(s: &[u8], mut i: usize) -> usize {
     i
 }
 
-/// The end of the char literal whose `'` is at byte `i`, if one
-/// starts there.
 fn char_end(s: &[u8], i: usize) -> Option<usize> {
     let body = i + 1;
     let first = *s.get(body)?;
@@ -514,8 +474,6 @@ fn char_end(s: &[u8], i: usize) -> Option<usize> {
     (s.get(after) == Some(&b'\'')).then_some(after + 1)
 }
 
-/// The end of the escape whose `\` is at byte `i`. A `\` that ends a
-/// line continues the string on the next line.
 fn escape_end(s: &[u8], i: usize) -> usize {
     match s.get(i + 1) {
         None => i + 1,
@@ -535,7 +493,6 @@ fn escape_end(s: &[u8], i: usize) -> usize {
     }
 }
 
-/// The byte length of the char whose first byte is `lead`.
 const fn char_len(lead: u8) -> usize {
     match lead {
         0..0x80 => 1,
