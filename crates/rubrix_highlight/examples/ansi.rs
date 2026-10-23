@@ -156,8 +156,6 @@ fn colour(kind: Kind) -> Option<&'static str> {
             }
             Kind::Comment => Some("90"),
             Kind::Constructor | Kind::Type => Some("36"),
-            Kind::DiffHeader => Some("1"),
-            Kind::DiffHunk => Some("36"),
             Kind::DiffMinus => Some("31"),
             Kind::DiffPlus => Some("32"),
             Kind::Function => Some("34"),

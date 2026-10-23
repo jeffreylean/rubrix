@@ -11,7 +11,6 @@ macro_rules! kinds {
         /// to a root kind. Numeric values may change between
         /// versions, so store a kind by name.
         #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-        #[derive(PartialOrd, Ord)]
         #[repr(u8)]
         pub enum Kind {
             #[default]
@@ -50,15 +49,10 @@ kinds! {
     ConstantBuiltin = "constant.builtin",
     /// A class name after `new`.
     Constructor = "constructor",
-    /// The root of the diff kinds.
-    Diff = "diff",
-    /// `diff --git`, `index`, `---`, and `+++` lines.
-    DiffHeader = "diff.header",
-    /// `@@ -1,2 +1,3 @@` hunk headers.
-    DiffHunk = "diff.hunk",
-    /// Removed lines.
+    /// Removed diff lines. A root kind, as in Pierre, so a theme
+    /// that styles only roots still tells it from `diff.plus`.
     DiffMinus = "diff.minus",
-    /// Added lines.
+    /// Added diff lines. A root kind.
     DiffPlus = "diff.plus",
     /// Calls, and shell command names.
     Function = "function",
@@ -133,15 +127,13 @@ impl Kind {
     }
 
     /// The kind named by dropping the last dotted segment, or `None`
-    /// for a root kind.
+    /// for a root kind. The roots are the names with no dot, and
+    /// `diff.plus` and `diff.minus`.
     pub const fn parent(self) -> Option<Kind> {
         PARENTS[self as usize]
     }
 
     /// The end of the parent chain.
-    ///
-    /// `diff.plus` and `diff.minus` share the root `diff`, so a
-    /// theme that styles only roots should also style those two.
     pub const fn root(self) -> Kind {
         let mut kind = self;
         while let Some(parent) = kind.parent() {
@@ -168,7 +160,9 @@ const PARENTS: [Option<Kind>; Kind::COUNT] = {
 };
 
 /// Runs at compile time, so a dotted name whose prefix is not a kind
-/// fails the build.
+/// fails the build. Only the `diff.` kinds have no parent, because
+/// Pierre's themes style `diff.plus` and `diff.minus` with no
+/// `diff` key.
 const fn parent_of(name: &[u8]) -> Option<Kind> {
     let mut dot = name.len();
     while dot > 0 {
@@ -182,7 +176,11 @@ const fn parent_of(name: &[u8]) -> Option<Kind> {
                 }
                 i += 1;
             }
-            panic!("a dotted kind's prefix must be a kind");
+            assert!(
+                bytes_eq(prefix, b"diff"),
+                "a dotted kind's prefix must be a kind"
+            );
+            return None;
         }
     }
     None
@@ -216,13 +214,16 @@ mod tests {
 
     #[test]
     fn parent_chains_end_at_roots() {
+        let dotted_roots = [Kind::DiffMinus, Kind::DiffPlus];
         for kind in Kind::ALL {
             let root = kind.root();
+            assert_eq!(root.parent(), None);
+            assert!(kind.name().starts_with(root.name()));
             assert!(
-                !root.name().contains('.'),
+                !root.name().contains('.')
+                    || dotted_roots.contains(&root),
                 "{kind} ends at {root}"
             );
-            assert!(kind.name().starts_with(root.name()));
             if let Some(parent) = kind.parent() {
                 let (prefix, _) =
                     kind.name().rsplit_once('.').unwrap();

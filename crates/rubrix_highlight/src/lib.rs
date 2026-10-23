@@ -36,72 +36,83 @@ mod lexers {
     pub(crate) mod yaml;
 }
 
-use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt;
 use core::ops::Range;
 
 pub use kind::Kind;
 pub use lang::Lang;
+use runs::Runs;
+pub use state::State;
 
 /// One stretch of a line with one kind.
 ///
 /// A run starts where the run before it ends, or at 0, and ends at
 /// `end`, a byte offset into the line's content.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Run {
     pub end: u32,
     pub kind: Kind,
 }
 
-/// The lexer state at a line boundary, which the next line starts
-/// from. The default is the state at the start of a text.
-///
-/// Each lexer defines what its state means. `word` holds bounded
-/// data such as a mode, a comment depth, or a raw-string hash count.
-/// `tail` holds data with no size bound, such as a template-literal
-/// brace stack or a heredoc delimiter, and is `None` on almost every
-/// line, so comparing and cloning a state costs about a nanosecond.
-/// An empty tail is always `None`, so equal states compare equal.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct State {
-    word: u64,
-    tail: Option<Arc<[u8]>>,
-}
+mod state {
+    use alloc::sync::Arc;
 
-static INITIAL: State = State {
-    word: 0,
-    tail: None,
-};
-
-#[allow(
-    dead_code,
-    reason = "lexers that keep unbounded data use the tail"
-)]
-impl State {
-    pub(crate) const fn from_word(word: u64) -> State {
-        State { word, tail: None }
+    /// The lexer state at a line boundary, which the next line
+    /// starts from. The default is the state at the start of a text.
+    ///
+    /// Each lexer defines what its state means. `word` holds bounded
+    /// data such as a mode, a comment depth, or a raw-string hash
+    /// count. `tail` holds data with no size bound, such as a
+    /// template-literal brace stack or a heredoc delimiter, and is
+    /// `None` on almost every line, so comparing and cloning a state
+    /// costs about a nanosecond.
+    ///
+    /// The fields are private to this module, so every state is
+    /// built through the constructors below. An empty tail is always
+    /// `None`, so equal states compare equal. A lexer reads any word
+    /// and tail it did not write, such as another language's state,
+    /// as some state of its own and never panics.
+    #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+    pub struct State {
+        word: u64,
+        tail: Option<Arc<[u8]>>,
     }
 
-    pub(crate) fn with_tail(word: u64, tail: &[u8]) -> State {
-        let tail = (!tail.is_empty()).then(|| Arc::from(tail));
-        State { word, tail }
-    }
+    pub(crate) static INITIAL: State = State {
+        word: 0,
+        tail: None,
+    };
 
-    /// Keeps this state's tail, sharing its allocation.
-    pub(crate) fn with_word(&self, word: u64) -> State {
-        State {
-            word,
-            tail: self.tail.clone(),
+    #[allow(
+        dead_code,
+        reason = "lexers that keep unbounded data use the tail"
+    )]
+    impl State {
+        pub(crate) const fn from_word(word: u64) -> State {
+            State { word, tail: None }
         }
-    }
 
-    pub(crate) const fn word(&self) -> u64 {
-        self.word
-    }
+        pub(crate) fn with_tail(word: u64, tail: &[u8]) -> State {
+            let tail = (!tail.is_empty()).then(|| Arc::from(tail));
+            State { word, tail }
+        }
 
-    pub(crate) fn tail(&self) -> &[u8] {
-        self.tail.as_deref().unwrap_or_default()
+        /// Keeps this state's tail, sharing its allocation.
+        pub(crate) fn with_word(&self, word: u64) -> State {
+            State {
+                word,
+                tail: self.tail.clone(),
+            }
+        }
+
+        pub(crate) const fn word(&self) -> u64 {
+            self.word
+        }
+
+        pub(crate) fn tail(&self) -> &[u8] {
+            self.tail.as_deref().unwrap_or_default()
+        }
     }
 }
 
@@ -123,7 +134,7 @@ pub fn lex_line(
 ) -> State {
     assert!(line.len() < u32::MAX as usize, "line of 4 GiB or more");
     debug_assert!(!line.contains('\n'), "line holds a newline");
-    let mut runs = Runs::new(out);
+    let mut runs = Runs::new(out, line);
     let next = match lang {
         Lang::Plain => lexers::plain::lex(line, state, &mut runs),
         Lang::Rust => lexers::rust::lex(line, state, &mut runs),
@@ -136,7 +147,7 @@ pub fn lex_line(
         Lang::Toml => lexers::toml::lex(line, state, &mut runs),
         Lang::Yaml => lexers::yaml::lex(line, state, &mut runs),
     };
-    runs.finish(line.len());
+    runs.finish();
     next
 }
 
@@ -199,7 +210,7 @@ pub fn check_line(line: &str, runs: &[Run]) -> Result<(), Problem> {
     }
 }
 
-/// A broken rule that [`check_line`] or [`Highlights::check`] found.
+/// A rule that one line's runs break.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Problem {
     EmptyRun,
@@ -207,8 +218,6 @@ pub enum Problem {
     NotCharBoundary,
     SameKind,
     ShortOfEnd,
-    LineStart,
-    LineCount,
 }
 
 impl fmt::Display for Problem {
@@ -221,22 +230,34 @@ impl fmt::Display for Problem {
             Problem::ShortOfEnd => {
                 "the runs stop before the line ends"
             }
-            Problem::LineStart => "the line starts at another byte",
-            Problem::LineCount => "the line count differs",
         })
     }
 }
 
-/// The first line on which [`Highlights::check`] found a problem.
+/// The first difference [`Highlights::check`] found between the
+/// highlights and the text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CheckError {
-    pub line: u32,
-    pub problem: Problem,
+pub enum CheckError {
+    Runs { line: u32, problem: Problem },
+    LineStart { line: u32 },
+    LineCount { text: u32, highlights: u32 },
 }
 
 impl fmt::Display for CheckError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "line {}: {}", self.line, self.problem)
+        match self {
+            CheckError::Runs { line, problem } => {
+                write!(f, "line {line}: {problem}")
+            }
+            CheckError::LineStart { line } => {
+                write!(f, "line {line} starts at another byte")
+            }
+            CheckError::LineCount { text, highlights } => write!(
+                f,
+                "the text has {text} lines and the highlights \
+                 {highlights}"
+            ),
+        }
     }
 }
 
@@ -276,8 +297,10 @@ impl Highlights {
     pub(crate) fn push_line(&mut self, start: usize, raw: &str) {
         let content = raw.strip_suffix('\r').unwrap_or(raw);
         let first = self.runs.len();
-        let state =
-            self.lines.last().map_or(&INITIAL, |line| &line.end);
+        let state = self
+            .lines
+            .last()
+            .map_or(&state::INITIAL, |line| &line.end);
         let end = lex_line(self.lang, content, state, &mut self.runs);
         self.lines.push(Line {
             start: start as u32,
@@ -314,7 +337,7 @@ impl Highlights {
     /// text.
     pub fn start_state(&self, line: u32) -> &State {
         match line {
-            0 => &INITIAL,
+            0 => &state::INITIAL,
             n => &self.lines[n as usize - 1].end,
         }
     }
@@ -325,25 +348,26 @@ impl Highlights {
     pub fn check(&self, text: &str) -> Result<(), CheckError> {
         let mut start = 0;
         let mut count = 0;
-        for (n, raw) in (0..).zip(text.split('\n')) {
-            let fail = |problem| CheckError { line: n, problem };
-            if n >= self.line_count() {
-                return Err(fail(Problem::LineCount));
+        for (line, raw) in (0..).zip(text.split('\n')) {
+            count = line + 1;
+            if line >= self.line_count() {
+                continue;
             }
-            if self.lines[n as usize].start as usize != start {
-                return Err(fail(Problem::LineStart));
+            if self.lines[line as usize].start as usize != start {
+                return Err(CheckError::LineStart { line });
             }
             let content = raw.strip_suffix('\r').unwrap_or(raw);
-            check_line(content, self.runs(n)).map_err(fail)?;
+            check_line(content, self.runs(line)).map_err(
+                |problem| CheckError::Runs { line, problem },
+            )?;
             start += raw.len() + 1;
-            count = n + 1;
         }
         if count == self.line_count() {
             Ok(())
         } else {
-            Err(CheckError {
-                line: count,
-                problem: Problem::LineCount,
+            Err(CheckError::LineCount {
+                text: count,
+                highlights: self.line_count(),
             })
         }
     }
@@ -401,46 +425,78 @@ impl fmt::Display for Rows<'_> {
     }
 }
 
-/// Builds one line's runs in the canonical form, and is the only way
-/// a lexer emits them.
-pub(crate) struct Runs<'a> {
-    out: &'a mut Vec<Run>,
-    /// The index of this line's first run in `out`.
-    base: usize,
-    /// Bytes before `pos` are covered, or are leading whitespace
-    /// that the line's first token takes.
-    pos: usize,
-}
+mod runs {
+    use alloc::vec::Vec;
 
-impl<'a> Runs<'a> {
-    fn new(out: &'a mut Vec<Run>) -> Runs<'a> {
-        let base = out.len();
-        Runs { out, base, pos: 0 }
+    use crate::{Kind, Run};
+
+    /// Builds one line's runs in the canonical form, and is the only
+    /// way a lexer emits them. Its fields are private to this module.
+    pub(crate) struct Runs<'a> {
+        out: &'a mut Vec<Run>,
+        line: &'a str,
+        /// The index of this line's first run in `out`.
+        base: usize,
+        /// Bytes before `pos` are covered, or are leading whitespace
+        /// that the line's first token takes.
+        pos: usize,
     }
 
-    /// Ends a token of `kind` at byte `end`. A token of the previous
-    /// run's kind extends that run, and an empty token adds nothing.
-    pub(crate) fn push(&mut self, end: usize, kind: Kind) {
-        debug_assert!(end >= self.pos, "runs go backwards");
-        if end == self.pos {
-            return;
+    impl<'a> Runs<'a> {
+        pub(super) fn new(
+            out: &'a mut Vec<Run>,
+            line: &'a str,
+        ) -> Runs<'a> {
+            let base = out.len();
+            Runs {
+                out,
+                line,
+                base,
+                pos: 0,
+            }
         }
-        self.pos = end;
-        let end = end as u32;
-        match self.out[self.base..].last_mut() {
-            Some(run) if run.kind == kind => run.end = end,
-            _ => self.out.push(Run { end, kind }),
-        }
-    }
 
-    /// Gives a line of only whitespace one plain run.
-    fn finish(self, len: usize) {
-        debug_assert_eq!(self.pos, len, "runs must cover the line");
-        if self.out.len() == self.base && len > 0 {
-            self.out.push(Run {
-                end: len as u32,
-                kind: Kind::Plain,
-            });
+        /// Ends a token of `kind` at byte `end`. A token of the
+        /// previous run's kind extends that run, and an empty token
+        /// adds nothing.
+        pub(crate) fn push(&mut self, end: usize, kind: Kind) {
+            if end == self.pos {
+                return;
+            }
+            self.advance(end);
+            let end = end as u32;
+            match self.out[self.base..].last_mut() {
+                Some(run) if run.kind == kind => run.end = end,
+                _ => self.out.push(Run { end, kind }),
+            }
+        }
+
+        fn advance(&mut self, end: usize) {
+            debug_assert!(end >= self.pos, "runs go backwards");
+            debug_assert!(
+                self.line.is_char_boundary(end),
+                "a run ends inside a char"
+            );
+            self.pos = end;
+        }
+
+        /// Gives a line of only whitespace one plain run.
+        pub(super) fn finish(self) {
+            let len = self.line.len();
+            debug_assert_eq!(
+                self.pos, len,
+                "runs must cover the line"
+            );
+            if self.out.len() == self.base && len > 0 {
+                debug_assert!(
+                    self.line.trim_ascii().is_empty(),
+                    "a line with text has no runs"
+                );
+                self.out.push(Run {
+                    end: len as u32,
+                    kind: Kind::Plain,
+                });
+            }
         }
     }
 }
