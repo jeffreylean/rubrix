@@ -24,6 +24,7 @@ extern crate alloc;
 
 mod kind;
 mod lang;
+mod stream;
 mod lexers {
     pub(crate) mod diff;
     pub(crate) mod go;
@@ -67,6 +68,7 @@ pub use kind::Kind;
 pub use lang::Lang;
 use runs::Runs;
 pub use state::State;
+pub use stream::Stream;
 
 /// One stretch of a line with one kind.
 ///
