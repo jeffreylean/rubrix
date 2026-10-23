@@ -1,0 +1,24 @@
+[package]
+name = "fynix"
+description = "A backend agnostic reactive view tree."
+keywords = ["reactive", "view", "ui", "tree", "agnostic"]
+categories = ["no-std", "gui"]
+readme = "./README.md"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lenz = { workspace = true }
+fynix_macros = { workspace = true }
+hashbrown = { workspace = true, features = ["default-hasher"] }
+motiongfx_interp = { workspace = true }
+typarena = { workspace = true }
+
+[features]
+default = ["std"]
+std = ["motiongfx_interp/std"]
+
+[lints]
+workspace = true

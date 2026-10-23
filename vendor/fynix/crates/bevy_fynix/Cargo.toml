@@ -1,0 +1,36 @@
+[package]
+name = "bevy_fynix"
+description = "Bevy backend for fynix."
+keywords = ["fynix", "bevy", "ui", "reactive", "plugin"]
+categories = ["gui", "game-development"]
+readme = "./README.md"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# fynix
+fynix = { workspace = true }
+motiongfx_interp = { workspace = true }
+# `#[element]` derives `Lenz`, whose output names this crate.
+lenz = { workspace = true }
+
+# bevy
+bevy = { workspace = true, features = [
+    "bevy_picking",
+    "bevy_ui_widgets",
+    "bevy_window",
+] }
+
+[features]
+default = ["std"]
+std = ["fynix/std"]
+
+[dev-dependencies]
+# Only for the windowed `gallery` example; the library and its tests
+# build with the features above alone.
+bevy = { workspace = true, features = ["2d", "ui"] }
+
+[lints]
+workspace = true
