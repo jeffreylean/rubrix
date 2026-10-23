@@ -13,7 +13,7 @@ use bevy::DefaultPlugins;
 use bevy::app::{App, AppExit, Plugin, PluginGroup, Startup, Update};
 use bevy::asset::{AssetId, Assets};
 use bevy::camera::Camera2d;
-use bevy::color::Color;
+use bevy::color::{Alpha, Color};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::Children;
@@ -31,6 +31,7 @@ use bevy::window::{
     PresentMode, PrimaryWindow, Window, WindowPlugin,
     WindowResolution,
 };
+use bevy_fynix::scroll::{ScrollGoal, ScrollbarStyle};
 use bevy_fynix::tokens::{
     Curve, Motion, MotionTokens, SpacingTokens, SurfaceTokens,
     TextTokens, Tone,
@@ -76,6 +77,20 @@ impl Palette {
 
     pub fn name(self) -> &'static str {
         if self.dark { "dark" } else { "light" }
+    }
+
+    /// Fynix's bars are white at low alpha, which a light panel
+    /// swallows.
+    fn scrollbar(self) -> ScrollbarStyle {
+        if self.dark {
+            return ScrollbarStyle::default();
+        }
+        let ink = Color::srgb_u8(0x1C, 0x1C, 0x20);
+        ScrollbarStyle {
+            rest: ink.with_alpha(0.75),
+            hot: ink.with_alpha(0.9),
+            ..Default::default()
+        }
     }
 }
 
@@ -171,7 +186,7 @@ fn scrollers(world: &World, area: Entity) -> Vec<Entity> {
     let mut found = Vec::new();
     let mut stack = vec![area];
     while let Some(node) = stack.pop() {
-        if world.get::<ScrollPosition>(node).is_some() {
+        if world.get::<ScrollGoal>(node).is_some() {
             found.push(node);
         }
         if let Some(children) = world.get::<Children>(node) {
@@ -220,6 +235,7 @@ fn toggle_theme(world: &mut World) {
         dark: !world.resource::<Mode>().0.dark,
     };
     world.insert_resource(Mode(palette));
+    world.insert_resource(palette.scrollbar());
     world.resource_mut::<Theme<Palette>>().0 = palette;
 }
 
@@ -304,6 +320,7 @@ impl Plugin for ShellPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Theme(DARK))
             .insert_resource(Mode(DARK))
+            .insert_resource(DARK.scrollbar())
             .insert_resource(Selected(0))
             .init_resource::<Copied>()
             .add_systems(

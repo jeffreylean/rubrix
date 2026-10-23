@@ -62,7 +62,9 @@ use bevy::ui::ScrollPosition;
 use bevy::window::{CursorMoved, PrimaryWindow, Window, WindowEvent};
 
 use crate::pages::PAGES;
-use crate::{Copied, Mode, PAGE_CENTER, Ready, Selected};
+use crate::{
+    Copied, Mode, PAGE_CENTER, Ready, Selected, page_areas, scrollers,
+};
 
 const DRAG_FRAMES: usize = 4;
 const RESIZE_WAIT: Duration = Duration::from_secs(2);
@@ -475,6 +477,7 @@ pub struct Drive {
     recording: Option<Recording>,
     pending_shots: usize,
     pending_frames: usize,
+    shot_this_frame: bool,
     said: Vec<String>,
 }
 
@@ -525,6 +528,7 @@ impl Drive {
             recording: None,
             pending_shots: 0,
             pending_frames: 0,
+            shot_this_frame: false,
             said: Vec::new(),
         }
     }
@@ -700,7 +704,10 @@ impl Drive {
             }
             Step::Screenshot(path) => match make_parent(&path) {
                 Ok(()) => {
-                    self.capture(world, path, Shot::Step);
+                    let mut paths = vec![path];
+                    paths.extend(self.next_frame());
+                    self.capture(world, paths, Shot::Step);
+                    self.shot_this_frame = true;
                     self.busy = Busy::Screenshot;
                 }
                 Err(error) => self.fail(world, number, &error),
@@ -908,37 +915,41 @@ impl Drive {
     fn capture(
         &mut self,
         world: &mut World,
-        path: PathBuf,
+        paths: Vec<PathBuf>,
         shot: Shot,
     ) {
-        world
-            .spawn(Screenshot::primary_window())
-            .observe(save_to_disk(path))
-            .observe(
-                move |_: On<ScreenshotCaptured>,
-                      mut drive: ResMut<Drive>| {
-                    let pending = drive.pending(shot);
-                    *pending = pending.saturating_sub(1);
-                },
-            );
+        let mut capture = world.spawn(Screenshot::primary_window());
+        for path in paths {
+            capture.observe(save_to_disk(path));
+        }
+        capture.observe(
+            move |_: On<ScreenshotCaptured>,
+                  mut drive: ResMut<Drive>| {
+                let pending = drive.pending(shot);
+                *pending = pending.saturating_sub(1);
+            },
+        );
         *self.pending(shot) += 1;
     }
 
-    /// Bevy drops a second capture of one window in a frame without
-    /// firing `ScreenshotCaptured`, so no frame is recorded while a
-    /// `screenshot` step waits.
-    fn record(&mut self, world: &mut World) {
-        if matches!(self.busy, Busy::Screenshot) {
-            return;
-        }
-        let Some(recording) = &mut self.recording else {
-            return;
-        };
+    fn next_frame(&mut self) -> Option<PathBuf> {
+        let recording = self.recording.as_mut()?;
         let path = recording
             .dir
             .join(format!("frame-{:05}.png", recording.next));
         recording.next += 1;
-        self.capture(world, path, Shot::Frame);
+        Some(path)
+    }
+
+    /// Bevy drops a second capture of one window in a frame without
+    /// firing `ScreenshotCaptured`.
+    fn record(&mut self, world: &mut World) {
+        if mem::take(&mut self.shot_this_frame) {
+            return;
+        }
+        if let Some(path) = self.next_frame() {
+            self.capture(world, vec![path], Shot::Frame);
+        }
     }
 }
 
@@ -989,11 +1000,13 @@ fn hyprland_resize(width: u32, height: u32) -> Result<(), String> {
 }
 
 fn scroll_offset(world: &mut World) -> f32 {
-    world
-        .query::<&ScrollPosition>()
-        .iter(world)
-        .map(|position| position.y)
-        .fold(0.0, f32::max)
+    let Some(&area) = page_areas(world).first() else {
+        return 0.0;
+    };
+    scrollers(world, area)
+        .first()
+        .and_then(|&node| world.get::<ScrollPosition>(node))
+        .map_or(0.0, |position| position.y)
 }
 
 fn make_parent(path: &Path) -> Result<(), String> {
@@ -1051,9 +1064,10 @@ mod tests {
     use bevy::camera::{
         Camera, Camera2d, ComputedCameraValues, RenderTargetInfo,
     };
+    use bevy::color::{Color, LinearRgba, Luminance};
     use bevy::ecs::message::Messages;
     use bevy::ecs::query::Added;
-    use bevy::ecs::system::{Commands, Query};
+    use bevy::ecs::system::{Commands, Local, Query};
     use bevy::image::Image;
     use bevy::input::InputPlugin;
     use bevy::math::UVec2;
@@ -1062,6 +1076,8 @@ mod tests {
     use bevy::transform::TransformPlugin;
     use bevy::ui::UiPlugin;
     use bevy::window::WindowPlugin;
+    use bevy_fynix::scroll::{ScrollGoal, ScrollbarStyle};
+    use bevy_fynix::tokens::SurfaceTokens;
     use bevy_fynix::{FynixPlugin, mount};
 
     use super::*;
@@ -1348,20 +1364,70 @@ exit
         assert_eq!(scrolled(&mut app), 400.0);
     }
 
-    fn capture_one_a_frame(
+    #[test]
+    fn the_scroll_log_reads_the_page_and_no_other_area() {
+        let mut app = headless("scroll 0 -400\nexit");
+        run(&mut app);
+        app.world_mut().spawn((
+            ScrollGoal::default(),
+            ScrollPosition(Vec2::new(0.0, 9000.0)),
+        ));
+        assert_eq!(scrolled(&mut app), 400.0);
+    }
+
+    /// Bevy blends a translucent node over what is under it in
+    /// linear light.
+    fn contrast(thumb: Color, panel: Color) -> f32 {
+        let (thumb, panel) = (thumb.to_linear(), panel.to_linear());
+        let shown = LinearRgba::rgb(
+            panel.red + (thumb.red - panel.red) * thumb.alpha,
+            panel.green + (thumb.green - panel.green) * thumb.alpha,
+            panel.blue + (thumb.blue - panel.blue) * thumb.alpha,
+        );
+        let (a, b) = (shown.luminance(), panel.luminance());
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn the_light_scrollbar_stands_out_from_the_panel() {
+        let mut app = headless("exit");
+        toggle_theme(app.world_mut());
+        let light = app.world().resource::<Mode>().0;
+        assert!(!light.dark);
+        let thumb = app.world().resource::<ScrollbarStyle>().rest;
+        assert!(contrast(thumb, light.panel()) >= 3.0);
+    }
+
+    const CAPTURE_LATENCY: u32 = 5;
+
+    /// Bevy captures one image of a window a frame, drops a second
+    /// one asked for in the same frame without firing
+    /// `ScreenshotCaptured`, and hands the image back a few frames
+    /// later.
+    fn capture_late(
         mut commands: Commands,
         shots: Query<Entity, Added<Screenshot>>,
+        mut waiting: Local<Vec<(Entity, u32)>>,
     ) {
         let mut shots = shots.iter();
         if let Some(entity) = shots.next() {
-            commands.trigger(ScreenshotCaptured {
-                entity,
-                image: Image::default(),
-            });
+            waiting.push((entity, 0));
         }
         for entity in shots {
             commands.entity(entity).despawn();
         }
+        waiting.retain_mut(|(entity, age)| {
+            *age += 1;
+            if *age < CAPTURE_LATENCY {
+                return true;
+            }
+            commands.trigger(ScreenshotCaptured {
+                entity: *entity,
+                image: Image::default(),
+            });
+            commands.entity(*entity).despawn();
+            false
+        });
     }
 
     #[test]
@@ -1378,7 +1444,7 @@ exit
              {shown}/shot.png\nrecord stop\nrecord start \
              {shown}/two\nexit"
         ));
-        app.add_systems(Last, capture_one_a_frame);
+        app.add_systems(Last, capture_late);
         let exits = run(&mut app);
         let said = app.world().resource::<Drive>().said.clone();
         let shot = dir.join("shot.png").exists();
@@ -1386,6 +1452,63 @@ exit
         assert_eq!(exits, vec![AppExit::Success], "{said:?}");
         assert!(shot, "the screenshot step saved its file");
     }
+
+    fn recorded(name: &str, steps: &str) -> (usize, usize) {
+        let dir = std::env::current_exe()
+            .expect("a test binary")
+            .with_file_name(format!(
+                "drive-test-{}-{name}",
+                std::process::id()
+            ));
+        let shown = dir.display();
+        let steps = steps.replace("{dir}", &shown.to_string());
+        let mut app = headless(&format!(
+            "record start {shown}/rec\n{steps}record stop\nexit"
+        ));
+        app.add_systems(Last, capture_late);
+        let mut elapsed = 0;
+        let mut exits = Vec::new();
+        for _ in 0..80 {
+            app.update();
+            if app.world().resource::<Drive>().recording.is_some() {
+                elapsed += 1;
+            }
+            exits.extend(
+                app.world_mut()
+                    .resource_mut::<Messages<AppExit>>()
+                    .drain(),
+            );
+        }
+        assert_eq!(exits, vec![AppExit::Success]);
+        let frames = fs::read_dir(dir.join("rec"))
+            .expect("the record directory")
+            .count();
+        fs::remove_dir_all(&dir).ok();
+        (frames, elapsed)
+    }
+
+    #[test]
+    fn a_recording_has_a_frame_for_every_frame_it_ran() {
+        let (frames, elapsed) = recorded("plain", "wait 20\n");
+        assert_eq!(frames, elapsed);
+    }
+
+    #[test]
+    fn a_screenshot_step_costs_the_recording_no_frame() {
+        let (frames, elapsed) = recorded(
+            "one",
+            "wait 8\nscreenshot {dir}/one.png\nwait 8\n",
+        );
+        assert_eq!(frames, elapsed);
+        let (frames, elapsed) = recorded(
+            "two",
+            "wait 3\nscreenshot {dir}/a.png\nscreenshot \
+             {dir}/b.png\nwait 3\n",
+        );
+        assert_eq!(frames, elapsed);
+    }
+
+    const FIRST_SHOT_WAIT: u32 = 30;
 
     #[test]
     fn a_shipped_script_waits_before_its_first_screenshot() {
@@ -1407,7 +1530,7 @@ exit
                 .position(|step| matches!(step, Step::Screenshot(_)));
             if let Some(first) = first {
                 let waited = steps[..first].iter().any(
-                    |step| matches!(step, Step::Wait(frames) if *frames >= 10),
+                    |step| matches!(step, Step::Wait(frames) if *frames >= FIRST_SHOT_WAIT),
                 );
                 assert!(
                     waited,

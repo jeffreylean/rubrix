@@ -1,4 +1,4 @@
 page about
-wait 10
+wait 30
 screenshot twin-b.png
 exit
