@@ -1,5 +1,6 @@
 //! Prints a file with ANSI colours from a fixed kind-to-colour
-//! table. With the colour codes stripped, the output equals the file.
+//! table. With the colour codes stripped, the output equals the file
+//! when it is UTF-8. Bytes that are not UTF-8 print as U+FFFD.
 //!
 //! ```text
 //! ansi [--lang <name>] [--runs | --check] <file>
@@ -78,8 +79,8 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let text = match std::fs::read_to_string(&args.path) {
-        Ok(text) => text,
+    let text = match std::fs::read(&args.path) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
         Err(err) => {
             eprintln!("cannot read {}: {err}", args.path);
             return ExitCode::FAILURE;
@@ -124,7 +125,7 @@ fn write_colour(
     for n in 0..highlights.line_count() {
         let range = highlights.line_range(n);
         let line = &text[range.clone()];
-        for (piece, kind) in spans(highlights.runs(n)) {
+        for (piece, kind) in spans(highlights.stored_runs(n)) {
             let piece = &line[piece];
             match colour(kind) {
                 Some(code) => {

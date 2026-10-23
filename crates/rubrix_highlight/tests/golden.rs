@@ -131,7 +131,7 @@ fn resume() {
                 let n = n as u32;
                 assert_eq!(
                     runs,
-                    whole.runs(n),
+                    whole.stored_runs(n),
                     "{} line {n}, resumed at line {first}",
                     case.name()
                 );
@@ -165,8 +165,8 @@ fn crlf() {
         );
         for n in 0..want.line_count() {
             assert_eq!(
-                got.runs(n),
-                want.runs(n),
+                got.stored_runs(n),
+                want.stored_runs(n),
                 "{} line {n}",
                 case.name()
             );

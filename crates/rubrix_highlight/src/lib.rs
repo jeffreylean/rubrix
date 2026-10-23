@@ -15,7 +15,8 @@
 //! Runs are non-empty, end on char boundaries, and two adjacent runs
 //! never share a kind. Whitespace between tokens belongs to the run
 //! before it, and leading whitespace to the line's first token, as
-//! in Pierre's lexers. An empty line has no runs.
+//! in Pierre's lexers. Whitespace inside a string or a comment is
+//! part of it. An empty line has no runs.
 
 #![no_std]
 
@@ -236,6 +237,7 @@ pub fn check_line(line: &str, runs: &[Run]) -> Result<(), Problem> {
 
 /// A rule that one line's runs break.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Problem {
     EmptyRun,
     PastEnd,
@@ -261,6 +263,7 @@ impl fmt::Display for Problem {
 /// The first difference [`Highlights::check`] found between the
 /// highlights and the text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CheckError {
     Runs { line: u32, problem: Problem },
     LineStart { line: u32 },
@@ -343,15 +346,17 @@ impl Highlights {
         self.lines.len() as u32
     }
 
-    /// The byte range of the line's content in the text, without its
-    /// terminator.
+    /// The byte range of the line's content, without its terminator,
+    /// in the text these highlights were built from.
     pub fn line_range(&self, line: u32) -> Range<usize> {
         let start = self.lines[line as usize].start as usize;
-        let len = self.runs(line).last().map_or(0, |run| run.end);
+        let len =
+            self.stored_runs(line).last().map_or(0, |run| run.end);
         start..start + len as usize
     }
 
-    pub fn runs(&self, line: u32) -> &[Run] {
+    /// The runs saved when the line was last lexed.
+    pub fn stored_runs(&self, line: u32) -> &[Run] {
         let Line { first, count, .. } = self.lines[line as usize];
         &self.runs[first as usize..(first + count) as usize]
     }
@@ -381,7 +386,7 @@ impl Highlights {
                 return Err(CheckError::LineStart { line });
             }
             let content = raw.strip_suffix('\r').unwrap_or(raw);
-            check_line(content, self.runs(line)).map_err(
+            check_line(content, self.stored_runs(line)).map_err(
                 |problem| CheckError::Runs { line, problem },
             )?;
             start += raw.len() + 1;
@@ -411,8 +416,9 @@ impl Highlights {
     }
 }
 
-/// Equal when the language and every line's start, runs, and end
-/// state are equal, however the runs are stored.
+/// Equal when the language and every line's runs and end state are
+/// equal, however the runs are stored. [`Highlights::check`]
+/// compares line starts with a text.
 impl PartialEq for Highlights {
     fn eq(&self, other: &Highlights) -> bool {
         self.lang == other.lang
@@ -420,9 +426,8 @@ impl PartialEq for Highlights {
             && (0..self.line_count()).all(|n| {
                 let a = &self.lines[n as usize];
                 let b = &other.lines[n as usize];
-                a.start == b.start
-                    && a.end == b.end
-                    && self.runs(n) == other.runs(n)
+                a.end == b.end
+                    && self.stored_runs(n) == other.stored_runs(n)
             })
     }
 }
@@ -439,7 +444,7 @@ impl fmt::Display for Rows<'_> {
         let highlights = self.highlights;
         for n in 0..highlights.line_count() {
             let line = &self.text[highlights.line_range(n)];
-            for (range, kind) in spans(highlights.runs(n)) {
+            for (range, kind) in spans(highlights.stored_runs(n)) {
                 let piece = &line[range.clone()];
                 let Range { start, end } = range;
                 writeln!(f, "{n} {start}..{end} {kind} {piece:?}")?;
@@ -484,11 +489,9 @@ mod runs {
         /// previous run's kind extends that run, and an empty token
         /// adds nothing.
         pub(crate) fn push(&mut self, end: usize, kind: Kind) {
-            if end == self.pos {
+            let Some(end) = self.advance(end) else {
                 return;
-            }
-            self.advance(end);
-            let end = end as u32;
+            };
             match self.out[self.base..].last_mut() {
                 Some(run) if run.kind == kind => run.end = end,
                 _ => self.out.push(Run { end, kind }),
@@ -497,28 +500,46 @@ mod runs {
 
         /// Covers whitespace up to byte `end` with the run before it.
         pub(crate) fn space(&mut self, end: usize) {
-            self.advance(end);
-            if let Some(run) = self.out[self.base..].last_mut() {
-                run.end = end as u32;
+            if let Some(end) = self.advance(end)
+                && let Some(run) = self.out[self.base..].last_mut()
+            {
+                run.end = end;
             }
         }
 
-        fn advance(&mut self, end: usize) {
+        /// Moves to byte `end` and returns it as a run end, or `None`
+        /// when that covers no new byte.
+        ///
+        /// A lexer that ends a run backwards, past the line, or
+        /// inside a char fails a debug assertion. A release build
+        /// moves the end forward to the next char boundary in the
+        /// line instead, so a lexer bug costs colour and never breaks
+        /// the runs.
+        fn advance(&mut self, end: usize) -> Option<u32> {
             debug_assert!(end >= self.pos, "runs go backwards");
             debug_assert!(
                 self.line.is_char_boundary(end),
-                "a run ends inside a char"
+                "a run ends inside a char or past the line"
             );
-            self.pos = end;
+            let mut end = end.clamp(self.pos, self.line.len());
+            while !self.line.is_char_boundary(end) {
+                end += 1;
+            }
+            (end > self.pos).then(|| {
+                self.pos = end;
+                end as u32
+            })
         }
 
-        /// Gives a line of only whitespace one plain run.
-        pub(super) fn finish(self) {
+        /// Covers what the lexer left, and gives a line of only
+        /// whitespace one plain run.
+        pub(super) fn finish(mut self) {
             let len = self.line.len();
             debug_assert_eq!(
                 self.pos, len,
                 "runs must cover the line"
             );
+            self.push(len, Kind::Plain);
             if self.out.len() == self.base && len > 0 {
                 debug_assert!(
                     self.line.trim_ascii().is_empty(),
