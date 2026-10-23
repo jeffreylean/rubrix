@@ -2,38 +2,56 @@
 //! `bench/fixtures`, in Pierre's streaming columns, next to the
 //! one-shot `highlight` time of the same text.
 //!
-//! Each run feeds the fixture to a new `Stream` in chunks of 4,096
-//! bytes, each extended to the next char boundary. Pierre's chunks
-//! hold 4,096 UTF-16 code units, which are the same bytes for ASCII
-//! text, so the chunk counts match its table: 1 for a tiny fixture
-//! of 2 KiB, about 8 for a small one, and about 130 for a large one.
-//! `ratio` is the streaming time over the one-shot time.
+//! Each run feeds the fixture to a new `Stream` in the number of
+//! chunks that Pierre's streaming table gives its TypeScript tier
+//! of the same name: 1 for `tiny`, 8 for `small`, and 130 for
+//! `large`. A chunk ends at the next char boundary at or after its
+//! share of the bytes, so the printed count can differ from that
+//! number for text with multi-byte chars. `ratio` is the streaming
+//! time over the one-shot time.
 
 use std::process::ExitCode;
 
-use rubrix_bench::{Cell, Table, fixtures, measure, mib_per_sec};
+use rubrix_bench::{
+    Cell, Fixture, Table, fixtures, measure, mib_per_sec,
+};
 use rubrix_highlight::{Highlights, Lang, Stream, highlight};
 
-const CHUNK_BYTES: usize = 4096;
+fn pierre_chunks(fixture: &Fixture) -> usize {
+    let name = fixture
+        .path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    match name.split('.').next() {
+        Some("tiny") => 1,
+        Some("small") => 8,
+        Some("large") => 130,
+        _ => panic!(
+            "{} is not a tiny, small, or large tier",
+            fixture.name
+        ),
+    }
+}
 
-fn chunks(text: &str) -> impl Iterator<Item = &str> {
+fn chunks(text: &str, count: usize) -> impl Iterator<Item = &str> {
+    let size = text.len().div_ceil(count);
     let mut start = 0;
     std::iter::from_fn(move || {
         if start == text.len() {
             return None;
         }
-        let end = text.ceil_char_boundary(
-            (start + CHUNK_BYTES).min(text.len()),
-        );
+        let end =
+            text.ceil_char_boundary((start + size).min(text.len()));
         let chunk = &text[start..end];
         start = end;
         Some(chunk)
     })
 }
 
-fn stream(lang: Lang, text: &str) -> Highlights {
+fn stream(lang: Lang, text: &str, count: usize) -> Highlights {
     let mut stream = Stream::new(lang);
-    for chunk in chunks(text) {
+    for chunk in chunks(text, count) {
         stream.push(chunk);
     }
     stream.finish()
@@ -66,7 +84,8 @@ fn main() -> ExitCode {
             &fixture.path.to_string_lossy(),
             fixture.text.lines().next().unwrap_or_default(),
         );
-        let streamed = stream(lang, &fixture.text);
+        let count = pierre_chunks(fixture);
+        let streamed = stream(lang, &fixture.text, count);
         if let Err(err) = streamed.check(&fixture.text) {
             panic!("{}: {err}", fixture.name);
         }
@@ -75,12 +94,12 @@ fn main() -> ExitCode {
             "{}: streaming differs from one-shot",
             fixture.name
         );
-        let timing = measure(|| stream(lang, &fixture.text));
+        let timing = measure(|| stream(lang, &fixture.text, count));
         let one_shot = measure(|| highlight(lang, &fixture.text));
         table.push(vec![
             Cell::Text(fixture.name.clone()),
             Cell::Count(fixture.lines()),
-            Cell::Count(chunks(&fixture.text).count()),
+            Cell::Count(chunks(&fixture.text, count).count()),
             Cell::Number(timing.median * 1e6),
             Cell::Number(mib_per_sec(
                 fixture.text.len(),
