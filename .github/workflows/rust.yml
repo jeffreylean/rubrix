@@ -34,7 +34,7 @@ jobs:
         with:
           shared-key: ci
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev
+      - run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev libfontconfig1-dev
       - run: cargo check --workspace --all-features --all-targets
 
   check-no-defaults:
@@ -51,7 +51,7 @@ jobs:
         with:
           shared-key: ci
           save-if: false
-      - run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev
+      - run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev libfontconfig1-dev
       - run: cargo check --workspace --no-default-features
 
   clippy:
@@ -68,7 +68,7 @@ jobs:
         with:
           shared-key: ci
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev
+      - run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev libfontconfig1-dev
       - run: cargo clippy --workspace --all-features --all-targets -- -D warnings
 
   doc:
@@ -85,7 +85,7 @@ jobs:
         with:
           shared-key: ci
           save-if: false
-      - run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev
+      - run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev libfontconfig1-dev
       - run: cargo doc --workspace --all-features --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: -D warnings
@@ -104,7 +104,7 @@ jobs:
         with:
           shared-key: test
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev
+      - run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev libfontconfig1-dev
       - run: cargo test --workspace
 
   no-std:
@@ -154,6 +154,6 @@ jobs:
           shared-key: vendor-fynix
           save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: vendor/fynix
-      - run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev
+      - run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev libfontconfig1-dev
       - run: cargo test --workspace
         working-directory: vendor/fynix
