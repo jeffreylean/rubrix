@@ -10,11 +10,9 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/jeffreylean/rubrix"
 
 [workspace.dependencies]
-# fynix
 fynix = { version = "0.0.3", path = "vendor/fynix/crates/fynix", default-features = false }
 bevy_fynix = { version = "0.0.3", path = "vendor/fynix/crates/bevy_fynix", default-features = false }
 
-# bevy
 bevy = { version = "=0.20.0", default-features = false }
 
 [workspace.lints.clippy]
