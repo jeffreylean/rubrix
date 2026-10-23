@@ -1,0 +1,5 @@
+page about
+scroll 0 -2000
+wait 10
+screenshot twin-a.png
+exit
