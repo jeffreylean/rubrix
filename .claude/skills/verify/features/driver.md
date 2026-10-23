@@ -22,7 +22,7 @@ A drive script is a text file of steps that the gallery runs one per line, with 
 - **Frames.** Run `.../frames.drive`, then `frame-stats.sh <out>/frames.csv`. It prints `median=`, `p95=` and `max=`.
 - **Record.** Run `.../record.drive`, then `video.sh <out>/video <out>/video.mp4`. `ffprobe -count_frames` reports at least 60 frames.
 - **No vsync.** Run `RUBRIX_NO_VSYNC=1 launch.sh .../novsync.drive <out>`. It prints `present_mode requested AutoNoVsync`. With `RUBRIX_NO_VSYNC=true` the gallery prints `RUBRIX_NO_VSYNC must be unset, 0 or 1` and exits with code 2.
-- **Screenshot while recording.** Run `.../recshot.drive`. It prints `drive: exit ok` and `exit=0`, and `<out>/inrec.png` exists next to the frames in `<out>/video`.
+- **Screenshot while recording.** Run `.../recshot.drive`. It prints `drive: exit ok` and `exit=0`, and `<out>/inrec.png` exists next to the frames in `<out>/video`. With `frames start` and `frames stop` around the record, the PNG count trails the frame count by the same two frames as in a record with no screenshot.
 - **Resize.** Run `.../resize.drive`. It prints `drive: resize ok`, and `resize.png` is 800 by 600.
 
 ## Gotchas

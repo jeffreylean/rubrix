@@ -29,7 +29,7 @@ Preconditions: `doctor.sh` is clean and the out dir is empty.
 
 ## Gotchas
 
-- A screenshot taken in the first frames can be black. Scripts `wait` before the first one.
+- A screenshot taken in the first frames can be black. Scripts `wait 30` before the first one.
 - The page list highlight fades. After a page change `wait 120` before a screenshot.
 - A `scroll` goes to what is under the pointer. After a click on the list, `move 740 400` first.
 - Under vsync an unfocused window runs at about 1 frame per second and screenshots come out black, so a scripted run turns vsync off unless `RUBRIX_NO_VSYNC=0`.
