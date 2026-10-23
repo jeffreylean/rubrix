@@ -172,7 +172,8 @@ pub fn highlight(lang: Lang, text: &str) -> Highlights {
     assert!(text.len() < u32::MAX as usize, "text of 4 GiB or more");
     let newlines =
         memchr::memchr_iter(b'\n', text.as_bytes()).count();
-    let mut highlights = Highlights::new(lang, newlines + 1);
+    let mut highlights =
+        Highlights::new(lang, newlines + 1, text.len() - newlines);
     let mut start = 0;
     for end in memchr::memchr_iter(b'\n', text.as_bytes()) {
         highlights.push_line(start, &text[start..end]);
@@ -295,11 +296,15 @@ struct Line {
 }
 
 impl Highlights {
-    pub(crate) fn new(lang: Lang, lines: usize) -> Highlights {
+    pub(crate) fn new(
+        lang: Lang,
+        lines: usize,
+        max_runs: usize,
+    ) -> Highlights {
         Highlights {
             lang,
             lines: Vec::with_capacity(lines),
-            runs: Vec::with_capacity(lines * 8),
+            runs: Vec::with_capacity((lines * 8).min(max_runs)),
         }
     }
 
@@ -505,6 +510,28 @@ mod runs {
                     kind: Kind::Plain,
                 });
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Lang, highlight};
+
+    #[test]
+    fn reserves_runs_in_proportion_to_content() {
+        let texts = [
+            "\n".repeat(1 << 16),
+            "x".repeat(1 << 16),
+            "fn main() { let x = 1; }\n".repeat(1 << 12),
+        ];
+        for text in texts {
+            let content = text.len() - text.matches('\n').count();
+            let runs = highlight(Lang::Rust, &text).runs.capacity();
+            assert!(
+                runs <= 2 * content,
+                "{runs} runs reserved for {content} content bytes"
+            );
         }
     }
 }
