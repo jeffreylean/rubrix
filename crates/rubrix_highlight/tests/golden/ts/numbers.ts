@@ -1,0 +1,12 @@
+const a = 1_000_000;
+const b = 0xFF_FF;
+const c = 0b1010_1010;
+const d = 0o777;
+const e = 1_000n;
+const f = 0xFFn;
+const g = 1.5e10 + 2E-3 + 1e+5;
+const h = .5 + 5. + 0.1_2;
+const i = 5..toString();
+const j = 1_000.000_1;
+const k = [1, 2.5, 3n];
+const l = a?.5:1;
