@@ -240,7 +240,10 @@ impl Lexer<'_, '_, '_> {
     }
 
     fn start_command(&mut self) {
-        self.cmd = true;
+        self.cmd = !matches!(
+            self.stack.top(),
+            Some(Frame::Arith | Frame::Array)
+        );
         self.restore_cmd = false;
     }
 
@@ -393,6 +396,11 @@ impl Lexer<'_, '_, '_> {
             Frame::Arith
         } else if i > 0 && s[i - 1] == b'=' {
             Frame::Array
+        } else if matches!(
+            self.stack.top(),
+            Some(Frame::Arith | Frame::Array)
+        ) {
+            Frame::Arith
         } else {
             Frame::Paren
         };
