@@ -3,33 +3,31 @@
 //! tier repeated to 100,000 lines.
 //!
 //! Each scenario applies one edit to highlights that are current,
-//! times only the `edit` call, and then reads the last line and
-//! undoes the edit outside the timer. `changed lines` is the length
-//! of the range `edit` returns for the window of the scenario. The
-//! template scenarios open a block comment on line 1, which changes
-//! the state of every line below it. The viewport is the first 120
-//! lines and the distant viewport the last 120.
+//! times only the `edit` call, one call per sample, and then reads
+//! the last line and undoes the edit outside the timer. `changed
+//! lines` is the length of the range `edit` returns for the window
+//! of the scenario. Edit top, middle and end replace the last
+//! character of line 0, of the middle line and of the second line
+//! from the end, as `bench-live.ts` does. The template scenarios
+//! open a block comment on line 1, which changes the state of every
+//! line below it. The viewport is the first 120 lines and the
+//! distant viewport the last 120. Eager init and rebuild are timed
+//! one call per sample too.
 //!
 //! `--json <path>` also writes the table as JSON.
 
-use std::hint::black_box;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::time::{Duration, Instant};
 
 use rubrix_bench::{
-    Cell, Fixture, Measurement, Table, fixtures, measure,
+    Cell, Fixture, Measurement, Table, fixtures, measure_each,
 };
 use rubrix_highlight::{Highlights, Kind, Lang, LineEdit, highlight};
 
 const STRESS_LINES: usize = 100_000;
 const VIEWPORT: u32 = 120;
 const TEMPLATE: &str = "/*";
-const WARMUP: Duration = Duration::from_millis(200);
-const WARMUP_ITERATIONS: u32 = 3;
-const BUDGET: Duration = Duration::from_millis(1500);
-const MIN_SAMPLES: usize = 20;
 
 #[derive(Clone, Copy)]
 enum Window {
@@ -85,10 +83,7 @@ fn toggled(line: &str) -> String {
     line
 }
 
-fn edit_line(lines: &[String], target: usize) -> Change {
-    let at = (target..lines.len())
-        .find(|&at| lines[at].ends_with(';'))
-        .unwrap_or(target);
+fn edit_line(lines: &[String], at: usize) -> Change {
     Change {
         first: at as u32,
         before: vec![lines[at].clone()],
@@ -154,6 +149,7 @@ struct Case {
     highlights: Highlights,
     lines: Vec<String>,
     scenario: Scenario,
+    changed: usize,
 }
 
 impl Case {
@@ -173,11 +169,13 @@ impl Case {
     fn edit(&mut self) -> Range<u32> {
         let window =
             self.scenario.window.range(self.lines.len() as u32);
-        self.highlights.edit(
+        let range = self.highlights.edit(
             self.scenario.change.edit(),
             &self.lines,
             window,
-        )
+        );
+        self.changed = range.len();
+        range
     }
 
     fn flush(&mut self) {
@@ -213,46 +211,26 @@ impl Case {
     }
 }
 
-fn percentiles(mut samples: Vec<f64>) -> Measurement {
-    samples.sort_by(f64::total_cmp);
-    let middle = samples.len() / 2;
-    let median = if samples.len().is_multiple_of(2) {
-        (samples[middle - 1] + samples[middle]) / 2.0
-    } else {
-        samples[middle]
-    };
-    let p95_index = (samples.len() as f64 * 0.95).ceil() as usize - 1;
-    Measurement {
-        median,
-        p95: samples[p95_index],
-    }
+fn time_highlight(lang: Lang, text: &str) -> Measurement {
+    measure_each(
+        &mut None,
+        |slot| *slot = Some(highlight(lang, text)),
+        |slot| *slot = None,
+    )
 }
 
-fn sample(case: &mut Case) -> (Measurement, usize) {
-    let mut changed = 0;
-    let begin = Instant::now();
-    let mut warmed = 0;
-    while begin.elapsed() < WARMUP || warmed < WARMUP_ITERATIONS {
-        case.stage();
-        changed = black_box(case.edit()).len();
-        case.restore();
-        warmed += 1;
+fn check_distant_read(case: &mut Case) -> Result<(), String> {
+    case.edit();
+    let last = case.last_text_line();
+    let runs = case.highlights.runs(last, &case.lines);
+    if runs.is_empty()
+        || runs.iter().any(|run| run.kind != Kind::Comment)
+    {
+        return Err(format!(
+            "line {last} is not all comment: {runs:?}"
+        ));
     }
-    let mut times = Vec::new();
-    let begin = Instant::now();
-    while begin.elapsed() < BUDGET || times.len() < MIN_SAMPLES {
-        case.stage();
-        let start = Instant::now();
-        let range = black_box(case.edit());
-        times.push(start.elapsed().as_secs_f64());
-        changed = range.len();
-        case.restore();
-    }
-    (percentiles(times), changed)
-}
-
-fn dash() -> Cell {
-    Cell::Text("-".to_owned())
+    Ok(())
 }
 
 fn run(
@@ -263,14 +241,14 @@ fn run(
     let name = &fixture.name;
     let lines: Vec<String> =
         fixture.text.split('\n').map(str::to_owned).collect();
-    let init = measure(|| highlight(lang, &fixture.text));
+    let init = time_highlight(lang, &fixture.text);
     table.push(vec![
         Cell::Text(name.clone()),
         Cell::Text("eager init".to_owned()),
         Cell::Number(init.median * 1e6),
         Cell::Number(init.p95 * 1e6),
-        dash(),
-        dash(),
+        Cell::Missing,
+        Cell::Missing,
     ]);
 
     let original = highlight(lang, &fixture.text);
@@ -280,6 +258,7 @@ fn run(
             highlights: original.clone(),
             lines: lines.clone(),
             scenario,
+            changed: 0,
         };
         case.stage();
         let edited = case.lines.join("\n");
@@ -297,33 +276,26 @@ fn run(
             ));
         }
 
-        let (timing, changed) = sample(&mut case);
-        let rebuild = measure(|| highlight(lang, &edited));
+        case.stage();
+        let timing = measure_each(&mut case, Case::edit, |case| {
+            case.restore();
+            case.stage();
+        });
+        let rebuild = time_highlight(lang, &edited);
         table.push(vec![
             Cell::Text(name.clone()),
             Cell::Text(label.to_owned()),
             Cell::Number(timing.median * 1e6),
             Cell::Number(timing.p95 * 1e6),
             Cell::Number(rebuild.median * 1e6),
-            Cell::Count(changed),
+            Cell::Count(case.changed),
         ]);
 
         if matches!(case.scenario.window, Window::Distant) {
-            case.stage();
-            case.edit();
-            let last = case.last_text_line();
-            let all_comment = case
-                .highlights
-                .runs(last, &case.lines)
-                .iter()
-                .all(|run| run.kind == Kind::Comment);
-            if !all_comment {
-                return Err(format!(
-                    "{name}: distant read is not comment"
-                ));
-            }
-            println!("distant read ok: {name}");
-            case.restore();
+            check_distant_read(&mut case).map_err(|problem| {
+                format!("{name}: distant read: {problem}")
+            })?;
+            table.note(format!("distant read ok: {name}"));
         }
     }
     Ok(())
