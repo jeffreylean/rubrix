@@ -1,119 +1,47 @@
-commit 6aea143ad9fd406e87043e2f9a9b373064378107
+commit fa17239b079e0af1e02e7e4a62a492ea1fd4a1fe
 Author: Nixon <43715558+nixonyh@users.noreply.github.com>
-Date:   Thu Oct 22 23:31:00 2026 +0800
+Date:   Mon Sep 7 02:07:05 2026 +0800
 
-    Update `motiongfx_interp` to v0.5.0 (#76)
+    Update to use published `motiongfx_interp` crate
 
 diff --git a/Cargo.lock b/Cargo.lock
-index e499d0e..99006d0 100644
+index c09a82e..abe3e30 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -3606,9 +3606,9 @@ dependencies = [
- 
+@@ -1852,7 +1852,8 @@ dependencies = [
  [[package]]
  name = "motiongfx_interp"
--version = "0.4.0"
-+version = "0.5.0"
- source = "registry+https://github.com/rust-lang/crates.io-index"
--checksum = "f8164e608c4c02436e77d999d9359bd6ec4e080694b71d031bba08c16485a9f0"
-+checksum = "02f2a5291f99e58f18440e1129ccb7d73e55f31a708755bf24790ed98ebf30cd"
+ version = "0.3.0"
+-source = "git+https://github.com/voxell-tech/motiongfx?rev=f2d473c#f2d473c3deb2541cd310b0485f5aa1129e37572f"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "614789b361720e38269ad58814b5888764114c816c307a06ebcc2182475b3c16"
  dependencies = [
   "libm",
  ]
 diff --git a/Cargo.toml b/Cargo.toml
-index 7eee119..74f3de4 100644
+index 7efa097..4cbec2a 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -15,7 +15,7 @@ fynix_macros = { version = "0.0.3", path = "crates/fynix_macros" }
- bevy_fynix = { version = "0.0.3", path = "crates/bevy_fynix", default-features = false }
+@@ -15,7 +15,7 @@ fynix_macros = { version = "0.0.1", path = "crates/fynix_macros" }
+ bevy_fynix = { version = "0.0.1", path = "crates/bevy_fynix", default-features = false }
  
  # motiongfx
--motiongfx_interp = { version = "0.4.0", default-features = false }
-+motiongfx_interp = { version = "0.5.0", default-features = false }
+-motiongfx_interp = { git = "https://github.com/voxell-tech/motiongfx", rev = "f2d473c", default-features = false }
++motiongfx_interp = { version = "0.3.0", default-features = false }
  
  # bevy
- bevy = { version = "0.20", default-features = false }
-
-commit c19ce70f9ed1e50cb8b0244d0e4e0b38afc2a84e
-Author: Nixon <43715558+nixonyh@users.noreply.github.com>
-Date:   Wed Oct 21 23:16:42 2026 +0800
-
-    v0.0.3 release (#74)
-    
-    Stacked on #73. Bumps fynix, fynix_macros and bevy_fynix to 0.0.3, on
-    Bevy 0.20.
-    
-    Since 0.0.2:
-    - Bevy 0.20 (#71)
-    - Backend hooks for retained hosts (#72)
-    - Show rules on par with Typst: `show` returns any view, `show_where`,
-    `show_set`, a per-element guard (#73)
-
-diff --git a/Cargo.lock b/Cargo.lock
-index 791c3db..e499d0e 100644
---- a/Cargo.lock
-+++ b/Cargo.lock
-@@ -918,7 +918,7 @@ dependencies = [
+ bevy_app = { version = "0.19", default-features = false }
+diff --git a/crates/fynix/Cargo.toml b/crates/fynix/Cargo.toml
+index 76265e2..9c2d667 100644
+--- a/crates/fynix/Cargo.toml
++++ b/crates/fynix/Cargo.toml
+@@ -17,5 +17,9 @@ hashbrown = { workspace = true, features = ["default-hasher"] }
+ motiongfx_interp = { workspace = true }
+ typarena = { workspace = true }
  
- [[package]]
- name = "bevy_fynix"
--version = "0.0.2"
-+version = "0.0.3"
- dependencies = [
-  "bevy",
-  "fynix",
-@@ -2756,7 +2756,7 @@ dependencies = [
- 
- [[package]]
- name = "fynix"
--version = "0.0.2"
-+version = "0.0.3"
- dependencies = [
-  "fynix_macros",
-  "hashbrown 0.17.1",
-@@ -2767,7 +2767,7 @@ dependencies = [
- 
- [[package]]
- name = "fynix_macros"
--version = "0.0.2"
-+version = "0.0.3"
- dependencies = [
-  "proc-macro-crate",
-  "proc-macro2",
-diff --git a/Cargo.toml b/Cargo.toml
-index b0ffcf2..7eee119 100644
---- a/Cargo.toml
-+++ b/Cargo.toml
-@@ -3,16 +3,16 @@ resolver = "2"
- members = ["crates/*"]
- 
- [workspace.package]
--version = "0.0.2"
-+version = "0.0.3"
- edition = "2024"
- license = "MIT OR Apache-2.0"
- repository = "https://github.com/voxell-tech/fynix"
- 
- [workspace.dependencies]
- # fynix
--fynix = { version = "0.0.2", path = "crates/fynix", default-features = false }
--fynix_macros = { version = "0.0.2", path = "crates/fynix_macros" }
--bevy_fynix = { version = "0.0.2", path = "crates/bevy_fynix", default-features = false }
-+fynix = { version = "0.0.3", path = "crates/fynix", default-features = false }
-+fynix_macros = { version = "0.0.3", path = "crates/fynix_macros" }
-+bevy_fynix = { version = "0.0.3", path = "crates/bevy_fynix", default-features = false }
- 
- # motiongfx
- motiongfx_interp = { version = "0.4.0", default-features = false }
-diff --git a/crates/bevy_fynix/README.md b/crates/bevy_fynix/README.md
-index cad5347..e794da2 100644
---- a/crates/bevy_fynix/README.md
-+++ b/crates/bevy_fynix/README.md
-@@ -179,6 +179,7 @@ Use `then` when the order matters.
- 
- | Bevy    | Fynix          | Bevy Fynix     |
- | ------- | -------------- | -------------- |
-+| 0.20    | 0.0.3          | 0.0.3          |
- | 0.19    | 0.0.1 - 0.0.2  | 0.0.1 - 0.0.2  |
- 
- ## Join the community!
++[features]
++default = ["std"]
++std = ["motiongfx_interp/std"]
++
+ [lints]
+ workspace = true
