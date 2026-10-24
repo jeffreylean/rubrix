@@ -1,3 +1,41 @@
+//! The Go lexer.
+//!
+//! It covers raw backtick strings across lines, interpreted strings,
+//! runes, block comments across lines, numbers in every radix with
+//! underscores, hex floats, and the `i` suffix, struct tags, `func`
+//! names and method names after a receiver, and type names after
+//! `type`, including the names declared in a `type ( ... )` group.
+//!
+//! The state between lines is whether a block comment or a raw
+//! string is open, and how deeply nested the lexer is inside a
+//! `type (` group (capped at 255).
+//!
+//! A capitalised name is `type` only where Go puts a type: after a
+//! name (`x Foo`, `var x Foo`), after `*`, `...`, `]`, `chan`, or
+//! `)`, inside the `[ ]` of `map[` and of a type or function name,
+//! or directly before `{` as in `Foo{`. Anywhere else it is a
+//! `variable`, or a `constant` when it is all capitals, because
+//! capitals mark exported names in Go and not types. A name after a
+//! `.` is a `property`, even when it names a type, as in
+//! `pkg.Type`. A name that starts a line or follows `struct {` and
+//! is followed by a type is a field and a `property`.
+//!
+//! What it does not handle:
+//!
+//! - Names declared in a `var (` or `const (` group are not told from
+//!   fields: a name that starts a line and is followed by a type is a
+//!   `property`, and any other is a `variable` or a `constant` by its
+//!   spelling.
+//! - No name in a field list such as `X, Y int` is a field. Each is a
+//!   `variable`.
+//! - A parameter list that spans lines gives its names the field
+//!   treatment when they start a line.
+//! - A capitalised type after a comma, such as the second result in
+//!   `(Foo, Bar)`, is a `variable`.
+//! - There is no `string.doc`. Doc comments are `comment`.
+//! - A rune with more than one character is a stray quote followed by
+//!   the rest as code.
+
 use memchr::{memchr, memchr2};
 
 use super::{ident_end, is_ident_start, space_end};
@@ -10,21 +48,35 @@ enum Open {
     Raw,
 }
 
-impl Open {
-    fn load(state: &State) -> Open {
-        match state.word() {
+const OPEN_TAG: u64 = 0b11;
+const GROUP_SHIFT: u32 = 8;
+const GROUP_MAX: u32 = 255;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Mode {
+    open: Open,
+    group: u32,
+}
+
+impl Mode {
+    fn load(state: &State) -> Mode {
+        let word = state.word();
+        let open = match word & OPEN_TAG {
             1 => Open::Comment,
             2 => Open::Raw,
             _ => Open::Code,
-        }
+        };
+        let group = (word >> GROUP_SHIFT) as u32 & GROUP_MAX;
+        Mode { open, group }
     }
 
     fn store(self) -> State {
-        State::from_word(match self {
+        let tag = match self.open {
             Open::Code => 0,
             Open::Comment => 1,
             Open::Raw => 2,
-        })
+        };
+        State::from_word(tag | u64::from(self.group) << GROUP_SHIFT)
     }
 }
 
@@ -37,6 +89,10 @@ enum Prev {
     Var,
     Const,
     Dot,
+    TypePos,
+    Generic,
+    Struct,
+    Map,
 }
 
 pub(crate) fn lex(
@@ -44,7 +100,7 @@ pub(crate) fn lex(
     state: &State,
     out: &mut Runs<'_>,
 ) -> State {
-    let mut open = Open::load(state);
+    let Mode { mut open, group } = Mode::load(state);
     let mut lexer = Lexer {
         s: line.as_bytes(),
         i: 0,
@@ -53,6 +109,8 @@ pub(crate) fn lex(
         prev: Prev::Other,
         param_depth: 0,
         prev_closed_params: false,
+        group,
+        type_args: 0,
     };
     while lexer.i < lexer.s.len() {
         open = match open {
@@ -61,7 +119,11 @@ pub(crate) fn lex(
             Open::Raw => lexer.raw(),
         };
     }
-    open.store()
+    Mode {
+        open,
+        group: lexer.group,
+    }
+    .store()
 }
 
 struct Lexer<'s, 'o, 'r> {
@@ -72,6 +134,8 @@ struct Lexer<'s, 'o, 'r> {
     prev: Prev,
     param_depth: u32,
     prev_closed_params: bool,
+    group: u32,
+    type_args: u32,
 }
 
 impl Lexer<'_, '_, '_> {
@@ -123,6 +187,17 @@ impl Lexer<'_, '_, '_> {
                     } else if self.param_depth > 0 {
                         self.param_depth += 1;
                     }
+                    if prev == Prev::Type && self.group == 0 {
+                        self.group = 1;
+                    } else {
+                        self.nest(true);
+                    }
+                    if matches!(
+                        prev,
+                        Prev::Func | Prev::Dot | Prev::TypePos
+                    ) {
+                        self.prev = Prev::TypePos;
+                    }
                     self.emit(self.i + 1, Kind::PunctuationBracket);
                 }
                 b')' => {
@@ -131,9 +206,36 @@ impl Lexer<'_, '_, '_> {
                         self.prev_closed_params =
                             self.param_depth == 0;
                     }
+                    self.nest(false);
+                    self.prev = Prev::TypePos;
                     self.emit(self.i + 1, Kind::PunctuationBracket);
                 }
-                b'[' | b']' | b'{' | b'}' => {
+                b'[' => {
+                    if matches!(prev, Prev::Generic | Prev::Map) {
+                        self.type_args = 1;
+                    } else if self.type_args > 0 {
+                        self.type_args += 1;
+                    }
+                    self.nest(true);
+                    self.emit(self.i + 1, Kind::PunctuationBracket);
+                }
+                b']' => {
+                    self.type_args = self.type_args.saturating_sub(1);
+                    self.nest(false);
+                    if self.at(1).is_some_and(is_ident_start) {
+                        self.prev = Prev::TypePos;
+                    }
+                    self.emit(self.i + 1, Kind::PunctuationBracket);
+                }
+                b'{' => {
+                    if prev == Prev::Struct {
+                        self.at_line_start = true;
+                    }
+                    self.nest(true);
+                    self.emit(self.i + 1, Kind::PunctuationBracket);
+                }
+                b'}' => {
+                    self.nest(false);
                     self.emit(self.i + 1, Kind::PunctuationBracket);
                 }
                 b':' => {
@@ -149,8 +251,14 @@ impl Lexer<'_, '_, '_> {
                 b',' | b';' => {
                     self.emit(self.i + 1, Kind::PunctuationDelimiter);
                 }
-                b'+' | b'-' | b'*' | b'%' | b'^' | b'!' | b'&'
-                | b'|' | b'=' | b'<' | b'>' | b'~' => {
+                b'*' => {
+                    if self.is_pointer() {
+                        self.prev = Prev::TypePos;
+                    }
+                    self.emit(self.i + 1, Kind::Operator);
+                }
+                b'+' | b'-' | b'%' | b'^' | b'!' | b'&' | b'|'
+                | b'=' | b'<' | b'>' | b'~' => {
                     self.emit(self.i + 1, Kind::Operator);
                 }
                 _ if is_ident_start(b) => {
@@ -263,11 +371,32 @@ impl Lexer<'_, '_, '_> {
             self.number();
         } else if self.at(1) == Some(b'.') && self.at(2) == Some(b'.')
         {
+            if self.at(3).is_some_and(is_ident_start) {
+                self.prev = Prev::TypePos;
+            }
             self.emit(self.i + 3, Kind::Operator);
         } else {
             self.emit(self.i + 1, Kind::PunctuationDelimiter);
             self.prev = Prev::Dot;
         }
+    }
+
+    fn nest(&mut self, open: bool) {
+        if self.group > 0 {
+            self.group = if open {
+                (self.group + 1).min(GROUP_MAX)
+            } else {
+                self.group - 1
+            };
+        }
+    }
+
+    fn is_pointer(&self) -> bool {
+        let before = self.i.checked_sub(1).map(|j| self.s[j]);
+        self.at(1).is_some_and(is_ident_start)
+            && before.is_none_or(|b| {
+                b.is_ascii_whitespace() || b"([,]{=*".contains(&b)
+            })
     }
 
     fn word(
@@ -281,6 +410,7 @@ impl Lexer<'_, '_, '_> {
         let word = &s[self.i..end];
         let next = s.get(end).copied();
         let call = next == Some(b'(');
+        let reserved = keyword(word);
         let kind = match prev {
             Prev::Func => Kind::FunctionDefinition,
             Prev::Type => Kind::TypeDefinition,
@@ -289,31 +419,46 @@ impl Lexer<'_, '_, '_> {
             Prev::Const => Kind::Constant,
             Prev::Dot if call => Kind::FunctionMethod,
             Prev::Dot => Kind::Property,
-            Prev::Other
-                if prev_closed_params
-                    && matches!(next, Some(b'(' | b'[')) =>
-            {
+            _ if prev_closed_params && call => {
                 Kind::FunctionDefinition
             }
-            Prev::Other => keyword(word).unwrap_or_else(|| {
-                if at_line_start && declares_name(s, end) {
+            _ => reserved.unwrap_or_else(|| {
+                if at_line_start && self.group == 1 {
+                    Kind::TypeDefinition
+                } else if at_line_start && declares_name(s, end) {
                     Kind::Property
                 } else {
-                    name_kind(word, call)
+                    let type_position =
+                        prev == Prev::TypePos || self.type_args > 0;
+                    name_kind(word, call, type_position, next)
                 }
             }),
         };
         self.emit(end, kind);
-        if prev == Prev::Other {
-            self.prev = match word {
+        self.prev = match prev {
+            Prev::Func | Prev::Type => Prev::Generic,
+            Prev::Package | Prev::Dot => Prev::Other,
+            Prev::Var | Prev::Const => Prev::TypePos,
+            _ => match word {
                 b"func" => Prev::Func,
                 b"type" => Prev::Type,
                 b"package" => Prev::Package,
                 b"var" => Prev::Var,
                 b"const" => Prev::Const,
-                _ => Prev::Other,
-            };
-        }
+                b"struct" => Prev::Struct,
+                b"map" => Prev::Map,
+                b"chan" => Prev::TypePos,
+                _ if reserved.is_some() => Prev::Other,
+                _ if matches!(
+                    kind,
+                    Kind::Type | Kind::TypeDefinition
+                ) =>
+                {
+                    Prev::Generic
+                }
+                _ => Prev::TypePos,
+            },
+        };
     }
 }
 
@@ -364,19 +509,24 @@ fn keyword(word: &[u8]) -> Option<Kind> {
     })
 }
 
-fn name_kind(name: &[u8], call: bool) -> Kind {
+fn name_kind(
+    name: &[u8],
+    call: bool,
+    type_position: bool,
+    next: Option<u8>,
+) -> Kind {
     if call {
         if is_builtin_function(name) {
             Kind::FunctionBuiltin
         } else {
             Kind::Function
         }
-    } else if is_capitalised(name) {
-        if is_screaming_case(name) {
-            Kind::Constant
-        } else {
-            Kind::Type
-        }
+    } else if !is_capitalised(name) {
+        Kind::Variable
+    } else if type_position || next == Some(b'{') {
+        Kind::Type
+    } else if is_screaming_case(name) {
+        Kind::Constant
     } else {
         Kind::Variable
     }
@@ -465,22 +615,29 @@ const fn char_len(lead: u8) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::Open;
+    use super::{GROUP_MAX, Mode, Open};
     use crate::State;
 
     #[test]
-    fn opens_round_trip() {
+    fn modes_round_trip() {
         for open in [Open::Code, Open::Comment, Open::Raw] {
-            assert_eq!(Open::load(&open.store()), open);
+            for group in [0, 1, GROUP_MAX] {
+                let mode = Mode { open, group };
+                assert_eq!(Mode::load(&mode.store()), mode);
+            }
         }
-        assert_eq!(Open::Code.store(), State::default());
+        let code = Mode {
+            open: Open::Code,
+            group: 0,
+        };
+        assert_eq!(code.store(), State::default());
     }
 
     #[test]
     fn any_word_loads() {
         for word in [u64::MAX, 1, 3, 1 << 40, 0xFFFF_FFFF] {
-            let open = Open::load(&State::from_word(word));
-            assert_eq!(Open::load(&open.store()), open);
+            let mode = Mode::load(&State::from_word(word));
+            assert_eq!(Mode::load(&mode.store()), mode);
         }
     }
 }

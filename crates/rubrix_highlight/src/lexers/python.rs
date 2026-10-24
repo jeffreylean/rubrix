@@ -1,3 +1,40 @@
+//! The Python lexer.
+//!
+//! It covers strings with every prefix, triple quotes across lines,
+//! f- and t-string replacement fields with nested quotes, format
+//! specs, and fields that span lines, numbers with underscores and
+//! the `j` suffix, comments, backslash continuations, decorators,
+//! and `def` and `class` names.
+//!
+//! The state between lines is a stack of up to seven string and
+//! field frames, the depth of brackets open in code outside strings
+//! (capped at 15), and whether the last line ended in a backslash.
+//! The last two decide whether a line that starts with `@` is a
+//! decorator or a matrix multiply. A replacement field left open at
+//! the end of a line stays open, as Python 3.12 and later allow. A
+//! string body, a format spec, or an unterminated string ends at its
+//! line, unless it is triple-quoted or the line ends in a backslash.
+//!
+//! In an f-string, a backslash directly before `{` is a plain
+//! character, and a single `{` after it opens a field, as in Python.
+//!
+//! What it does not handle:
+//!
+//! - `Kind::StringDoc` is never emitted. A docstring is `string`,
+//!   because telling it from other strings needs the parse tree.
+//! - Soft keywords (`match`, `case`, `type`, `_`) are not told from
+//!   names. `type` is a built-in type everywhere.
+//! - Parameter names, annotations, and keyword arguments are
+//!   `variable`, like any other name.
+//! - A name is a type or a constant by its spelling alone: a
+//!   capitalised name is a type, and an all-capitals name is a
+//!   constant.
+//! - Nesting deeper than seven open strings and fields is lexed as
+//!   plain text from the eighth on. More than 15 open brackets count
+//!   as 15.
+//! - Invalid code is lexed without a diagnostic. `ur"x"` is a string,
+//!   and a prefix that Python rejects is a name followed by a string.
+
 use memchr::{memchr2, memchr3};
 
 use super::{ident_end, is_ident_start, space_end};
@@ -18,11 +55,16 @@ const DEPTH_MAX: u8 = (1 << 5) - 1;
 
 const MAX_FRAMES: u32 = 7;
 const LEN_SHIFT: u32 = 56;
+const JOINED_SHIFT: u32 = 59;
+const BRACKETS_SHIFT: u32 = 60;
+const BRACKETS_MAX: u32 = 15;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct Stack {
     frames: u64,
     len: u32,
+    brackets: u32,
+    joined: bool,
 }
 
 impl Stack {
@@ -30,12 +72,20 @@ impl Stack {
         let word = state.word();
         let len = (word >> LEN_SHIFT) as u32 & MAX_FRAMES;
         let frames = word & ((1 << (8 * len)) - 1);
-        Stack { frames, len }
+        Stack {
+            frames,
+            len,
+            brackets: (word >> BRACKETS_SHIFT) as u32 & BRACKETS_MAX,
+            joined: word >> JOINED_SHIFT & 1 != 0,
+        }
     }
 
     fn store(self) -> State {
         State::from_word(
-            self.frames | u64::from(self.len) << LEN_SHIFT,
+            self.frames
+                | u64::from(self.len) << LEN_SHIFT
+                | u64::from(self.joined) << JOINED_SHIFT
+                | u64::from(self.brackets) << BRACKETS_SHIFT,
         )
     }
 
@@ -84,7 +134,17 @@ impl Stack {
             .find(|&(_, frame)| frame & TAG == STR)
     }
 
-    fn drop_single_line_frames(&mut self, continued: bool) {
+    fn drop_single_line_frames(
+        &mut self,
+        continued: bool,
+        dangling: bool,
+    ) {
+        let top = self.top();
+        if top & (TAG | SPEC) == FIELD
+            && (top >> DEPTH_SHIFT > 0 || dangling)
+        {
+            return;
+        }
         let mut multiline = false;
         for index in 0..self.len {
             let frame = self.frame(index);
@@ -121,14 +181,18 @@ pub(crate) fn lex(
     state: &State,
     out: &mut Runs<'_>,
 ) -> State {
-    let stack = Stack::load(state);
+    let mut stack = Stack::load(state);
+    let first =
+        stack.len == 0 && stack.brackets == 0 && !stack.joined;
+    stack.joined = false;
     let mut lexer = Lexer {
         s: line.as_bytes(),
         i: 0,
         out,
         stack,
-        first: stack.len == 0,
+        first,
         continued: false,
+        dangling: false,
         prev: Prev::Other,
     };
     while lexer.i < lexer.s.len() {
@@ -139,7 +203,9 @@ pub(crate) fn lex(
             _ => lexer.code(),
         }
     }
-    lexer.stack.drop_single_line_frames(lexer.continued);
+    lexer
+        .stack
+        .drop_single_line_frames(lexer.continued, lexer.dangling);
     lexer.stack.store()
 }
 
@@ -150,6 +216,7 @@ struct Lexer<'s, 'o, 'r> {
     stack: Stack,
     first: bool,
     continued: bool,
+    dangling: bool,
     prev: Prev,
 }
 
@@ -157,6 +224,12 @@ impl Lexer<'_, '_, '_> {
     fn emit(&mut self, end: usize, kind: Kind) {
         self.out.push(end, kind);
         self.i = end;
+        self.dangling = matches!(
+            kind,
+            Kind::Operator
+                | Kind::Punctuation
+                | Kind::PunctuationDelimiter
+        );
     }
 
     fn at(&self, offset: usize) -> Option<u8> {
@@ -195,15 +268,11 @@ impl Lexer<'_, '_, '_> {
                 }
                 b'@' => self.at_sign(first),
                 b'(' | b'[' | b'{' => {
-                    if field {
-                        self.bump_depth(1);
-                    }
+                    self.nest(field, 1);
                     self.emit(self.i + 1, Kind::PunctuationBracket);
                 }
                 b')' | b']' => {
-                    if field {
-                        self.bump_depth(-1);
-                    }
+                    self.nest(field, -1);
                     self.emit(self.i + 1, Kind::PunctuationBracket);
                 }
                 b'}' => {
@@ -215,9 +284,7 @@ impl Lexer<'_, '_, '_> {
                         self.stack.pop();
                         return;
                     }
-                    if field {
-                        self.bump_depth(-1);
-                    }
+                    self.nest(field, -1);
                     self.emit(self.i + 1, Kind::PunctuationBracket);
                 }
                 b':' => {
@@ -258,7 +325,11 @@ impl Lexer<'_, '_, '_> {
                         self.emit(self.i + 1, Kind::Operator);
                     }
                 }
-                b'\\' => self.emit(self.i + 1, Kind::Punctuation),
+                b'\\' => {
+                    self.stack.joined = self.stack.len == 0
+                        && self.i + 1 == self.s.len();
+                    self.emit(self.i + 1, Kind::Punctuation);
+                }
                 b'+' | b'-' | b'*' | b'/' | b'%' | b'^' | b'&'
                 | b'|' | b'=' | b'<' | b'>' | b'~' => {
                     self.emit(self.i + 1, Kind::Operator);
@@ -275,6 +346,18 @@ impl Lexer<'_, '_, '_> {
 
     fn field_depth(&self) -> u8 {
         self.stack.top() >> DEPTH_SHIFT
+    }
+
+    fn nest(&mut self, field: bool, by: i8) {
+        if field {
+            self.bump_depth(by);
+        } else {
+            self.stack.brackets = self
+                .stack
+                .brackets
+                .saturating_add_signed(i32::from(by))
+                .min(BRACKETS_MAX);
+        }
     }
 
     fn bump_depth(&mut self, by: i8) {
@@ -340,7 +423,9 @@ impl Lexer<'_, '_, '_> {
                         self.continued = true;
                         return;
                     }
-                    if frame & RAW != 0 {
+                    if frame & FMT != 0 && s[k + 1] == b'{' {
+                        j = k + 1;
+                    } else if frame & RAW != 0 {
                         j = k + 2;
                     } else {
                         self.emit(k, Kind::String);
@@ -663,8 +748,8 @@ const fn char_len(lead: u8) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        DEPTH_MAX, DEPTH_SHIFT, DOUBLE, FIELD, FMT, MAX_FRAMES, RAW,
-        SPEC, STR, Stack, TRIPLE,
+        BRACKETS_MAX, DEPTH_MAX, DEPTH_SHIFT, DOUBLE, FIELD, FMT,
+        MAX_FRAMES, RAW, SPEC, STR, Stack, TRIPLE,
     };
     use crate::State;
 
@@ -676,7 +761,7 @@ mod tests {
             FIELD | SPEC,
             FIELD | DEPTH_MAX << DEPTH_SHIFT,
         ];
-        let mut stack = Stack { frames: 0, len: 0 };
+        let mut stack = Stack::default();
         assert_eq!(stack.store(), State::default());
         for frame in frames {
             assert!(stack.push(frame));
@@ -690,8 +775,18 @@ mod tests {
     }
 
     #[test]
+    fn line_state_round_trips() {
+        let stack = Stack {
+            brackets: BRACKETS_MAX,
+            joined: true,
+            ..Stack::default()
+        };
+        assert_eq!(Stack::load(&stack.store()), stack);
+    }
+
+    #[test]
     fn stack_stops_at_its_limit() {
-        let mut stack = Stack { frames: 0, len: 0 };
+        let mut stack = Stack::default();
         for _ in 0..MAX_FRAMES {
             assert!(stack.push(STR));
         }

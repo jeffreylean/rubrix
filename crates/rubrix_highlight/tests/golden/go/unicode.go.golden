@@ -11,7 +11,7 @@
 7 5..15 type.definition "Ünïcode "
 7 15..21 keyword "struct"
 7 21..23 punctuation.bracket "{ "
-7 23..29 type "Ünï "
+7 23..29 property "Ünï "
 7 29..33 type.builtin "int "
 7 33..34 punctuation.bracket "}"
 9 0..5 keyword "func "
