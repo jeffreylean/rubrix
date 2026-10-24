@@ -205,10 +205,20 @@ impl Cell {
         match self {
             Cell::Text(text) => json_string(text),
             Cell::Count(n) => n.to_string(),
-            Cell::Number(n) => format!("{n:.4}"),
+            Cell::Number(n) => json_number(*n),
             Cell::Missing => "null".to_owned(),
         }
     }
+}
+
+fn json_number(n: f64) -> String {
+    let magnitude = if n == 0.0 {
+        0
+    } else {
+        n.abs().log10().floor() as i32
+    };
+    let decimals = (3 - magnitude).max(4) as usize;
+    format!("{n:.decimals$}")
 }
 
 fn json_string(text: &str) -> String {
@@ -337,4 +347,20 @@ fn print_row<S: AsRef<str>>(
         .expect("write to String");
     }
     println!("{out}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_numbers_keep_four_significant_digits() {
+        let json = |n| Cell::Number(n).json();
+        assert_eq!(json(0.001966), "0.001966");
+        assert_eq!(json(0.001999), "0.001999");
+        assert_eq!(json(0.00001234), "0.00001234");
+        assert_eq!(json(12.3456789), "12.3457");
+        assert_eq!(json(12894.446), "12894.4460");
+        assert_eq!(json(0.0), "0.0000");
+    }
 }
