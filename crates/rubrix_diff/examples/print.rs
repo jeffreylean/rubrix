@@ -48,24 +48,33 @@
 //! {blank:>w} {blank:>w}   ... {hidden} unchanged lines
 //! ```
 //!
+//! A changed line whose split partner differs from it only in a `\r`
+//! before the `\n` shows its line ending escaped after its text, as
+//! in `{text}\r\n` beside `{text}\n`, in both layouts.
+//!
 //! A row showing a line that does not end in `\n` is followed by
-//! `\ No newline at end of file`.
+//! `\ No newline at end of file`. In split rows that marker is a row
+//! of blank cells whose text is the marker on each side whose line
+//! lacks the `\n`.
 //!
 //! Exit status is 0 on success, whether or not the files differ, and
 //! 2 with a message on stderr for a usage error or an unreadable
 //! file.
 
+use std::borrow::Cow;
+use std::collections::HashSet;
 use std::io::{self, BufWriter, Write};
 use std::process::ExitCode;
 
 use rubrix_diff::{
-    Expansion, FileDiff, Layout, LineRef, Row, Rows, Side,
+    Expansion, FileDiff, Layout, LineRef, Lines, Row, Rows, Side,
     diff_texts, rows,
 };
 
 const CONTEXT: u32 = 3;
 const MIN_NUMBER_WIDTH: usize = 4;
 const MAX_LEFT_WIDTH: usize = 60;
+const NO_NEWLINE: &str = "\\ No newline at end of file";
 const USAGE: &str = "usage: print [--split] [--expand \
                      <hunk>:<up|down|all>]... <old> <new>";
 
@@ -202,6 +211,7 @@ fn write_rows(
     diff: &FileDiff,
     rows: &Rows,
 ) -> io::Result<()> {
+    let text = Text::new(diff);
     let total = diff.old_lines().len().max(diff.new_lines().len());
     let width = total.to_string().len().max(MIN_NUMBER_WIDTH);
     let all: Vec<Row> = rows.range(..).collect();
@@ -209,9 +219,14 @@ fn write_rows(
         Layout::Stacked => 0,
         Layout::Split => all
             .iter()
-            .filter_map(Row::old_line)
-            .map(|line| {
-                diff.old_lines().line(line.index).chars().count()
+            .flat_map(|row| {
+                let shown = row
+                    .old_line()
+                    .map(|line| text.old_text(line).chars().count());
+                let marker = lacks_newline(diff, row)
+                    .old
+                    .then_some(NO_NEWLINE.len());
+                shown.into_iter().chain(marker)
             })
             .max()
             .unwrap_or(0)
@@ -231,15 +246,85 @@ fn write_rows(
                 "{:width$} {:width$}   ... {hidden} unchanged lines",
                 "", ""
             ),
-            (_, Layout::Stacked) => stacked(diff, width, row),
-            (_, Layout::Split) => split(diff, width, left_width, row),
+            (_, Layout::Stacked) => stacked(&text, width, row),
+            (_, Layout::Split) => {
+                split(&text, width, left_width, row)
+            }
         };
         writeln!(out, "{line}")?;
-        if lacks_newline(diff, row) {
-            writeln!(out, "\\ No newline at end of file")?;
+        let lacks = lacks_newline(diff, row);
+        match rows.layout() {
+            _ if !(lacks.old || lacks.new) => {}
+            Layout::Stacked => writeln!(out, "{NO_NEWLINE}")?,
+            Layout::Split => writeln!(
+                out,
+                "{}",
+                split_marker(width, left_width, lacks)
+            )?,
         }
     }
     Ok(())
+}
+
+struct Text<'a> {
+    diff: &'a FileDiff,
+    old_cr_only: HashSet<u32>,
+    new_cr_only: HashSet<u32>,
+}
+
+impl<'a> Text<'a> {
+    fn new(diff: &'a FileDiff) -> Text<'a> {
+        let pairs = rows(diff, Layout::Split, &Expansion::new());
+        let (old_cr_only, new_cr_only) = pairs
+            .range(..)
+            .filter_map(|row| match row {
+                Row::Paired { old, new } => {
+                    Some((old.index, new.index))
+                }
+                _ => None,
+            })
+            .filter(|&(old, new)| {
+                differ_only_in_cr(
+                    diff.old_lines().raw(old),
+                    diff.new_lines().raw(new),
+                )
+            })
+            .unzip();
+        Text {
+            diff,
+            old_cr_only,
+            new_cr_only,
+        }
+    }
+
+    fn old_text(&self, line: LineRef) -> Cow<'a, str> {
+        shown(self.diff.old_lines(), &self.old_cr_only, line.index)
+    }
+
+    fn new_text(&self, line: LineRef) -> Cow<'a, str> {
+        shown(self.diff.new_lines(), &self.new_cr_only, line.index)
+    }
+}
+
+fn differ_only_in_cr(old: &str, new: &str) -> bool {
+    let old = old.strip_suffix('\n').unwrap_or(old);
+    let new = new.strip_suffix('\n').unwrap_or(new);
+    old != new
+        && old.strip_suffix('\r').unwrap_or(old)
+            == new.strip_suffix('\r').unwrap_or(new)
+}
+
+fn shown<'a>(
+    lines: &'a Lines,
+    cr_only: &HashSet<u32>,
+    index: u32,
+) -> Cow<'a, str> {
+    let text = lines.line(index);
+    if !cr_only.contains(&index) {
+        return Cow::Borrowed(text);
+    }
+    let ending = &lines.raw(index)[text.len()..];
+    Cow::Owned(format!("{text}{}", ending.escape_default()))
 }
 
 fn signs(row: &Row) -> (char, char) {
@@ -257,45 +342,100 @@ fn number(line: Option<LineRef>, width: usize) -> String {
     format!("{:>width$}", shown.unwrap_or_default())
 }
 
-fn stacked(diff: &FileDiff, width: usize, row: &Row) -> String {
+fn stacked(text: &Text, width: usize, row: &Row) -> String {
     let (old_sign, new_sign) = signs(row);
     let sign = if old_sign == ' ' { new_sign } else { old_sign };
-    let text = match (row.new_line(), row.old_line()) {
-        (Some(line), _) => diff.new_lines().line(line.index),
-        (None, Some(line)) => diff.old_lines().line(line.index),
-        (None, None) => "",
+    let shown = match (row.new_line(), row.old_line()) {
+        (Some(line), _) => text.new_text(line),
+        (None, Some(line)) => text.old_text(line),
+        (None, None) => Cow::Borrowed(""),
     };
     format!(
-        "{} {} {sign} {text}",
+        "{} {} {sign} {shown}",
         number(row.old_line(), width),
         number(row.new_line(), width),
     )
 }
 
+struct Cell<'a> {
+    number: Option<LineRef>,
+    sign: char,
+    text: &'a str,
+}
+
 fn split(
-    diff: &FileDiff,
+    text: &Text,
     width: usize,
     left_width: usize,
     row: &Row,
 ) -> String {
     let (old_sign, new_sign) = signs(row);
-    let left = row
-        .old_line()
-        .map_or("", |line| diff.old_lines().line(line.index));
-    let right = row
-        .new_line()
-        .map_or("", |line| diff.new_lines().line(line.index));
-    format!(
-        "{} {old_sign} {left:left_width$} | {} {new_sign} {right}",
-        number(row.old_line(), width),
-        number(row.new_line(), width),
+    let left = row.old_line().map(|line| text.old_text(line));
+    let right = row.new_line().map(|line| text.new_text(line));
+    split_cells(
+        width,
+        left_width,
+        Cell {
+            number: row.old_line(),
+            sign: old_sign,
+            text: left.as_deref().unwrap_or(""),
+        },
+        Cell {
+            number: row.new_line(),
+            sign: new_sign,
+            text: right.as_deref().unwrap_or(""),
+        },
     )
 }
 
-fn lacks_newline(diff: &FileDiff, row: &Row) -> bool {
-    let old =
-        row.old_line().map(|line| diff.old_lines().raw(line.index));
-    let new =
-        row.new_line().map(|line| diff.new_lines().raw(line.index));
-    old.into_iter().chain(new).any(|raw| !raw.ends_with('\n'))
+fn split_marker(
+    width: usize,
+    left_width: usize,
+    lacks: Lacks,
+) -> String {
+    let marker = |lacks: bool| Cell {
+        number: None,
+        sign: ' ',
+        text: if lacks { NO_NEWLINE } else { "" },
+    };
+    split_cells(
+        width,
+        left_width,
+        marker(lacks.old),
+        marker(lacks.new),
+    )
+}
+
+fn split_cells(
+    width: usize,
+    left_width: usize,
+    old: Cell,
+    new: Cell,
+) -> String {
+    format!(
+        "{} {} {:left_width$} | {} {} {}",
+        number(old.number, width),
+        old.sign,
+        old.text,
+        number(new.number, width),
+        new.sign,
+        new.text,
+    )
+}
+
+struct Lacks {
+    old: bool,
+    new: bool,
+}
+
+fn lacks_newline(diff: &FileDiff, row: &Row) -> Lacks {
+    let lacks = |lines: &Lines, line: Option<LineRef>| {
+        line.is_some_and(|line| {
+            !lines.raw(line.index).ends_with('\n')
+        })
+    };
+    Lacks {
+        old: lacks(diff.old_lines(), row.old_line()),
+        new: lacks(diff.new_lines(), row.new_line()),
+    }
 }
