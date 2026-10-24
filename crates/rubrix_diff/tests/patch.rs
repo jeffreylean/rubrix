@@ -222,6 +222,82 @@ fn plain_unified_diff_keeps_its_names_as_given() {
 }
 
 #[test]
+fn git_header_names_are_kept_when_no_later_line_names_the_file() {
+    let binary = only("noindex-binary");
+    assert_eq!(binary.change(), FileChange::Binary);
+    assert_eq!(binary.old_name(), Some("a/i.bin"));
+    assert_eq!(binary.new_name(), Some("b/i.bin"));
+
+    let mode = only("noindex-mode");
+    assert_eq!(mode.change(), FileChange::Modified);
+    assert_eq!(mode.old_name(), Some("a/m.sh"));
+    assert_eq!(mode.new_name(), Some("b/m.sh"));
+    assert_eq!(mode.new_mode(), Some(0o100755));
+
+    let [accent, spaced] =
+        <[FileDiff; 2]>::try_from(files("noindex-quoted")).unwrap();
+    assert_eq!(accent.old_name(), Some("a/h\u{e9}llo.bin"));
+    assert_eq!(accent.new_name(), Some("b/h\u{e9}llo.bin"));
+    assert_eq!(spaced.old_name(), Some("a/spaced name.bin"));
+    assert_eq!(spaced.new_name(), Some("b/spaced name.bin"));
+}
+
+#[test]
+fn plain_binary_files_become_binary_entries() {
+    let all = files("diff-r-binary");
+    let found: Vec<_> = all
+        .iter()
+        .map(|f| (f.change(), f.old_name(), f.new_name()))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (
+                FileChange::Binary,
+                Some("ru-old/added.bin"),
+                Some("ru-new/added.bin")
+            ),
+            (
+                FileChange::Modified,
+                Some("ru-old/added.txt"),
+                Some("ru-new/added.txt")
+            ),
+            (
+                FileChange::Binary,
+                Some("ru-old/gone.bin"),
+                Some("ru-new/gone.bin")
+            ),
+            (
+                FileChange::Binary,
+                Some("ru-old/i.bin"),
+                Some("ru-new/i.bin")
+            ),
+            (
+                FileChange::Modified,
+                Some("ru-old/t.txt"),
+                Some("ru-new/t.txt")
+            ),
+        ]
+    );
+    assert_eq!((all[4].added(), all[4].removed()), (1, 1));
+
+    let added = only("diff-null-binary");
+    assert_eq!(added.change(), FileChange::Binary);
+    assert_eq!(added.old_name(), None);
+    assert_eq!(added.new_name(), Some("ru-new/added.bin"));
+}
+
+#[test]
+fn empty_context_lines_parse_in_lf_and_crlf_patches() {
+    let lf = only("blank-context-lf");
+    let crlf = only("blank-context-crlf");
+    assert_eq!((crlf.added(), crlf.removed()), (1, 1));
+    assert_eq!(headers(&crlf), headers(&lf));
+    assert_eq!(lines(crlf.new_lines()), lines(lf.new_lines()));
+    assert_eq!(crlf.new_lines().raw(1), "\r\n");
+}
+
+#[test]
 fn text_without_a_file_header_has_no_files() {
     for text in ["", "\n", "hello\nworld\n", "@@ -1 +1 @@\n-a\n+b\n"]
     {
@@ -300,6 +376,18 @@ fn errors_name_the_line_of_a_truncated_hunk() {
         first + 1,
         PatchErrorKind::HunkCount,
     );
+}
+
+#[test]
+fn errors_name_the_truncated_hunk_of_a_plain_multi_file_patch() {
+    let text = patch_text("quilt.patch");
+    let all: Vec<&str> = text.lines().collect();
+    assert_eq!(parse_patch(&text).unwrap().len(), 2);
+    let second =
+        all.iter().rposition(|l| l.starts_with("--- ")).unwrap();
+    let mut cut = all.clone();
+    cut.remove(second - 1);
+    expect_error(&cut.join("\n"), 3, PatchErrorKind::HunkCount);
 }
 
 #[test]

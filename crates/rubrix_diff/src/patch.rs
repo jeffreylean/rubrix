@@ -134,8 +134,12 @@ struct Head {
 
 fn next_file(input: &mut Input) -> Option<Head> {
     loop {
-        let git = input.peek()?.starts_with("diff --git ");
-        if git || starts_plain_file(input) {
+        let first = input.peek()?;
+        let git = first.starts_with("diff --git ");
+        if git
+            || starts_plain_file(input)
+            || starts_binary_file(first)
+        {
             let mut head = Head {
                 line: input.next_line,
                 git,
@@ -149,8 +153,10 @@ fn next_file(input: &mut Input) -> Option<Head> {
             if git {
                 let line = input.next()?;
                 let rest = line.strip_prefix("diff --git ")?;
-                head.old_name = same_name(trim_cr(rest));
-                head.new_name = head.old_name.clone();
+                if let Some((old, new)) = git_names(trim_cr(rest)) {
+                    head.old_name = Some(old);
+                    head.new_name = Some(new);
+                }
             }
             return Some(head);
         }
@@ -162,6 +168,10 @@ fn starts_plain_file(input: &Input) -> bool {
     let mut lines = input.ahead();
     let first = lines.next().is_some_and(|l| l.starts_with("--- "));
     first && lines.next().is_some_and(|l| l.starts_with("+++ "))
+}
+
+fn starts_binary_file(line: &str) -> bool {
+    binary_names(trim_cr(line)).is_some()
 }
 
 fn parse_file(
@@ -177,6 +187,7 @@ fn parse_file(
             hunks += 1;
         } else if line.starts_with("diff --git ")
             || starts_plain_file(input)
+            || (!head.git && starts_binary_file(line))
         {
             break;
         } else {
@@ -233,11 +244,20 @@ fn read_header(input: &mut Input, head: &mut Head) {
             head.old_name = Some(decode(name));
         } else if let Some(name) = line.strip_prefix("copy to ") {
             head.new_name = Some(decode(name));
-        } else if line == "GIT binary patch"
-            || (line.starts_with("Binary files ")
-                && line.ends_with(" differ"))
-        {
+        } else if line == "GIT binary patch" {
             head.binary = true;
+        } else if let Some((old, new)) = binary_names(line) {
+            head.binary = true;
+            if !head.git {
+                head.old_name = plain_name(old);
+                head.new_name = plain_name(new);
+                match (&head.old_name, &head.new_name) {
+                    (None, _) => head.kind = Kind::Added,
+                    (_, None) => head.kind = Kind::Deleted,
+                    _ => {}
+                }
+                break;
+            }
         }
     }
 }
@@ -289,19 +309,55 @@ fn path_name(value: &str, git: bool, prefix: &str) -> Option<String> {
     Some(name)
 }
 
-fn same_name(rest: &str) -> Option<String> {
-    let middle = rest.len() / 2;
-    if rest.len().is_multiple_of(2) || rest.as_bytes()[middle] != b' '
-    {
-        return None;
-    }
+fn plain_name(name: &str) -> Option<String> {
+    (name != "/dev/null").then(|| name.into())
+}
+
+fn binary_names(line: &str) -> Option<(&str, &str)> {
+    let names = line.strip_prefix("Binary files ")?;
+    names.strip_suffix(" differ")?.split_once(" and ")
+}
+
+fn git_names(rest: &str) -> Option<(String, String)> {
     let strip = |half: &str, prefix: &str| {
         let name = decode(half);
         name.strip_prefix(prefix).map(String::from)
     };
-    let old = strip(&rest[..middle], "a/")?;
-    let new = strip(&rest[middle + 1..], "b/")?;
-    (old == new).then_some(old)
+    let middle = rest.len() / 2;
+    if !rest.len().is_multiple_of(2)
+        && rest.as_bytes()[middle] == b' '
+    {
+        let old = strip(&rest[..middle], "a/");
+        let new = strip(&rest[middle + 1..], "b/");
+        if let (Some(old), Some(new)) = (old, new)
+            && old == new
+        {
+            return Some((old, new));
+        }
+    }
+    let end = old_name_end(rest)?;
+    let new = rest[end..].strip_prefix(' ')?;
+    Some((strip(&rest[..end], "a/")?, strip(new, "b/")?))
+}
+
+fn old_name_end(rest: &str) -> Option<usize> {
+    if rest.starts_with('"') {
+        let mut bytes = rest.bytes().enumerate().skip(1);
+        while let Some((at, byte)) = bytes.next() {
+            match byte {
+                b'\\' => {
+                    bytes.next();
+                }
+                b'"' => return Some(at + 1),
+                _ => {}
+            }
+        }
+        return None;
+    }
+    rest.match_indices(' ').map(|(at, _)| at).find(|&at| {
+        let after = &rest[at + 1..];
+        after.starts_with("b/") || after.starts_with("\"b/")
+    })
 }
 
 fn decode(value: &str) -> String {
@@ -368,12 +424,16 @@ fn parse_hunk(
         if old_len >= old_count && new_len >= new_count {
             break;
         }
+        if starts_next_file_hunk(input) {
+            return Err(at(PatchErrorKind::HunkCount));
+        }
         let here = input.next_line;
         let line =
             input.next().ok_or(at(PatchErrorKind::HunkCount))?;
         let (edit, text) = match line.as_bytes().first() {
             Some(b' ') => (Edit::Context, &line[1..]),
             None => (Edit::Context, ""),
+            Some(b'\r') if line.len() == 1 => (Edit::Context, line),
             Some(b'-') => (Edit::Delete, &line[1..]),
             Some(b'+') => (Edit::Insert, &line[1..]),
             Some(b'\\') => {
@@ -410,6 +470,18 @@ fn parse_hunk(
         return Err(at(PatchErrorKind::HunkCount));
     }
     Ok(())
+}
+
+fn starts_next_file_hunk(input: &Input) -> bool {
+    if !input.peek().is_some_and(|line| line.starts_with("--- ")) {
+        return false;
+    }
+    let mut lines = input.ahead().skip(1);
+    let second = lines.next().is_some_and(|l| l.starts_with("+++ "));
+    second
+        && lines
+            .next()
+            .is_some_and(|l| hunk_header(trim_cr(l)).is_some())
 }
 
 /// A `--- ` file header and a mail signature's `-- ` also start with

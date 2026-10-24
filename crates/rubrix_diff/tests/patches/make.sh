@@ -117,3 +117,52 @@ seq_lines 1 8 >old/plain.txt
 seq_lines 1 8 | sed 's/^line 4$/line four/' >new/plain.txt
 touch -d '2026-01-01 00:00:00 +0000' old/plain.txt new/plain.txt
 diff -u old/plain.txt new/plain.txt >"$out/plain.patch" || true
+
+mkdir quilt-old quilt-new
+seq_lines 1 6 >quilt-old/x.txt
+seq_lines 1 6 | sed 's/^line 3$/line three/' >quilt-new/x.txt
+seq_lines 1 6 >quilt-old/y.txt
+seq_lines 1 6 | sed 's/^line 5$/line five/' >quilt-new/y.txt
+touch -d '2026-01-01 00:00:00 +0000' quilt-old/* quilt-new/*
+{
+  diff -u quilt-old/x.txt quilt-new/x.txt || true
+  diff -u quilt-old/y.txt quilt-new/y.txt || true
+} >"$out/quilt.patch"
+
+mkdir ru-old ru-new
+seq_lines 1 4 >ru-old/t.txt
+seq_lines 1 4 | sed 's/^line 2$/line two/' >ru-new/t.txt
+printf '\211PNG\000one' >ru-old/i.bin
+printf '\211PNG\000two' >ru-new/i.bin
+seq_lines 1 3 >ru-new/added.txt
+printf '\000only new' >ru-new/added.bin
+printf '\000only old' >ru-old/gone.bin
+touch -d '2026-01-01 00:00:00 +0000' ru-old/* ru-new/*
+diff -ruN ru-old ru-new >"$out/diff-r-binary.patch" || true
+diff -u /dev/null ru-new/added.bin >"$out/diff-null-binary.patch" || true
+
+mkdir a b
+printf '\211PNG\000one' >a/i.bin
+printf '\211PNG\000two' >b/i.bin
+git diff --no-color --no-index a/i.bin b/i.bin >"$out/noindex-binary.patch" || true
+echo hi >a/m.sh
+cp a/m.sh b/m.sh
+chmod +x b/m.sh
+git diff --no-color --no-index a/m.sh b/m.sh >"$out/noindex-mode.patch" || true
+accent=$'h\303\251llo.bin'
+printf '\211PNG\000one' >"a/$accent"
+printf '\211PNG\000two' >"b/$accent"
+printf '\000one' >"a/spaced name.bin"
+printf '\000two' >"b/spaced name.bin"
+{
+  git diff --no-color --no-index "a/$accent" "b/$accent" || true
+  git diff --no-color --no-index "a/spaced name.bin" "b/spaced name.bin" || true
+} >"$out/noindex-quoted.patch"
+
+printf 'top\n\nmiddle\n\nbottom\n' >blank.txt
+git add blank.txt
+git commit --quiet -m 'Add blank.txt'
+printf 'top\n\nMIDDLE\n\nbottom\n' >blank.txt
+git diff --no-color -- blank.txt | sed 's/^ $//' >"$out/blank-context-lf.patch"
+sed 's/$/\r/' "$out/blank-context-lf.patch" >"$out/blank-context-crlf.patch"
+reset
