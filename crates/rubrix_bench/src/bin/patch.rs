@@ -1,5 +1,5 @@
 //! `parse_patch` plus `rows` for every file, on the patches under
-//! `bench/fixtures/patch`.
+//! `bench/patch`.
 //!
 //! `--json <path>` also writes the table as JSON.
 
@@ -10,7 +10,7 @@ use std::process::ExitCode;
 use rubrix_bench::{Cell, Table, measure};
 use rubrix_diff::{Expansion, FileDiff, Layout, parse_patch, rows};
 
-const PATCHES: [&str; 2] = ["10k.patch", "100k.patch"];
+const PATCHES: [&str; 2] = ["large.patch.txt", "stress.patch.txt"];
 
 fn main() -> ExitCode {
     let mut json = None;
@@ -28,7 +28,7 @@ fn main() -> ExitCode {
     }
 
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../bench/fixtures/patch");
+        .join("../../bench/patch");
     let mut table = Table::new(&[
         "patch", "lines", "files", "ms", "p95 ms", "rows", "added",
         "removed",

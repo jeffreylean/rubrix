@@ -519,8 +519,8 @@ fn round_trip_rebuilds_the_new_file_and_matches_numstat() {
 
 #[test]
 fn bench_patches_match_numstat() {
-    let dir = repo().join("bench/fixtures/patch");
-    for name in ["10k.patch", "100k.patch"] {
+    let dir = repo().join("bench/patch");
+    for name in ["large.patch.txt", "stress.patch.txt"] {
         let path = dir.join(name);
         let text = fs::read_to_string(&path).unwrap();
         let parsed = parse_patch(&text).unwrap();
