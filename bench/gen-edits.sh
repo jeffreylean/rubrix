@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Usage: bench/gen-edits.sh [out-dir]   (default: target/edits)
+# Each pair changes rate% of the old lines, rounded to a whole line.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -9,23 +10,29 @@ fixtures=bench/fixtures/rust
 export LC_ALL=C
 
 edit() {
-  awk -v seed="$1" -v rate="$2" '
+  awk -v seed="$1" -v rate="$2" -v lines="$(wc -l <"$3")" '
     function next_uniform() {
       state = state * 16807 % 2147483647
       return state / 2147483647
     }
-    BEGIN { state = seed; k = 0 }
+    BEGIN {
+      state = seed
+      k = 0
+      left = lines
+      need = int(lines * rate / 100 + 0.5)
+    }
     {
-      if (next_uniform() >= rate / 100) {
+      if (next_uniform() * left-- >= need) {
         print
         next
       }
+      need--
       k++
       pick = next_uniform()
       if (pick < 0.5) {
         print $0 " // edit " k
       } else if (pick >= 0.75) {
-        print
+        print $0 " // edit " k
         print "    let edit_" k " = " k ";"
       }
     }
