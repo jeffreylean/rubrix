@@ -10,8 +10,12 @@
 //! field frames, the depth of brackets open in code outside strings
 //! (capped at 15), and whether the last line ended in a backslash.
 //! The last two decide whether a line that starts with `@` is a
-//! decorator or a matrix multiply. A replacement field left open at
-//! the end of a line stays open, as Python 3.12 and later allow. A
+//! decorator or a matrix multiply. A replacement field in a
+//! single-quoted f-string stays open at the end of a line, as Python
+//! 3.12 and later allow, when the line ends in an operator, a
+//! delimiter, or a backslash, or inside brackets. Any other open
+//! field, such as `f"{x` followed by a line that starts with `}`, ends
+//! at its line, so invalid code cannot swallow the lines after it. A
 //! string body, a format spec, or an unterminated string ends at its
 //! line, unless it is triple-quoted or the line ends in a backslash.
 //!
