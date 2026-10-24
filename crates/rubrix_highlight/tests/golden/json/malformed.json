@@ -1,0 +1,6 @@
+{"a": 1,, "b": [1 2 3]
+}}] "stray" tru nullx 1.2.3 -
+{"key": "unterminated string
+"next": 'single' @ # $ % ^
+/ /* open comment never closed
+"inside the comment": true

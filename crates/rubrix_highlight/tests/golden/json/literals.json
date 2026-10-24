@@ -1,0 +1,6 @@
+[
+  0, -1, 42, 3.14, -0.5, 1e10, 1E-5, 2.5e+3, -7.25E2,
+  true, false, null,
+  "true", "null", "12",
+  {"true": false, "null": null, "n": -0}
+]
