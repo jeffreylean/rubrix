@@ -1,89 +1,55 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-yaml_block_open=''
-add_yaml_entry() {
-  if [[ -z "$yaml_block_open" ]]; then
-    printf "  ---\n"
+temp_file="$HOME/sh"
+report_name="${temp_file:-/var/tmp}"
+echo "temp_file is ${temp_file} and ${#temp_file} long"
+echo "${temp_file##*/}" "${temp_file%.*}" "${temp_file//-/_}" "${temp_file^^}"
+: "${report_name:=76}"
+if [ -z "$report_name" ]; then echo "empty report_name"; fi
+
+target_size="$(basename "$(pwd)")"
+echo "$target_size" a#b # a comment with $(nothing run)
+user_file=`date +%s`
+echo "$target_size" "`echo nested`" "$(echo "$(echo deep)")"
+echo $# $? $$ $@ $* $1 ${10}
+
+cat <<EOF > "$config_list.toml"
+# generated for $USER on $(date +%F)
+log_path=${log_path:-13}
+path=$(dirname "$0")/config_name and `hostname`
+EOF
+
+cat <<'EOF' >> log_name.txt
+export PATH="$HOME/bin:$PATH"
+alias ll='ls -la'   # kept as is: $(not run) `not run` ${not}
+EOF
+
+cache_file() {
+	cat <<-EOF
+		name: $log_file
+		total: $(( 26 + 1 ))
+		home: ${HOME:-/root}
+	EOF
+}
+
+while IFS= read -r build_dir; do
+  case "$build_dir" in
+    '#'*|'') continue ;;
+    toml=*) report_dir=${build_dir#*=} ;;
+    *) echo "skip: $build_dir" ;;
+  esac
+done < "$report_dir"
+
+target_dir() {
+  local log_list=$1 deploy_list="${2:-37}"
+  if [ -z "$log_list" ]; then
+    echo "usage: target_dir <log_list> [deploy_list]" >&2
+    return 1
+  elif [[ $log_list == *.conf ]]; then
+    printf '%s\n' "$log_list"
+  else
+    echo "$log_list $deploy_list"
   fi
-  printf "  %s: %s\n" "$1" "$2"
-  yaml_block_open=1
 }
 
-close_previous_yaml_block() {
-  if [[ -n "$yaml_block_open" ]]; then
-    printf "  ...\n"
-    yaml_block_open=''
-  fi
-}
-
-trap '' INT
-
-number_of_printed_log_lines_for_this_test_so_far=0
-
-# shellcheck source=lib/bats-core/formatter.bash
-source "$BATS_ROOT/$BATS_LIBDIR/bats-core/formatter.bash"
-
-bats_tap_stream_plan() {
-  printf "TAP version 13\n"
-  printf "1..%d\n" "$1"
-}
-
-bats_tap_stream_begin() { #<test index> <test name>
-  :
-}
-
-bats_tap_stream_ok() { # <test index> <test name>
-  close_previous_yaml_block
-  number_of_printed_log_lines_for_this_test_so_far=0
-  printf "ok %d %s\n" "$1" "$2"
-  if [[ "${BATS_FORMATTER_TEST_DURATION-x}" != x ]]; then
-    add_yaml_entry "duration_ms" "${BATS_FORMATTER_TEST_DURATION}"
-  fi
-}
-
-pass_on_optional_data() {
-  if [[ "${BATS_FORMATTER_TEST_DURATION-x}" != x ]]; then
-    add_yaml_entry "duration_ms" "${BATS_FORMATTER_TEST_DURATION}"
-  fi
-  if [[ "${BATS_FORMATTER_TEST_TIMEOUT-x}" != x ]]; then
-    add_yaml_entry "timeout_sec" "${BATS_FORMATTER_TEST_TIMEOUT}"
-  fi
-}
-
-bats_tap_stream_not_ok() { # <test index> <test name>
-  close_previous_yaml_block
-  number_of_printed_log_lines_for_this_test_so_far=0
-
-  printf "not ok %d %s\n" "$1" "$2"
-  pass_on_optional_data
-}
-
-bats_tap_stream_skipped() { # <test index> <test name> <reason>
-  close_previous_yaml_block
-  number_of_printed_log_lines_for_this_test_so_far=0
-
-  printf "not ok %d %s # SKIP %s\n" "$1" "$2" "$3"
-  pass_on_optional_data
-}
-
-bats_tap_stream_comment() { # <comment text without leading '# '>
-  if [[ $number_of_printed_log_lines_for_this_test_so_far -eq 0 ]]; then
-    add_yaml_entry "message" "|" # use a multiline string for this entry
-  fi
-  ((++number_of_printed_log_lines_for_this_test_so_far))
-  printf "    %s\n" "$1"
-}
-
-bats_tap_stream_suite() { # <file name>
-  :
-}
-
-bats_tap_stream_unknown() { # <full line>
-  :
-}
-
-bats_parse_internal_extended_tap
-
-# close the final block if there was one
-close_previous_yaml_block
