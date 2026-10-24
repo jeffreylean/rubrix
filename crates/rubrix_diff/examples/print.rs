@@ -5,6 +5,7 @@
 //!
 //! ```text
 //! print [--split] [--expand <hunk>:<up|down|all>]... <old> <new>
+//! print [--split] --patch <file>
 //! ```
 //!
 //! `--split` prints the split layout instead of the stacked one.
@@ -57,9 +58,28 @@
 //! of blank cells whose text is the marker on each side whose line
 //! lacks the `\n`.
 //!
-//! Exit status is 0 on success, whether or not the files differ, and
-//! 2 with a message on stderr for a usage error or an unreadable
-//! file.
+//! `--patch <file>` prints a patch instead: the file is read as
+//! bytes and decoded as above, then parsed with `parse_patch`. Each
+//! file in it starts a block of
+//!
+//! ```text
+//! {name}  {kind}  +{added} -{removed}
+//! ```
+//!
+//! where `name` is `{old} -> {new}` when the two names differ, and
+//! `kind` is `modified`, `renamed`, `renamed and modified`, `added`,
+//! `deleted`, `copied` or `binary`. A line `  mode {old} -> {new}`
+//! in octal follows when the patch names a mode, with one side only
+//! for an added or deleted file. The file's hunks follow in the
+//! rows above, with line numbers taken from the hunk headers and
+//! gap rows for the lines between hunks. Blocks are separated by a
+//! blank line. `--expand` and the `<old> <new>` files do not go with
+//! `--patch`.
+//!
+//! Exit status is 0 on success, whether or not the files differ, 1
+//! with a message on stderr naming the line of a patch that does not
+//! parse, and 2 with a message on stderr for a usage error or an
+//! unreadable file.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -67,8 +87,8 @@ use std::io::{self, BufWriter, Write};
 use std::process::ExitCode;
 
 use rubrix_diff::{
-    Expansion, FileDiff, Layout, LineRef, Lines, Row, Rows, Side,
-    diff_texts, rows,
+    Expansion, FileChange, FileDiff, Layout, LineRef, Lines, Row,
+    Rows, Side, diff_texts, parse_patch, rows,
 };
 
 const CONTEXT: u32 = 3;
@@ -76,7 +96,8 @@ const MIN_NUMBER_WIDTH: usize = 4;
 const MAX_LEFT_WIDTH: usize = 60;
 const NO_NEWLINE: &str = "\\ No newline at end of file";
 const USAGE: &str = "usage: print [--split] [--expand \
-                     <hunk>:<up|down|all>]... <old> <new>";
+                     <hunk>:<up|down|all>]... <old> <new>\n       \
+                     print [--split] --patch <file>";
 
 struct Args {
     layout: Layout,
@@ -166,7 +187,11 @@ fn read(path: &str) -> Result<String, String> {
 
 fn main() -> ExitCode {
     let usage_failure = ExitCode::from(2);
-    let args = match parse(std::env::args().skip(1)) {
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    if argv.iter().any(|arg| arg == "--patch") {
+        return print_patch(&argv);
+    }
+    let args = match parse(argv.into_iter()) {
         Ok(args) => args,
         Err(problem) => {
             eprintln!("{problem}\n{USAGE}");
@@ -192,9 +217,13 @@ fn main() -> ExitCode {
     let rows = rows(&diff, args.layout, &expansion);
 
     let mut out = BufWriter::new(io::stdout().lock());
-    match write_rows(&mut out, &diff, &rows)
-        .and_then(|()| out.flush())
-    {
+    exit_code(
+        write_rows(&mut out, &diff, &rows).and_then(|()| out.flush()),
+    )
+}
+
+fn exit_code(written: io::Result<()>) -> ExitCode {
+    match written {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) if err.kind() == io::ErrorKind::BrokenPipe => {
             ExitCode::SUCCESS
@@ -206,15 +235,132 @@ fn main() -> ExitCode {
     }
 }
 
+fn patch_args(args: &[String]) -> Result<(Layout, &str), String> {
+    let mut layout = Layout::Stacked;
+    let mut path = None;
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--split" => layout = Layout::Split,
+            "--patch" => {
+                path = Some(
+                    args.next()
+                        .ok_or("--patch needs a file")?
+                        .as_str(),
+                );
+            }
+            other => {
+                return Err(format!(
+                    "{other} does not go with --patch"
+                ));
+            }
+        }
+    }
+    path.map(|path| (layout, path))
+        .ok_or_else(|| "--patch needs a file".to_owned())
+}
+
+fn print_patch(args: &[String]) -> ExitCode {
+    let usage_failure = ExitCode::from(2);
+    let (layout, path) = match patch_args(args) {
+        Ok(parsed) => parsed,
+        Err(problem) => {
+            eprintln!("{problem}\n{USAGE}");
+            return usage_failure;
+        }
+    };
+    let text = match read(path) {
+        Ok(text) => text,
+        Err(problem) => {
+            eprintln!("{problem}");
+            return usage_failure;
+        }
+    };
+    let files = match parse_patch(&text) {
+        Ok(files) => files,
+        Err(err) => {
+            eprintln!("{path}: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut out = BufWriter::new(io::stdout().lock());
+    exit_code(
+        write_patch(&mut out, &files, layout)
+            .and_then(|()| out.flush()),
+    )
+}
+
+fn write_patch(
+    out: &mut impl Write,
+    files: &[FileDiff],
+    layout: Layout,
+) -> io::Result<()> {
+    for (at, file) in files.iter().enumerate() {
+        if at > 0 {
+            writeln!(out)?;
+        }
+        writeln!(
+            out,
+            "{}  {}  +{} -{}",
+            file_names(file),
+            change_name(file.change()),
+            file.added(),
+            file.removed()
+        )?;
+        let mode = |mode: Option<u32>| mode.map(|m| format!("{m:o}"));
+        match (mode(file.old_mode()), mode(file.new_mode())) {
+            (Some(old), Some(new)) => {
+                writeln!(out, "  mode {old} -> {new}")?;
+            }
+            (Some(only), None) | (None, Some(only)) => {
+                writeln!(out, "  mode {only}")?;
+            }
+            (None, None) => {}
+        }
+        let rows = rows(file, layout, &Expansion::new());
+        write_rows(out, file, &rows)?;
+    }
+    Ok(())
+}
+
+fn file_names(file: &FileDiff) -> String {
+    match (file.old_name(), file.new_name()) {
+        (Some(old), Some(new)) if old != new => {
+            format!("{old} -> {new}")
+        }
+        (Some(name), _) | (None, Some(name)) => name.to_owned(),
+        (None, None) => "(no name)".to_owned(),
+    }
+}
+
+fn change_name(change: FileChange) -> &'static str {
+    match change {
+        FileChange::Modified => "modified",
+        FileChange::Renamed => "renamed",
+        FileChange::RenamedModified => "renamed and modified",
+        FileChange::Added => "added",
+        FileChange::Deleted => "deleted",
+        FileChange::Copied => "copied",
+        FileChange::Binary => "binary",
+    }
+}
+
 fn write_rows(
     out: &mut impl Write,
     diff: &FileDiff,
     rows: &Rows,
 ) -> io::Result<()> {
     let text = Text::new(diff);
-    let total = diff.old_lines().len().max(diff.new_lines().len());
-    let width = total.to_string().len().max(MIN_NUMBER_WIDTH);
     let all: Vec<Row> = rows.range(..).collect();
+    let total = if diff.is_partial() {
+        let lines = all.iter().flat_map(|row| {
+            [row.old_line(), row.new_line()].into_iter().flatten()
+        });
+        lines.map(|line| line.number.get()).max().unwrap_or(0)
+    } else {
+        diff.old_lines().len().max(diff.new_lines().len())
+    };
+    let width = total.to_string().len().max(MIN_NUMBER_WIDTH);
     let left_width = match rows.layout() {
         Layout::Stacked => 0,
         Layout::Split => all
