@@ -1,0 +1,10 @@
+key = "no end
+other = 'no end either
+= "missing key"
+[unterminated.header
+[[also
+value = [1, 2
+[table]
+bad = {a = 1
+after = """open string with no end
+and [table] inside

@@ -1,0 +1,33 @@
+# A TOML document with tables, arrays of tables, and keys.
+title = "rubrix"
+physical.color = "orange"
+site."google.com" = true
+'quoted.key' = 1
+"a.b".c = 2
+
+[package]
+name = "rubrix_highlight"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+memchr = { version = "2.8", default-features = false }
+
+[package.metadata.rubrix]
+no_std = true
+
+[ spaced . header ] # trailing comment
+key = "value"
+
+[servers."alpha.beta"]
+ip = "10.0.0.1"
+
+[[bin]]
+name = "first"
+path = "src/first.rs"
+
+[[bin]]
+name = "second"
+
+[[fruit.variety]]
+name = "red delicious"

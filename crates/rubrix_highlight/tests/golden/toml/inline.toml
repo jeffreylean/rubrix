@@ -1,0 +1,29 @@
+name = { first = "Tom", last = "Preston-Werner" }
+point = { x = 1, y = 2, "z axis" = 3 }
+nested = { a = { b = { c = [1, 2, { d = "deep" }] } } }
+empty_table = {}
+empty_array = []
+integers = [ 1, 2, 3 ]
+mixed = [ 1, "two", 3.0, true, 1979-05-27, [ "nested", 'array' ] ]
+tables = [ { x = 1, y = 2, z = 3 }, { x = 7, y = 8, z = 9 } ]
+multi = [
+  1,
+  2, # comment inside an array
+  "three",
+  [
+    4,
+    5,
+  ],
+  { k = "v" },
+]
+strings = [
+  """multi
+line""",
+  'literal',
+]
+after = "back to normal"
+
+[table]
+key = [
+  "in a table",
+]
