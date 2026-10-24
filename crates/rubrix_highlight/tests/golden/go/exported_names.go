@@ -25,4 +25,6 @@ func use(x T, ch chan Event, rest ...Arg) {
 	fmt.Println(Exported, MaxSize, y, c, m, s, p, p2)
 	_ = obj.(Shape)
 	z := a * Scale
+	check(Exported, Config)
+	p3 := new(Point)
 }

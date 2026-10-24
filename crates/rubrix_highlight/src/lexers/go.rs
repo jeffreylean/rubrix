@@ -30,6 +30,9 @@
 //!   `variable`.
 //! - A parameter list that spans lines gives its names the field
 //!   treatment when they start a line.
+//! - A name that follows a block comment on the same line is not at
+//!   the start of the line, so in a `type (` group it is a
+//!   `variable`.
 //! - A capitalised type after a comma, such as the second result in
 //!   `(Foo, Bar)`, is a `variable`.
 //! - There is no `string.doc`. Doc comments are `comment`.
@@ -447,7 +450,8 @@ impl Lexer<'_, '_, '_> {
                 b"const" => Prev::Const,
                 b"struct" => Prev::Struct,
                 b"map" => Prev::Map,
-                b"chan" => Prev::TypePos,
+                b"chan" | b"new" => Prev::TypePos,
+                _ if call => Prev::Other,
                 _ if reserved.is_some() => Prev::Other,
                 _ if matches!(
                     kind,
