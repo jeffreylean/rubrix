@@ -21,29 +21,73 @@ pub struct Measurement {
 /// budget of at least 20 batches. Each sample is one batch's
 /// average per-call time.
 pub fn measure<R>(mut run: impl FnMut() -> R) -> Measurement {
+    sample(&mut (), |()| run(), |()| (), true)
+}
+
+/// Times `run` one call per sample, as `measure.ts` does with
+/// `{ batch: false }`, for cases whose latency is the point.
+/// `after_each` runs after every call, warm-up included, and is not
+/// timed, but it counts against the budget. `run` and `after_each`
+/// share `state`.
+pub fn measure_each<S, R>(
+    state: &mut S,
+    run: impl FnMut(&mut S) -> R,
+    after_each: impl FnMut(&mut S),
+) -> Measurement {
+    sample(state, run, after_each, false)
+}
+
+fn sample<S, R>(
+    state: &mut S,
+    mut run: impl FnMut(&mut S) -> R,
+    mut after_each: impl FnMut(&mut S),
+    batched: bool,
+) -> Measurement {
     let mut batch = 1;
     let mut elapsed = Duration::ZERO;
     let mut iterations = 0;
     while elapsed < WARMUP || iterations < WARMUP_ITERATIONS {
-        let took = time_batch(&mut run, batch);
-        elapsed += took;
+        let start = Instant::now();
+        let took = time_batch(state, &mut run, batch);
+        after_each(state);
+        elapsed += start.elapsed();
         iterations += batch;
-        let fit = (batch as f64 * BATCH_TARGET.as_secs_f64()
-            / took.as_secs_f64().max(1e-6))
-        .ceil() as u64;
-        batch = fit.clamp(1, batch * 2);
+        if batched {
+            let fit = (batch as f64 * BATCH_TARGET.as_secs_f64()
+                / took.as_secs_f64().max(1e-6))
+            .ceil() as u64;
+            batch = fit.clamp(1, batch * 2);
+        }
     }
 
     let mut samples = Vec::new();
     let mut elapsed = Duration::ZERO;
     while elapsed < BUDGET || samples.len() < MIN_SAMPLES {
-        let took = time_batch(&mut run, batch);
-        elapsed += took;
+        let start = Instant::now();
+        let took = time_batch(state, &mut run, batch);
+        after_each(state);
+        elapsed += start.elapsed();
         samples.push(took.as_secs_f64() / batch as f64);
     }
+    percentiles(samples)
+}
+
+fn time_batch<S, R>(
+    state: &mut S,
+    run: &mut impl FnMut(&mut S) -> R,
+    batch: u64,
+) -> Duration {
+    let start = Instant::now();
+    for _ in 0..batch {
+        black_box(run(state));
+    }
+    start.elapsed()
+}
+
+fn percentiles(mut samples: Vec<f64>) -> Measurement {
     samples.sort_by(f64::total_cmp);
     let middle = samples.len() / 2;
-    let median = if samples.len() % 2 == 0 {
+    let median = if samples.len().is_multiple_of(2) {
         (samples[middle - 1] + samples[middle]) / 2.0
     } else {
         samples[middle]
@@ -53,17 +97,6 @@ pub fn measure<R>(mut run: impl FnMut() -> R) -> Measurement {
         median,
         p95: samples[p95_index],
     }
-}
-
-fn time_batch<R>(
-    run: &mut impl FnMut() -> R,
-    batch: u64,
-) -> Duration {
-    let start = Instant::now();
-    for _ in 0..batch {
-        black_box(run());
-    }
-    start.elapsed()
 }
 
 pub struct Fixture {
@@ -149,11 +182,13 @@ pub fn mib_per_sec(bytes: usize, seconds: f64) -> f64 {
     bytes as f64 / (1024.0 * 1024.0) / seconds
 }
 
-/// One table cell. Numbers stay numbers in `--json` output.
+/// One table cell. Numbers stay numbers in `--json` output, and a
+/// cell with no value is `null` there.
 pub enum Cell {
     Text(String),
     Count(usize),
     Number(f64),
+    Missing,
 }
 
 impl Cell {
@@ -162,6 +197,7 @@ impl Cell {
             Cell::Text(text) => text.clone(),
             Cell::Count(n) => n.to_string(),
             Cell::Number(n) => round(*n),
+            Cell::Missing => "-".to_owned(),
         }
     }
 
@@ -169,9 +205,20 @@ impl Cell {
         match self {
             Cell::Text(text) => json_string(text),
             Cell::Count(n) => n.to_string(),
-            Cell::Number(n) => n.to_string(),
+            Cell::Number(n) => json_number(*n),
+            Cell::Missing => "null".to_owned(),
         }
     }
+}
+
+fn json_number(n: f64) -> String {
+    let magnitude = if n == 0.0 {
+        0
+    } else {
+        n.abs().log10().floor() as i32
+    };
+    let decimals = (3 - magnitude).max(4) as usize;
+    format!("{n:.decimals$}")
 }
 
 fn json_string(text: &str) -> String {
@@ -199,11 +246,18 @@ fn round(n: f64) -> String {
     }
 }
 
+enum Row {
+    Cells(Vec<Cell>),
+    Note(String),
+}
+
 /// A results table with named columns, printed aligned or written
-/// as a JSON array of objects keyed by column name.
+/// as a JSON array of objects keyed by column name. A note prints
+/// as its own line after the row pushed before it and is not part
+/// of the JSON.
 pub struct Table {
     columns: Vec<&'static str>,
-    rows: Vec<Vec<Cell>>,
+    rows: Vec<Row>,
 }
 
 impl Table {
@@ -216,48 +270,47 @@ impl Table {
 
     pub fn push(&mut self, row: Vec<Cell>) {
         assert_eq!(row.len(), self.columns.len(), "row width");
-        self.rows.push(row);
+        self.rows.push(Row::Cells(row));
+    }
+
+    pub fn note(&mut self, text: String) {
+        self.rows.push(Row::Note(text));
+    }
+
+    fn data(&self) -> impl Iterator<Item = &Vec<Cell>> {
+        self.rows.iter().filter_map(|row| match row {
+            Row::Cells(cells) => Some(cells),
+            Row::Note(_) => None,
+        })
     }
 
     pub fn print(&self) {
-        let cells: Vec<Vec<String>> = self
-            .rows
-            .iter()
-            .map(|row| row.iter().map(Cell::display).collect())
-            .collect();
         let widths: Vec<usize> = (0..self.columns.len())
             .map(|i| {
-                cells
-                    .iter()
-                    .map(|row| row[i].chars().count())
+                self.data()
+                    .map(|row| row[i].display().chars().count())
                     .chain([self.columns[i].len()])
                     .max()
                     .unwrap_or(0)
             })
             .collect();
-        let line = |row: &[&str]| {
-            let mut out = String::new();
-            for (i, cell) in row.iter().enumerate() {
-                let pad = widths[i] - cell.chars().count();
-                if i == 0 {
-                    write!(out, "{cell}{}", " ".repeat(pad))
-                } else {
-                    write!(out, "  {}{cell}", " ".repeat(pad))
+        print_row(&widths, &self.columns);
+        for row in &self.rows {
+            match row {
+                Row::Cells(cells) => {
+                    print_row(
+                        &widths,
+                        cells.iter().map(Cell::display),
+                    );
                 }
-                .expect("write to String");
+                Row::Note(text) => println!("{text}"),
             }
-            println!("{out}");
-        };
-        line(&self.columns);
-        for row in &cells {
-            line(&row.iter().map(String::as_str).collect::<Vec<_>>());
         }
     }
 
     pub fn write_json(&self, path: &Path) -> io::Result<()> {
         let objects: Vec<String> = self
-            .rows
-            .iter()
+            .data()
             .map(|row| {
                 let fields: Vec<String> = self
                     .columns
@@ -275,5 +328,39 @@ impl Table {
             })
             .collect();
         fs::write(path, format!("[\n{}\n]\n", objects.join(",\n")))
+    }
+}
+
+fn print_row<S: AsRef<str>>(
+    widths: &[usize],
+    row: impl IntoIterator<Item = S>,
+) {
+    let mut out = String::new();
+    for (i, cell) in row.into_iter().enumerate() {
+        let cell = cell.as_ref();
+        let pad = widths[i] - cell.chars().count();
+        if i == 0 {
+            write!(out, "{cell}{}", " ".repeat(pad))
+        } else {
+            write!(out, "  {}{cell}", " ".repeat(pad))
+        }
+        .expect("write to String");
+    }
+    println!("{out}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_numbers_keep_four_significant_digits() {
+        let json = |n| Cell::Number(n).json();
+        assert_eq!(json(0.001966), "0.001966");
+        assert_eq!(json(0.001999), "0.001999");
+        assert_eq!(json(0.00001234), "0.00001234");
+        assert_eq!(json(12.3456789), "12.3457");
+        assert_eq!(json(12894.446), "12894.4460");
+        assert_eq!(json(0.0), "0.0000");
     }
 }

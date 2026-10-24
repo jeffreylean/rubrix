@@ -17,6 +17,17 @@
 //! before it, and leading whitespace to the line's first token, as
 //! in Pierre's lexers. Whitespace inside a string or a comment is
 //! part of it. An empty line has no runs.
+//!
+//! # Editing
+//!
+//! A text buffer that implements [`Lines`] reports each change as a
+//! [`LineEdit`], and [`Highlights::edit`] lexes again only the lines
+//! the change can reach. It stops at the first line that ends in the
+//! state it ended in before, or at the end of the window of lines
+//! the caller draws, and leaves the lines past that stale. An edit
+//! above the window lexes nothing and leaves every line from the
+//! edit on stale. [`Highlights::runs`] lexes stale lines when a
+//! caller reads them.
 
 #![no_std]
 
@@ -24,6 +35,8 @@ extern crate alloc;
 
 mod kind;
 mod lang;
+mod lines;
+mod live;
 mod stream;
 mod lexers {
     pub(crate) mod diff;
@@ -66,9 +79,12 @@ use core::ops::Range;
 
 pub use kind::Kind;
 pub use lang::Lang;
+pub use lines::Lines;
+pub use live::LineEdit;
 use runs::Runs;
 pub use state::State;
 pub use stream::Stream;
+use table::{Line, Table};
 
 /// One stretch of a line with one kind.
 ///
@@ -283,18 +299,19 @@ impl fmt::Display for CheckError {
 impl core::error::Error for CheckError {}
 
 /// The runs and end states of every line of one text.
+///
+/// [`Highlights::edit`] keeps them current as the text changes. An
+/// edit can leave the lines past a point stale, which
+/// [`Highlights::stale_from`] reports and [`Highlights::runs`]
+/// repairs.
 #[derive(Clone, Debug)]
 pub struct Highlights {
     lang: Lang,
-    lines: Vec<Line>,
+    lines: Table,
     runs: Vec<Run>,
-}
-
-#[derive(Clone, Debug)]
-struct Line {
-    start: u32,
-    runs: Range<u32>,
-    end: State,
+    garbage: usize,
+    exact: u32,
+    compare_from: u32,
 }
 
 impl Highlights {
@@ -305,24 +322,27 @@ impl Highlights {
     ) -> Highlights {
         Highlights {
             lang,
-            lines: Vec::with_capacity(lines),
+            lines: Table::with_capacity(lines),
             runs: Vec::with_capacity((lines * 8).min(max_runs)),
+            garbage: 0,
+            exact: 0,
+            compare_from: 0,
         }
     }
 
     pub(crate) fn push_line(&mut self, start: usize, raw: &str) {
         let content = raw.strip_suffix('\r').unwrap_or(raw);
         let first = self.runs.len();
-        let state = self
-            .lines
-            .last()
-            .map_or(&state::INITIAL, |line| &line.end);
+        let state = self.lines.start_state(self.lines.len());
         let end = lex_line(self.lang, content, state, &mut self.runs);
-        self.lines.push(Line {
-            start: start as u32,
-            runs: first as u32..self.runs.len() as u32,
+        let line = Line::new(
+            content.len() as u32,
+            first as u32..self.runs.len() as u32,
             end,
-        });
+        );
+        self.lines.insert_at_gap(start as u32, line);
+        self.lines.set_end((start + raw.len() + 1) as u32);
+        self.exact = self.lines.len();
     }
 
     pub fn lang(&self) -> Lang {
@@ -331,37 +351,38 @@ impl Highlights {
 
     /// At least 1.
     pub fn line_count(&self) -> u32 {
-        self.lines.len() as u32
+        self.lines.len()
     }
 
     /// The byte range of the line's content, without its terminator,
-    /// in the text these highlights were built from.
+    /// in the text these highlights describe, which is the text they
+    /// were built from with every edit applied. It is current for
+    /// every line, stale or not.
     pub fn line_range(&self, line: u32) -> Range<usize> {
-        let start = self.lines[line as usize].start as usize;
-        let len =
-            self.stored_runs(line).last().map_or(0, |run| run.end);
-        start..start + len as usize
+        let start = self.lines.start(line) as usize;
+        start..start + self.lines.get(line).len as usize
     }
 
-    /// The runs saved when the line was last lexed.
+    /// The runs saved when the line was last lexed, or one plain run
+    /// if an edit gave it no lexing yet. They are current for every
+    /// line before [`Highlights::stale_from`].
     pub fn stored_runs(&self, line: u32) -> &[Run] {
-        let runs = &self.lines[line as usize].runs;
+        let runs = &self.lines.get(line).runs;
         &self.runs[runs.start as usize..runs.end as usize]
     }
 
     /// The state the line starts from. Takes `0..=line_count()`, and
     /// `start_state(line_count())` is the state at the end of the
-    /// text.
+    /// text. Current for every line up to
+    /// [`Highlights::stale_from`].
     pub fn start_state(&self, line: u32) -> &State {
-        match line {
-            0 => &state::INITIAL,
-            n => &self.lines[n as usize - 1].end,
-        }
+        self.lines.start_state(line)
     }
 
-    /// Checks these highlights against the text they came from: the
+    /// Checks these highlights against the text they describe: the
     /// same lines at the same byte offsets, each passing
-    /// [`check_line`].
+    /// [`check_line`]. It checks structure and offsets, not kinds,
+    /// so it cannot tell a stale line from a current one.
     pub fn check(&self, text: &str) -> Result<(), CheckError> {
         let mut start = 0;
         let mut count = 0;
@@ -370,7 +391,7 @@ impl Highlights {
             if line >= self.line_count() {
                 continue;
             }
-            if self.lines[line as usize].start as usize != start {
+            if self.lines.start(line) as usize != start {
                 return Err(CheckError::LineStart { line });
             }
             let content = raw.strip_suffix('\r').unwrap_or(raw);
@@ -392,7 +413,8 @@ impl Highlights {
     /// One `line start..end kind text` row per run, the format of
     /// the golden files. Lines count from 0, offsets are within the
     /// line, and the text is quoted. `text` is the text these
-    /// highlights came from.
+    /// highlights describe. A line from [`Highlights::stale_from`]
+    /// on prints its stored runs, which may be out of date.
     pub fn display<'a>(
         &'a self,
         text: &'a str,
@@ -405,15 +427,17 @@ impl Highlights {
 }
 
 /// Equal when the language and every line's runs and end state are
-/// equal, however the runs are stored. [`Highlights::check`]
-/// compares line starts with a text.
+/// equal, however the runs are stored. This compares what is saved,
+/// stale lines included, so two highlights of one text can differ
+/// until [`Highlights::stale_from`] is `None` on both.
+/// [`Highlights::check`] compares line starts with a text.
 impl PartialEq for Highlights {
     fn eq(&self, other: &Highlights) -> bool {
         self.lang == other.lang
             && self.line_count() == other.line_count()
             && (0..self.line_count()).all(|n| {
-                let a = &self.lines[n as usize];
-                let b = &other.lines[n as usize];
+                let a = self.lines.get(n);
+                let b = other.lines.get(n);
                 a.end == b.end
                     && self.stored_runs(n) == other.stored_runs(n)
             })
@@ -439,6 +463,152 @@ impl fmt::Display for Rows<'_> {
             }
         }
         Ok(())
+    }
+}
+
+mod table {
+    use alloc::vec::Vec;
+    use core::ops::Range;
+
+    use crate::State;
+    use crate::state::INITIAL;
+
+    #[derive(Clone, Debug)]
+    pub(crate) struct Line {
+        pos: u32,
+        pub(crate) len: u32,
+        pub(crate) runs: Range<u32>,
+        pub(crate) end: State,
+    }
+
+    impl Line {
+        pub(crate) fn new(
+            len: u32,
+            runs: Range<u32>,
+            end: State,
+        ) -> Line {
+            Line {
+                pos: 0,
+                len,
+                runs,
+                end,
+            }
+        }
+    }
+
+    /// The lines of a text, split at a gap that sits where the last
+    /// edit was, so that an edit near the previous one moves nothing.
+    ///
+    /// The lines before the gap are in `front` in text order and
+    /// the lines after it in `back` in reverse, so `back` ends with
+    /// the line right after the gap. A line in `front` keeps its
+    /// byte offset in `pos`. A line in `back` keeps its distance from
+    /// the end of the text, `end - start`, which an edit at the
+    /// gap leaves alone, so no edit rebases the lines after it.
+    /// `end` is where a line past the last would start: the length
+    /// of the text plus one.
+    #[derive(Clone, Debug)]
+    pub(crate) struct Table {
+        front: Vec<Line>,
+        back: Vec<Line>,
+        end: u32,
+    }
+
+    impl Table {
+        pub(crate) fn with_capacity(lines: usize) -> Table {
+            Table {
+                front: Vec::with_capacity(lines),
+                back: Vec::new(),
+                end: 0,
+            }
+        }
+
+        pub(crate) fn len(&self) -> u32 {
+            (self.front.len() + self.back.len()) as u32
+        }
+
+        fn back_index(&self, line: usize) -> usize {
+            self.front.len() + self.back.len() - 1 - line
+        }
+
+        pub(crate) fn get(&self, line: u32) -> &Line {
+            let line = line as usize;
+            match self.front.get(line) {
+                Some(found) => found,
+                None => &self.back[self.back_index(line)],
+            }
+        }
+
+        pub(crate) fn get_mut(&mut self, line: u32) -> &mut Line {
+            let line = line as usize;
+            if line < self.front.len() {
+                &mut self.front[line]
+            } else {
+                let at = self.back_index(line);
+                &mut self.back[at]
+            }
+        }
+
+        pub(crate) fn start(&self, line: u32) -> u32 {
+            match self.front.get(line as usize) {
+                Some(found) => found.pos,
+                None if line == self.len() => self.end,
+                None => self.end - self.get(line).pos,
+            }
+        }
+
+        pub(crate) fn start_state(&self, line: u32) -> &State {
+            match line {
+                0 => &INITIAL,
+                n => &self.get(n - 1).end,
+            }
+        }
+
+        pub(crate) fn move_gap(&mut self, line: u32) {
+            let line = line as usize;
+            if line < self.front.len() {
+                let moved = self.back.len();
+                self.back.extend(self.front.drain(line..).rev());
+                for line in &mut self.back[moved..] {
+                    line.pos = self.end - line.pos;
+                }
+            } else {
+                let keep =
+                    self.back.len() - (line - self.front.len());
+                let moved = self.front.len();
+                self.front.extend(self.back.drain(keep..).rev());
+                for line in &mut self.front[moved..] {
+                    line.pos = self.end - line.pos;
+                }
+            }
+        }
+
+        pub(crate) fn take_after_gap(&mut self) -> Line {
+            self.back.pop().expect("no line after the gap")
+        }
+
+        pub(crate) fn insert_at_gap(
+            &mut self,
+            start: u32,
+            mut line: Line,
+        ) {
+            line.pos = start;
+            self.front.push(line);
+        }
+
+        pub(crate) fn set_end(&mut self, end: u32) {
+            self.end = end;
+        }
+
+        pub(crate) fn end(&self) -> u32 {
+            self.end
+        }
+
+        pub(crate) fn iter_mut(
+            &mut self,
+        ) -> impl Iterator<Item = &mut Line> {
+            self.front.iter_mut().chain(self.back.iter_mut().rev())
+        }
     }
 }
 
