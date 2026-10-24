@@ -10,8 +10,9 @@
 //!
 //! Multi-line strings (`"""` and `'''`) and multi-line arrays span
 //! lines. The state holds the open string and a stack of the open
-//! arrays and inline tables, 48 levels deep. Deeper levels are
-//! counted but read as arrays.
+//! arrays and inline tables. The stack records 48 levels. The count
+//! of open levels lives in the state's word up to 62 and in its tail
+//! from 63, so deeper levels are counted but read as arrays.
 //!
 //! Not handled: the whitespace that a line-ending backslash trims
 //! at the start of the next line is plain string text, dates and
@@ -59,7 +60,7 @@ impl Stack {
         if self.depth < STACK_LEVELS {
             self.tables |= u64::from(table) << self.depth;
         }
-        self.depth = (self.depth + 1).min(DEPTH_MAX as u32);
+        self.depth = self.depth.saturating_add(1);
     }
 
     fn pop(&mut self) {
@@ -82,7 +83,13 @@ struct Mode {
 impl Mode {
     fn load(state: &State) -> Mode {
         let word = state.word();
-        let depth = ((word >> DEPTH_SHIFT) & DEPTH_MAX) as u32;
+        let field = ((word >> DEPTH_SHIFT) & DEPTH_MAX) as u32;
+        let depth = match <[u8; 4]>::try_from(state.tail()) {
+            Ok(tail) if u64::from(field) == DEPTH_MAX => {
+                u32::from_le_bytes(tail).max(field)
+            }
+            _ => field,
+        };
         let levels = depth.min(STACK_LEVELS);
         let tables = (word >> STACK_SHIFT) & ((1 << levels) - 1);
         let open = match word & OPEN {
@@ -102,10 +109,15 @@ impl Mode {
             Open::Basic => 1,
             Open::Literal => 2,
         };
-        State::from_word(
-            open | u64::from(self.stack.depth) << DEPTH_SHIFT
-                | self.stack.tables << STACK_SHIFT,
-        )
+        let field = u64::from(self.stack.depth).min(DEPTH_MAX);
+        let word = open
+            | field << DEPTH_SHIFT
+            | self.stack.tables << STACK_SHIFT;
+        if field < DEPTH_MAX {
+            State::from_word(word)
+        } else {
+            State::with_tail(word, &self.stack.depth.to_le_bytes())
+        }
     }
 }
 

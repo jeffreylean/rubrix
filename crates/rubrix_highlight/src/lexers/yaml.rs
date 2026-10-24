@@ -5,8 +5,10 @@
 //! [`Kind::PunctuationSpecial`]. An anchor is [`Kind::Label`], an
 //! alias [`Kind::LabelAlias`], and a tag [`Kind::Type`]. A scalar is
 //! [`Kind::Boolean`], [`Kind::ConstantBuiltin`] for null,
-//! [`Kind::Number`], or else [`Kind::String`]. Quoted strings have
-//! [`Kind::StringEscape`] escapes in the double-quoted form.
+//! [`Kind::Number`], or else [`Kind::String`]. A plain scalar right
+//! after a `!!str` tag on the same line is always [`Kind::String`].
+//! Quoted strings have [`Kind::StringEscape`] escapes in the
+//! double-quoted form.
 //!
 //! Three things span lines, and the state holds them: a `|` or `>`
 //! block scalar, a quoted string, and a flow collection's depth. A
@@ -19,9 +21,13 @@
 //! Not handled: a plain scalar does not continue onto the next
 //! line, so a continuation line that holds `: ` reads as a key.
 //! Directives (`%YAML`), tabs as indentation, and timestamps (plain
-//! strings here) get no special kind. As in YAML 1.2, only `true`
-//! and `false` are booleans, so `yes`, `no`, `on`, `off`, `y`, and
-//! `n` are strings. Nothing checks that the text is valid YAML.
+//! strings here) get no special kind. A `!!str` tag ends its effect
+//! at the line end, so a scalar on the next line is read by its
+//! shape. As in YAML 1.2, only `true` and `false` are booleans, so
+//! `yes`, `no`, `on`, `off`, `y`, and `n` are strings. Nothing
+//! checks that the text is valid YAML.
+
+use core::mem;
 
 use memchr::{memchr, memchr2};
 
@@ -130,6 +136,7 @@ pub(crate) fn lex(
         can_key: open == Open::Code,
         parent_plus_one: lead + 1,
         next: Open::Code,
+        str_tag: false,
     };
     while lexer.i < lexer.s.len() {
         open = match open {
@@ -193,6 +200,7 @@ struct Lexer<'s, 'o, 'r> {
     can_key: bool,
     parent_plus_one: usize,
     next: Open,
+    str_tag: bool,
 }
 
 impl Lexer<'_, '_, '_> {
@@ -261,6 +269,7 @@ impl Lexer<'_, '_, '_> {
                     }
                 }
                 b'[' | b'{' => {
+                    self.str_tag = false;
                     self.flow = (self.flow + 1).min(255);
                     self.can_key = true;
                     self.emit(self.i + 1, Kind::PunctuationBracket);
@@ -299,7 +308,10 @@ impl Lexer<'_, '_, '_> {
         let kind = match lead {
             b'&' => Kind::Label,
             b'*' => Kind::LabelAlias,
-            _ => Kind::Type,
+            _ => {
+                self.str_tag = &self.s[self.i..end] == b"!!str";
+                Kind::Type
+            }
         };
         self.emit(end, kind);
     }
@@ -341,6 +353,7 @@ impl Lexer<'_, '_, '_> {
         let s = self.s;
         let start = self.i;
         let flow = self.flow > 0;
+        let tagged = mem::take(&mut self.str_tag);
         let mut j = start;
         let mut stop = s.len();
         let mut is_key = false;
@@ -384,7 +397,12 @@ impl Lexer<'_, '_, '_> {
             }
             self.emit(end, Kind::Property);
         } else {
-            self.emit(end, scalar_kind(&s[start..end]));
+            let kind = if tagged {
+                Kind::String
+            } else {
+                scalar_kind(&s[start..end])
+            };
+            self.emit(end, kind);
         }
         self.can_key = false;
     }
