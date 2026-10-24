@@ -8,6 +8,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+rubrix_diff = { path = "../rubrix_diff" }
 rubrix_highlight = { path = "../rubrix_highlight" }
 
 [lints]
