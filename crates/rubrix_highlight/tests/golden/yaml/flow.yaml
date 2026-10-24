@@ -1,0 +1,21 @@
+list: [1, "a", 'b', true, null, ~, 1.5, -2, 0x1F, plain text]
+map: {a: 1, b: [2, 3], c: {d: 4}}
+quoted: {"k": 1, 'j': 2, "m":3}
+adjacent: {x:1, y: 2}
+empty: [] 
+empty_map: {}
+multi: [
+  one,
+  two, # comment
+  {three: 3},
+]
+mapping: {
+  key: value,
+  other: [a, b],
+}
+after: done
+seq_of_flow:
+  - [a, b]
+  - {c: d}
+  - [e, {f: g}]
+stray: ] } , tail

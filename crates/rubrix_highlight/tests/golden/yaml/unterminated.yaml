@@ -1,0 +1,6 @@
+key: [1, 2
+other: {a: 1
+still: "no closing quote
+  and more
+and: 'also open
+the rest of the file is a string

@@ -1,0 +1,24 @@
+double: "a\nb\t\"c\" é \x41 \\ \/ end"
+double_unterminated_escape: "ends \
+  here"
+single: 'it''s a single-quoted string'
+multi_double: "starts here
+  continues: with a colon
+  and ends here" # then a comment
+multi_single: 'first
+  second ''quoted'' third'
+after_multi: 1
+plain: just some words, with: no key colon
+spaces:   many   spaces   inside
+hash: a#b c #comment
+yes: yes
+no: No
+on: ON
+float: .5
+inf: -.INF
+nan: .nan
+version: 1.2.3
+octal: 0o17
+bad_hex: 0xZZ
+date: 2001-12-14
+unicode: café 日本語 🎈

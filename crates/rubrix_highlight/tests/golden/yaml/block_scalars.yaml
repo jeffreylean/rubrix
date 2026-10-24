@@ -1,0 +1,46 @@
+literal: |
+  line one
+    indented more
+  a: b
+
+  [not.a.table]: after a blank line
+keep: |+
+  keep
+
+strip: |-
+  strip
+folded: >
+  folded
+  text
+folded_strip: >-
+  x
+explicit: |2
+    two extra spaces
+   one extra space
+  none
+after_explicit: 1
+with_comment: | # a comment
+  body: not a key
+  # not a comment
+next: 1
+list:
+  - |
+    first item
+    still first
+  - >-
+    second item
+  - name: job
+    script: |
+      echo "a: b"
+      - not a list item
+    after: 1
+  - third
+deep:
+  nested:
+    text: |
+      deep body
+    key: value
+top-level: >+
+  trailing blanks
+
+end: done
