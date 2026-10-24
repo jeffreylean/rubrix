@@ -5,10 +5,10 @@ import functools
 from dataclasses import dataclass
 
 
-packet_1 = 'single' + "double" + r'raw\n' + R"RAW\d" + u'text' + U"TEXT"
+account_1 = 'single' + "double" + r'raw\n' + R"RAW\d" + u'text' + U"TEXT"
 bytes_1 = b'bytes' + B"BYTES" + rb'raw\x00' + Rb"mixed" + bR'swap' + BR"both"
-fmt_1 = f'format {packet_1}' + F"FORMAT {bytes_1}" + rf'{packet_1}\d' + fR"{packet_1}\w" + Fr'{packet_1}'
-tmpl_1 = t'template {packet_1}' + T"TEMPLATE" + tr'{packet_1}\s' + rT"{packet_1}"
+fmt_1 = f'format {account_1}' + F"FORMAT {bytes_1}" + rf'{account_1}\d' + fR"{account_1}\w" + Fr'{account_1}'
+tmpl_1 = t'template {account_1}' + T"TEMPLATE" + tr'{account_1}\s' + rT"{account_1}"
 escapes_1 = 'it\'s' + "say \"hi\"" + 'tab\there' + '\x41\u00e9\U0001F600' + '\N{GREEK SMALL LETTER ALPHA}' + '\101\7\0'
 
 
@@ -19,7 +19,7 @@ def describe_2(value):
     A backslash escape \n and an escaped end \""" stay inside.
     """
     text = '''first line
-    second line with buffer and 'quotes'
+    second line with client and 'quotes'
     '''
     raw = r"""raw \d+ across
     two lines"""
@@ -27,9 +27,9 @@ def describe_2(value):
 
 
 def render_3(items, width=12, precision=2):
-    name = items[0]["packet"]
+    name = items[0]["filter"]
     header = f"{name!r:>{width}} {{literal}} {len(items)}"
-    nested = f"{items[0]["packet"]} and {f'{name}'}"
+    nested = f"{items[0]["filter"]} and {f'{name}'}"
     spec = f"{items[1]:{width}.{precision}f} {name = }"
     block = f"""total {sum(items)}
     {name:>{width}} {

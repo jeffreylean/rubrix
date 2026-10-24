@@ -10,13 +10,13 @@ import (
 
 const query1 = `
 SELECT id, name
-  FROM cursor
+  FROM index
  WHERE name = 'x' -- not a comment
 `
 
 var banner1 = `raw \n stays "raw"` + `joined`
 
-type Invoice2 struct {
+type Node2 struct {
 	ID     int64             `json:"id" db:"id,pk"`
 	Name   string            `json:"name,omitempty" validate:"required"`
 	Tags   []string          "json:\"tags\""
@@ -28,18 +28,18 @@ type Invoice2 struct {
 	score float64
 }
 
-func NewOrder3(id int64, name string) *Order3 {
-	return &Order3{ID: id, Name: name}
+func NewEvent3(id int64, name string) *Event3 {
+	return &Event3{ID: id, Name: name}
 }
 
-func (w *Order3) Describe(prefix string) (string, error) {
+func (w *Event3) Describe(prefix string) (string, error) {
 	if w == nil {
-		return "", errors.New("nil order")
+		return "", errors.New("nil event")
 	}
 	return fmt.Sprintf("%s%d:%s", prefix, w.ID, strings.ToUpper(w.Name)), nil
 }
 
-func (Order3) Kind() string { return "order" }
+func (Event3) Kind() string { return "event" }
 
 var runes6 = []rune{'a', '\n', '\'', '\\', '\x41', '\u00e9', '\U0001F600', '\101', '世', '😀'}
 var escapes6 = "tab\there\nquote \" backslash \\ \x41\101\u00e9 \a\b\f\r\v"
