@@ -31,7 +31,7 @@
 2 34..35 punctuation.special ")"
 3 0..4 keyword.control "for "
 3 4..6 punctuation.bracket "(("
-3 6..8 variable "i "
+3 6..8 plain "i "
 3 8..10 operator "= "
 3 10..11 number "0"
 3 11..13 punctuation.delimiter "; "

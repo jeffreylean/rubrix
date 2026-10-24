@@ -157,6 +157,7 @@ pub(crate) fn lex(
         stack: Stack::load(&tail[..depth]),
         queue: Cow::Borrowed(&tail[depth..]),
         queue_changed: false,
+        opened_heredoc: false,
         cmd: false,
         restore_cmd: false,
         expect: Expect::Any,
@@ -175,6 +176,7 @@ struct Lexer<'a, 'o, 'r> {
     stack: Stack,
     queue: Cow<'a, [u8]>,
     queue_changed: bool,
+    opened_heredoc: bool,
     cmd: bool,
     restore_cmd: bool,
     expect: Expect,
@@ -198,11 +200,7 @@ impl Lexer<'_, '_, '_> {
                 _ => self.code(),
             }
         }
-        let pending = !self.queue.is_empty();
-        if pending
-            && self.stack.top() != Some(Frame::Here)
-            && !self.stack.push(Frame::Here)
-        {
+        if self.opened_heredoc && !self.stack.push(Frame::Here) {
             self.queue = Cow::Borrowed(&[]);
             self.queue_changed = true;
         }
@@ -390,6 +388,10 @@ impl Lexer<'_, '_, '_> {
     }
 
     fn paren(&mut self) -> bool {
+        if self.expect == Expect::ForVar {
+            self.expect = Expect::Any;
+            self.awaiting_in = false;
+        }
         let s = self.s;
         let i = self.i;
         let frame = if i > 0 && s[i - 1] == b'(' {
@@ -572,6 +574,7 @@ impl Lexer<'_, '_, '_> {
         queue.extend_from_slice(&delimiter);
         queue.push(b'\n');
         self.queue_changed = true;
+        self.opened_heredoc = true;
         self.emit(operator, Kind::Operator);
         self.out.space(word);
         self.emit(end, Kind::StringSpecial);
@@ -589,8 +592,10 @@ impl Lexer<'_, '_, '_> {
         };
         if closes {
             self.emit(self.s.len(), Kind::StringSpecial);
-            self.stack.pop();
             self.pop_heredoc();
+            if self.queue.is_empty() {
+                self.stack.pop();
+            }
         } else if flags & QUOTED != 0 {
             self.emit(self.s.len(), Kind::String);
         } else {
