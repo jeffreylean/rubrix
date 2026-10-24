@@ -246,9 +246,6 @@ impl Lexer<'_, '_, '_> {
         }
     }
 
-    /// Lexes the string body from `from`, with the opening quote, if
-    /// any, before it. Returns whether a backslash ends the line and
-    /// so continues the string on the next line.
     fn string(&mut self, from: usize) -> bool {
         let kind = if self.key {
             Kind::PropertyJsonKey

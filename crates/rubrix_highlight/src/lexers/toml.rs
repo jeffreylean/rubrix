@@ -161,8 +161,6 @@ impl Lexer<'_, '_, '_> {
         self.i = end;
     }
 
-    /// The side of an entry that the open array or inline table
-    /// expects next.
     fn inside(&self) -> Side {
         if self.stack.depth > 0 && !self.stack.is_table() {
             Side::Value
@@ -291,7 +289,6 @@ impl Lexer<'_, '_, '_> {
         None
     }
 
-    /// A single-line basic string from its opening quote.
     fn basic(&mut self) {
         let s = self.s;
         let mut j = self.i + 1;
@@ -449,8 +446,6 @@ fn quote_run(s: &[u8], i: usize, quote: u8) -> usize {
     s[i..].iter().take_while(|&&b| b == quote).count()
 }
 
-/// The end of a single-line basic string whose body starts at
-/// `from`, or of the line when it is unterminated.
 fn basic_end(s: &[u8], from: usize) -> usize {
     let mut j = from;
     while let Some(k) = memchr2(b'"', b'\\', &s[j..]).map(|k| j + k) {
@@ -466,7 +461,6 @@ fn literal_end(s: &[u8], from: usize) -> usize {
     memchr(b'\'', &s[from..]).map_or(s.len(), |k| from + k + 1)
 }
 
-/// The length of the escape at the backslash `s[k]`.
 fn escape_len(s: &[u8], k: usize) -> Option<usize> {
     let digits = match s.get(k + 1)? {
         b'b' | b't' | b'n' | b'f' | b'r' | b'e' | b'"' | b'\\' => {
@@ -486,7 +480,6 @@ fn digits_at(s: &[u8], i: usize, count: usize) -> bool {
         .is_some_and(|d| d.iter().all(u8::is_ascii_digit))
 }
 
-/// The end of a local date, date-time, or time at `i`.
 fn date_end(s: &[u8], i: usize) -> Option<usize> {
     let word_end = |end: usize| {
         let glued =

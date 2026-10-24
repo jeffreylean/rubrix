@@ -30,13 +30,9 @@ use crate::{Kind, Runs, State};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Open {
     Code,
-    /// `parent` is one more than the column of the key or dash that
-    /// holds the scalar. `indent` is one more than the column of the
-    /// first body line, or 0 before that line is read. `digit` is
-    /// the indentation indicator, or 0.
     Block {
-        parent: u16,
-        indent: u16,
+        parent_plus_one: u16,
+        indent_plus_one: u16,
         digit: u8,
     },
     Double,
@@ -60,8 +56,8 @@ impl Mode {
         let word = state.word();
         let open = match word & OPEN {
             1 => Open::Block {
-                parent: (word >> PARENT_SHIFT) as u16,
-                indent: (word >> INDENT_SHIFT) as u16,
+                parent_plus_one: (word >> PARENT_SHIFT) as u16,
+                indent_plus_one: (word >> INDENT_SHIFT) as u16,
                 digit: (word >> DIGIT_SHIFT) as u8 & 0xF,
             },
             2 => Open::Double,
@@ -78,12 +74,12 @@ impl Mode {
         let open = match self.open {
             Open::Code => 0,
             Open::Block {
-                parent,
-                indent,
+                parent_plus_one,
+                indent_plus_one,
                 digit,
             } => {
-                1 | u64::from(parent) << PARENT_SHIFT
-                    | u64::from(indent) << INDENT_SHIFT
+                1 | u64::from(parent_plus_one) << PARENT_SHIFT
+                    | u64::from(indent_plus_one) << INDENT_SHIFT
                     | u64::from(digit) << DIGIT_SHIFT
             }
             Open::Double => 2,
@@ -101,19 +97,21 @@ pub(crate) fn lex(
     let Mode { mut open, flow } = Mode::load(state);
     let s = line.as_bytes();
     if let Open::Block {
-        parent,
-        indent,
+        parent_plus_one,
+        indent_plus_one,
         digit,
     } = open
     {
-        if let Some(indent) = block_line(s, parent, indent, digit) {
+        if let Some(indent_plus_one) =
+            block_line(s, parent_plus_one, indent_plus_one, digit)
+        {
             if !s.is_empty() {
                 out.push(s.len(), Kind::String);
             }
             return Mode {
                 open: Open::Block {
-                    parent,
-                    indent,
+                    parent_plus_one,
+                    indent_plus_one,
                     digit,
                 },
                 flow,
@@ -129,7 +127,7 @@ pub(crate) fn lex(
         out,
         flow: u32::from(flow),
         can_key: open == Open::Code,
-        parent: lead + 1,
+        parent_plus_one: lead + 1,
         next: Open::Code,
     };
     while lexer.i < lexer.s.len() {
@@ -146,42 +144,37 @@ pub(crate) fn lex(
     .store()
 }
 
-/// Whether a line belongs to the block scalar that the state
-/// describes. Returns the scalar's body indent after the line, or
-/// `None` when the scalar ended before it.
 fn block_line(
     s: &[u8],
-    parent: u16,
-    indent: u16,
+    parent_plus_one: u16,
+    indent_plus_one: u16,
     digit: u8,
 ) -> Option<u16> {
     let lead = s.iter().take_while(|&&b| b == b' ').count();
     if s[lead..].iter().all(|&b| b == b' ' || b == b'\t') {
-        return Some(indent);
+        return Some(indent_plus_one);
     }
     if lead == 0 && is_marker(s) {
         return None;
     }
     let needed = if digit > 0 {
-        usize::from(parent) + usize::from(digit)
-    } else if indent == 0 {
-        usize::from(parent) + 1
+        usize::from(parent_plus_one) + usize::from(digit)
+    } else if indent_plus_one == 0 {
+        usize::from(parent_plus_one) + 1
     } else {
-        usize::from(indent)
+        usize::from(indent_plus_one)
     };
     if lead + 1 < needed {
         return None;
     }
     let first = (lead + 1).min(usize::from(u16::MAX)) as u16;
-    Some(if digit == 0 && indent == 0 {
+    Some(if digit == 0 && indent_plus_one == 0 {
         first
     } else {
-        indent
+        indent_plus_one
     })
 }
 
-/// Whether the line starts a document with `---` or ends one with
-/// `...`.
 fn is_marker(s: &[u8]) -> bool {
     (s.starts_with(b"---") || s.starts_with(b"..."))
         && s.get(3).is_none_or(|&b| is_blank(b))
@@ -196,11 +189,8 @@ struct Lexer<'s, 'o, 'r> {
     i: usize,
     out: &'o mut Runs<'r>,
     flow: u32,
-    /// Whether the next token may be a mapping key.
     can_key: bool,
-    /// One more than the column of the innermost key or dash.
-    parent: usize,
-    /// What the line leaves open, once it is lexed.
+    parent_plus_one: usize,
     next: Open,
 }
 
@@ -235,11 +225,11 @@ impl Lexer<'_, '_, '_> {
                 b'-' | b'.' if self.i == 0 && is_marker(self.s) => {
                     self.emit(3, Kind::PunctuationSpecial);
                     self.flow = 0;
-                    self.parent = 0;
+                    self.parent_plus_one = 0;
                     self.can_key = true;
                 }
                 b'-' if block && spaced => {
-                    self.parent = self.i + 1;
+                    self.parent_plus_one = self.i + 1;
                     self.emit(
                         self.i + 1,
                         Kind::PunctuationListMarker,
@@ -248,7 +238,7 @@ impl Lexer<'_, '_, '_> {
                 }
                 b'?' if spaced => {
                     if block {
-                        self.parent = self.i + 1;
+                        self.parent_plus_one = self.i + 1;
                     }
                     self.emit(self.i + 1, Kind::PunctuationDelimiter);
                     self.can_key = true;
@@ -291,7 +281,6 @@ impl Lexer<'_, '_, '_> {
         self.next
     }
 
-    /// An anchor, an alias, or a tag.
     fn property(&mut self, lead: u8) {
         let s = self.s;
         let mut end = self.i + 1;
@@ -314,8 +303,6 @@ impl Lexer<'_, '_, '_> {
         self.emit(end, kind);
     }
 
-    /// A `|` or `>` header at the cursor. Returns `false` and
-    /// emits nothing when the rest of the line is no header.
     fn block_header(&mut self) -> bool {
         let s = self.s;
         let mut end = self.i + 1;
@@ -339,8 +326,11 @@ impl Lexer<'_, '_, '_> {
         }
         self.emit(end, Kind::PunctuationDelimiter);
         self.next = Open::Block {
-            parent: self.parent.min(usize::from(u16::MAX)) as u16,
-            indent: 0,
+            parent_plus_one: self
+                .parent_plus_one
+                .min(usize::from(u16::MAX))
+                as u16,
+            indent_plus_one: 0,
             digit,
         };
         true
@@ -389,7 +379,7 @@ impl Lexer<'_, '_, '_> {
         }
         if is_key {
             if !flow {
-                self.parent = start + 1;
+                self.parent_plus_one = start + 1;
             }
             self.emit(end, Kind::Property);
         } else {
@@ -402,7 +392,7 @@ impl Lexer<'_, '_, '_> {
         let s = self.s;
         let start = self.i;
         if self.can_key
-            && let Some(end) = close(s, start + 1, double)
+            && let Some(end) = quoted_end(s, start + 1, double)
         {
             let colon = s[end..]
                 .iter()
@@ -413,7 +403,7 @@ impl Lexer<'_, '_, '_> {
                     || s.get(colon + 1).is_none_or(|&b| is_blank(b)));
             if key {
                 if self.flow == 0 {
-                    self.parent = start + 1;
+                    self.parent_plus_one = start + 1;
                 }
                 self.emit(end, Kind::Property);
                 self.out.space(colon);
@@ -450,8 +440,6 @@ impl Lexer<'_, '_, '_> {
         }
     }
 
-    /// Lexes a double-quoted body from `from`. Returns whether the
-    /// closing quote is on this line.
     fn double_body(&mut self, from: usize) -> bool {
         let s = self.s;
         let mut j = from;
@@ -472,7 +460,7 @@ impl Lexer<'_, '_, '_> {
     }
 
     fn single_body(&mut self, from: usize) -> bool {
-        match close(self.s, from, false) {
+        match quoted_end(self.s, from, false) {
             Some(end) => {
                 self.emit(end, Kind::String);
                 self.can_key = false;
@@ -486,7 +474,6 @@ impl Lexer<'_, '_, '_> {
     }
 }
 
-/// The offset of the next byte that may end a plain scalar.
 fn scan(rest: &[u8], flow: bool) -> Option<usize> {
     if flow {
         rest.iter().position(|b| {
@@ -500,9 +487,7 @@ fn scan(rest: &[u8], flow: bool) -> Option<usize> {
     }
 }
 
-/// The end of a quoted string whose body starts at `from`, past its
-/// closing quote, or `None` when the line ends first.
-fn close(s: &[u8], from: usize, double: bool) -> Option<usize> {
+fn quoted_end(s: &[u8], from: usize, double: bool) -> Option<usize> {
     let mut j = from;
     if double {
         while let Some(k) =
@@ -612,13 +597,13 @@ mod tests {
         let opens = [
             Open::Code,
             Open::Block {
-                parent: 1,
-                indent: 0,
+                parent_plus_one: 1,
+                indent_plus_one: 0,
                 digit: 0,
             },
             Open::Block {
-                parent: u16::MAX,
-                indent: 7,
+                parent_plus_one: u16::MAX,
+                indent_plus_one: 7,
                 digit: 9,
             },
             Open::Double,
