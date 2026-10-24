@@ -1,0 +1,15 @@
+--- a/query.sql	2026-10-24 12:00:00.000000000 +0000
++++ b/query.sql	2026-10-24 12:01:00.000000000 +0000
+@@ -1,5 +1,5 @@
+ select 1;
+--- a comment
++-- another comment
++++ counter
+--- removed header lookalike
+ 
+ select 2;
+--- next/file.sql
++++ next/file.sql
+@@ -3 +3 @@ select
+-a
++b

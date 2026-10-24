@@ -1,0 +1,50 @@
+commit 0123456789abcdef0123456789abcdef01234567
+Author: A Dev <dev@example.com>
+Date:   Sat Oct 24 12:00:00 2026 +0000
+
+    Change things
+
+diff --git a/src/lib.rs b/src/lib.rs
+index 1a2b3c4..5d6e7f8 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,6 +1,7 @@ fn main() {
+ use std::io;
+-use std::fs;
++use std::path::Path;
++use std::fs;
+ 
+ fn main() {
+-    run()
+\ No newline at end of file
++    run();
+ }
+@@ -40 +41 @@
+-old
++new
+diff --git a/new.txt b/new.txt
+new file mode 100644
+index 0000000..e69de29
+--- /dev/null
++++ b/new.txt
+@@ -0,0 +1,2 @@
++first
++second
+diff --git a/old.txt b/old.txt
+deleted file mode 100644
+index e69de29..0000000
+--- a/old.txt
++++ /dev/null
+@@ -1,2 +0,0 @@
+-first
+-second
+diff --git a/a.sh b/a.sh
+old mode 100644
+new mode 100755
+diff --git a/b.txt b/c.txt
+similarity index 90%
+rename from b.txt
+rename to c.txt
+diff --git a/img.png b/img.png
+index 1111111..2222222 100644
+Binary files a/img.png and b/img.png differ
