@@ -11,6 +11,11 @@
 //! `variable.parameter` is never emitted. Object keys and interface
 //! members lex as `variable`, not `property`. A generic call such as
 //! `foo<T>(x)` lexes `foo` as `variable`, not `function`.
+//!
+//! A `/` after the `)` of an `if`, `for`, `while`, or `with` head
+//! starts a regex, but only for a head whose `(` opens at paren depth
+//! 47 or less. Deeper heads are not tracked, so a `/` after their `)`
+//! lexes as division. Paren depth saturates at 255.
 
 use alloc::vec::Vec;
 
@@ -51,21 +56,24 @@ impl Parens {
     const TRACKED: u8 = 48;
 
     fn push(&mut self, control: bool) {
-        if self.depth < Self::TRACKED {
-            let bit = 1 << self.depth;
-            self.control = if control {
-                self.control | bit
-            } else {
-                self.control & !bit
-            };
+        if control && self.depth < Self::TRACKED {
+            self.control |= 1 << self.depth;
         }
         self.depth = self.depth.saturating_add(1);
     }
 
     fn pop(&mut self) -> bool {
-        self.depth = self.depth.saturating_sub(1);
-        self.depth < Self::TRACKED
-            && self.control >> self.depth & 1 == 1
+        let Some(depth) = self.depth.checked_sub(1) else {
+            return false;
+        };
+        self.depth = depth;
+        if depth >= Self::TRACKED {
+            return false;
+        }
+        let bit = 1 << depth;
+        let control = self.control & bit != 0;
+        self.control &= !bit;
+        control
     }
 }
 
@@ -603,7 +611,11 @@ impl Lexer<'_, '_, '_> {
             _ => (self.name_kind(word, end, prev), Prev::Value),
         };
         self.emit(end, kind);
-        self.prev = after;
+        self.prev = if prev == Prev::Control && word == b"await" {
+            Prev::Control
+        } else {
+            after
+        };
     }
 
     fn name_follows(&self, end: usize) -> bool {
