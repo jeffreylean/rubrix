@@ -1,13 +1,5 @@
 //! Writes `bench/fixtures/shell/{tiny,small,large}.sh.txt`, the shell
 //! benchmark tiers of about 50, 800, and 10,000 lines.
-//!
-//! The text is the same on every run. A fixed seed drives a random
-//! walk over snippets written for rubrix, over a small grammar of
-//! command lines, and over `if`, `for`, `while`, function, and group
-//! blocks that nest those, so lines vary in shape, length, indent,
-//! and identifiers. The snippets cover each construct the shell lexer
-//! handles. The three tiers share the seed, so a smaller tier opens
-//! every larger one.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
