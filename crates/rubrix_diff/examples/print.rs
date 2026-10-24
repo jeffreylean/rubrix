@@ -11,7 +11,8 @@
 //! `--expand` reveals `Expansion::STEP` lines of the gap above the
 //! 0-based hunk, from the `up` or `down` end, or the whole gap with
 //! `all`. It may repeat. The hunk count names the gap after the last
-//! hunk.
+//! hunk. A larger number, or any `--expand` on identical files, is
+//! a usage error.
 //!
 //! Output has no colour, and none for identical files. Each hunk
 //! starts with its `@@ -a,b +c,d @@` header on its own line. With
@@ -125,6 +126,29 @@ fn parse_expand(spec: &str) -> Result<(u32, Side), String> {
     Ok((hunk, side))
 }
 
+fn check_expands(
+    expands: &[(u32, Side)],
+    diff: &FileDiff,
+) -> Result<(), String> {
+    let hunks = diff.hunks().len();
+    let Some(&(hunk, _)) = expands
+        .iter()
+        .find(|&&(hunk, _)| hunks == 0 || hunk as usize > hunks)
+    else {
+        return Ok(());
+    };
+    Err(if hunks == 0 {
+        format!(
+            "--expand names hunk {hunk}, but the files are identical"
+        )
+    } else {
+        format!(
+            "--expand names hunk {hunk}, but the diff has {hunks} \
+             hunks, so it must be 0 to {hunks}"
+        )
+    })
+}
+
 fn read(path: &str) -> Result<String, String> {
     std::fs::read(path)
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
@@ -148,6 +172,10 @@ fn main() -> ExitCode {
         }
     };
     let diff = diff_texts(&old, &new, CONTEXT);
+    if let Err(problem) = check_expands(&args.expands, &diff) {
+        eprintln!("{problem}\n{USAGE}");
+        return usage_failure;
+    }
     let mut expansion = Expansion::new();
     for &(hunk, side) in &args.expands {
         expansion.reveal(hunk, side, Expansion::STEP);
