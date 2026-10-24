@@ -26,11 +26,38 @@ impl Rng {
     }
 }
 
+fn parse_seed(var: Option<&str>) -> u64 {
+    var.map_or(1, |seed| {
+        seed.parse().unwrap_or_else(|_| {
+            panic!(
+                "RUBRIX_SEED must be an unsigned integer, got \
+                 {seed:?}"
+            )
+        })
+    })
+}
+
 fn seed() -> u64 {
-    std::env::var("RUBRIX_SEED")
-        .ok()
-        .and_then(|seed| seed.parse().ok())
-        .unwrap_or(1)
+    let var = std::env::var_os("RUBRIX_SEED");
+    parse_seed(
+        var.as_ref().map(|seed| seed.to_string_lossy()).as_deref(),
+    )
+}
+
+#[test]
+fn seed_defaults_to_one() {
+    assert_eq!(parse_seed(None), 1);
+}
+
+#[test]
+fn seed_reads_the_variable() {
+    assert_eq!(parse_seed(Some("7")), 7);
+}
+
+#[test]
+#[should_panic(expected = "RUBRIX_SEED")]
+fn unparsable_seed_fails() {
+    parse_seed(Some("seven"));
 }
 
 fn golden_texts() -> Vec<(Lang, PathBuf, String)> {
@@ -160,11 +187,14 @@ fn random_edit(
 #[track_caller]
 fn assert_current_prefix(
     got: &Highlights,
-    lines: &[String],
+    want: &Highlights,
+    text: &str,
     context: &str,
 ) {
-    let want = highlight(got.lang(), &join(lines));
     assert_eq!(got.line_count(), want.line_count(), "{context}");
+    got.check(text).unwrap_or_else(|err| {
+        panic!("{context}: check failed: {err}");
+    });
     let current = got.stale_from().unwrap_or(got.line_count());
     for n in 0..got.line_count() {
         assert_eq!(
@@ -187,6 +217,61 @@ fn assert_current_prefix(
     }
 }
 
+fn changed_hull(
+    old: &Highlights,
+    new: &Highlights,
+    edit: LineEdit,
+    window: &Range<u32>,
+) -> Range<u32> {
+    let LineEdit {
+        first,
+        removed,
+        inserted,
+    } = edit;
+    if first < window.start {
+        return 0..0;
+    }
+    let mut changed = (window.start
+        ..window.end.min(new.line_count()))
+        .filter(|&n| {
+            n >= first
+                && (n < first + inserted
+                    || new.stored_runs(n)
+                        != old.stored_runs(n - inserted + removed))
+        });
+    let Some(start) = changed.next() else {
+        return 0..0;
+    };
+    start..changed.next_back().unwrap_or(start) + 1
+}
+
+#[track_caller]
+fn assert_nothing_lexed(
+    before: &Highlights,
+    after: &Highlights,
+    edit: LineEdit,
+    context: &str,
+) {
+    let LineEdit {
+        first,
+        removed,
+        inserted,
+    } = edit;
+    for n in (0..first).chain(first + inserted..after.line_count()) {
+        let old = if n < first { n } else { n - inserted + removed };
+        assert_eq!(
+            after.stored_runs(n),
+            before.stored_runs(old),
+            "{context}: line {n} was lexed"
+        );
+    }
+    assert!(
+        after.stale_from().unwrap_or(after.line_count()) <= first,
+        "{context}: stale from {:?}, not from the edit",
+        after.stale_from()
+    );
+}
+
 fn settle(got: &mut Highlights, lines: &[String]) {
     let last = got.line_count() - 1;
     got.runs(last, lines);
@@ -204,6 +289,7 @@ fn random_edits_match_highlight() {
         let mut lines = split(text);
         let mut got = highlight(*lang, text);
         for step in 0..EDITS {
+            let before = got.clone();
             let (edit, window) = random_edit(&mut rng, &mut lines);
             let changed = got.edit(edit, &lines, window.clone());
             let context = format!(
@@ -217,16 +303,32 @@ fn random_edits_match_highlight() {
                 "{context}: changed {changed:?} leaves the window"
             );
             assert!(changed.end <= got.line_count(), "{context}");
-            assert_current_prefix(&got, &lines, &context);
+            let text = join(&lines);
+            let want = highlight(*lang, &text);
+            assert_current_prefix(&got, &want, &text, &context);
+            if edit.first < window.start {
+                assert!(
+                    changed.is_empty(),
+                    "{context}: changed {changed:?} above the window"
+                );
+                assert_nothing_lexed(&before, &got, edit, &context);
+            }
+            if before.stale_from().is_none() {
+                assert_eq!(
+                    changed,
+                    changed_hull(&before, &want, edit, &window),
+                    "{context}: changed is not the hull of the \
+                     changed lines"
+                );
+            }
             if rng.chance(30) {
                 let line = rng.below(got.line_count());
-                let want = highlight(*lang, &join(&lines));
                 assert_eq!(
                     got.runs(line, &lines),
                     want.stored_runs(line),
                     "{context}: read of line {line}"
                 );
-                assert_current_prefix(&got, &lines, &context);
+                assert_current_prefix(&got, &want, &text, &context);
             }
         }
         settle(&mut got, &lines);
@@ -237,7 +339,7 @@ fn random_edits_match_highlight() {
             "{name} seed {seed}: final text differs"
         );
         got.check(&text).unwrap();
-        println!("{name}: {EDITS} edits ok");
+        println!("{name}: {EDITS} edits ok (seed {seed})");
     }
 }
 
@@ -291,7 +393,7 @@ fn stale_edit_above_a_distant_window_returns_nothing() {
     };
     let changed = got.edit(edit, &lines, 9_880..10_000);
     assert!(changed.is_empty(), "changed {changed:?}");
-    assert_eq!(got.stale_from(), Some(3));
+    assert_eq!(got.stale_from(), Some(2));
 
     let last = got.line_count() - 1;
     assert!(
@@ -299,6 +401,128 @@ fn stale_edit_above_a_distant_window_returns_nothing() {
             .iter()
             .all(|run| run.kind == Kind::Comment)
     );
+    settle(&mut got, &lines);
+    assert!(got == highlight(Lang::Rust, &join(&lines)));
+}
+
+#[test]
+fn edit_above_the_window_lexes_nothing() {
+    let mut lines = numbered(1_000);
+    let mut got = highlight(Lang::Rust, &join(&lines));
+    lines[50].insert_str(0, "/*");
+    let edit = LineEdit {
+        first: 50,
+        removed: 1,
+        inserted: 1,
+    };
+    let changed = got.edit(edit, &lines, 51..171);
+    assert!(changed.is_empty(), "changed {changed:?}");
+    assert_eq!(got.stale_from(), Some(50));
+    assert!(
+        got.stored_runs(100)
+            .iter()
+            .any(|run| run.kind != Kind::Comment),
+        "a line in the window was lexed"
+    );
+
+    assert!(
+        got.runs(100, &lines)
+            .iter()
+            .all(|run| run.kind == Kind::Comment)
+    );
+    settle(&mut got, &lines);
+    assert!(got == highlight(Lang::Rust, &join(&lines)));
+}
+
+#[test]
+fn edit_above_the_window_does_not_lex_up_to_older_stale_lines() {
+    let mut lines = numbered(1_000);
+    let mut got = highlight(Lang::Rust, &join(&lines));
+    lines[0].insert_str(0, "/*");
+    let open = LineEdit {
+        first: 0,
+        removed: 1,
+        inserted: 1,
+    };
+    got.edit(open, &lines, 0..300);
+    assert_eq!(got.stale_from(), Some(300));
+
+    lines[10].insert_str(0, "*/");
+    let close = LineEdit {
+        first: 10,
+        removed: 1,
+        inserted: 1,
+    };
+    let changed = got.edit(close, &lines, 100..220);
+    assert!(changed.is_empty(), "changed {changed:?}");
+    assert_eq!(got.stale_from(), Some(10));
+    assert!(
+        got.stored_runs(150)
+            .iter()
+            .all(|run| run.kind == Kind::Comment),
+        "a line in the window was lexed"
+    );
+
+    assert!(
+        got.runs(150, &lines)
+            .iter()
+            .any(|run| run.kind != Kind::Comment)
+    );
+    assert_eq!(got.stale_from(), Some(151));
+    settle(&mut got, &lines);
+    assert!(got == highlight(Lang::Rust, &join(&lines)));
+}
+
+#[test]
+fn deferred_edit_does_not_converge_on_a_line_it_has_not_lexed() {
+    let mut lines: Vec<String> =
+        ["/*", "x", "*/", "let y = 1;"].map(str::to_owned).to_vec();
+    let mut got = highlight(Lang::Rust, &join(&lines));
+    lines[0] = "let a = 1;".to_owned();
+    let edit = LineEdit {
+        first: 0,
+        removed: 1,
+        inserted: 1,
+    };
+    let changed = got.edit(edit, &lines, 3..4);
+    assert!(changed.is_empty(), "changed {changed:?}");
+    assert!(
+        got.runs(1, &lines)
+            .iter()
+            .all(|run| run.kind != Kind::Comment)
+    );
+    settle(&mut got, &lines);
+    assert!(got == highlight(Lang::Rust, &join(&lines)));
+}
+
+#[test]
+fn changed_lines_leave_out_lexed_lines_that_did_not_change() {
+    let mut lines: Vec<String> =
+        ["/* open", "b", "c", "d", "e"].map(str::to_owned).to_vec();
+    let mut got = highlight(Lang::Rust, &join(&lines));
+    lines.insert(1, "/*".to_owned());
+    let edit = LineEdit {
+        first: 1,
+        removed: 0,
+        inserted: 1,
+    };
+    assert_eq!(got.edit(edit, &lines, 0..u32::MAX), 1..2);
+    settle(&mut got, &lines);
+    assert!(got == highlight(Lang::Rust, &join(&lines)));
+}
+
+#[test]
+fn changed_lines_stop_at_the_last_line_that_changed() {
+    let mut lines: Vec<String> =
+        ["/* a", "b", "c", "d"].map(str::to_owned).to_vec();
+    let mut got = highlight(Lang::Rust, &join(&lines));
+    lines.splice(0..0, ["/*".to_owned(), "/*".to_owned()]);
+    let edit = LineEdit {
+        first: 0,
+        removed: 0,
+        inserted: 2,
+    };
+    assert_eq!(got.edit(edit, &lines, 0..u32::MAX), 0..2);
     settle(&mut got, &lines);
     assert!(got == highlight(Lang::Rust, &join(&lines)));
 }

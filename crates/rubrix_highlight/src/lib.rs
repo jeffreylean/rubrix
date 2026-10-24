@@ -24,8 +24,10 @@
 //! [`LineEdit`], and [`Highlights::edit`] lexes again only the lines
 //! the change can reach. It stops at the first line that ends in the
 //! state it ended in before, or at the end of the window of lines
-//! the caller draws, and leaves the lines past that stale.
-//! [`Highlights::runs`] lexes stale lines when a caller reads them.
+//! the caller draws, and leaves the lines past that stale. An edit
+//! above the window lexes nothing and leaves every line from the
+//! edit on stale. [`Highlights::runs`] lexes stale lines when a
+//! caller reads them.
 
 #![no_std]
 
@@ -309,6 +311,7 @@ pub struct Highlights {
     runs: Vec<Run>,
     garbage: usize,
     exact: u32,
+    compare_from: u32,
 }
 
 impl Highlights {
@@ -323,6 +326,7 @@ impl Highlights {
             runs: Vec::with_capacity((lines * 8).min(max_runs)),
             garbage: 0,
             exact: 0,
+            compare_from: 0,
         }
     }
 
@@ -359,8 +363,9 @@ impl Highlights {
         start..start + self.lines.get(line).len as usize
     }
 
-    /// The runs saved when the line was last lexed. They are current
-    /// for every line before [`Highlights::stale_from`].
+    /// The runs saved when the line was last lexed, or one plain run
+    /// if an edit gave it no lexing yet. They are current for every
+    /// line before [`Highlights::stale_from`].
     pub fn stored_runs(&self, line: u32) -> &[Run] {
         let runs = &self.lines.get(line).runs;
         &self.runs[runs.start as usize..runs.end as usize]
@@ -408,7 +413,8 @@ impl Highlights {
     /// One `line start..end kind text` row per run, the format of
     /// the golden files. Lines count from 0, offsets are within the
     /// line, and the text is quoted. `text` is the text these
-    /// highlights came from.
+    /// highlights describe. A line from [`Highlights::stale_from`]
+    /// on prints its stored runs, which may be out of date.
     pub fn display<'a>(
         &'a self,
         text: &'a str,
@@ -421,8 +427,10 @@ impl Highlights {
 }
 
 /// Equal when the language and every line's runs and end state are
-/// equal, however the runs are stored. [`Highlights::check`]
-/// compares line starts with a text.
+/// equal, however the runs are stored. This compares what is saved,
+/// stale lines included, so two highlights of one text can differ
+/// until [`Highlights::stale_from`] is `None` on both.
+/// [`Highlights::check`] compares line starts with a text.
 impl PartialEq for Highlights {
     fn eq(&self, other: &Highlights) -> bool {
         self.lang == other.lang

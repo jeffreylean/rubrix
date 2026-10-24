@@ -3,7 +3,7 @@ use core::mem;
 use core::ops::Range;
 
 use crate::table::Line;
-use crate::{Highlights, Lines, Run, State, lex_line};
+use crate::{Highlights, Kind, Lines, Run, State, lex_line};
 
 const MIN_GARBAGE: usize = 1 << 12;
 
@@ -21,28 +21,70 @@ pub struct LineEdit {
     pub inserted: u32,
 }
 
+struct Relexed {
+    before: State,
+    changed: bool,
+}
+
+struct Hull {
+    window: Range<u32>,
+    edited: Range<u32>,
+    start: u32,
+    end: u32,
+}
+
+impl Hull {
+    fn new(window: Range<u32>, edited: Range<u32>) -> Hull {
+        Hull {
+            window,
+            edited,
+            start: u32::MAX,
+            end: 0,
+        }
+    }
+
+    fn note(&mut self, line: u32, changed: bool) {
+        if (changed || self.edited.contains(&line))
+            && self.window.contains(&line)
+        {
+            self.start = self.start.min(line);
+            self.end = self.end.max(line + 1);
+        }
+    }
+
+    fn finish(self) -> Range<u32> {
+        if self.start < self.end {
+            self.start..self.end
+        } else {
+            0..0
+        }
+    }
+}
+
 impl Highlights {
     /// Brings the highlights up to date with an edit that has
-    /// already changed `lines`, and returns a range that covers
-    /// every line it lexed inside `window`.
+    /// already changed `lines`, and returns the hull of the lines
+    /// inside `window` whose runs changed, or `0..0` if none did.
     ///
     /// `lines` holds the text after the edit. The edit's own lines
-    /// are lexed at once, whatever `window` is. Lexing then goes on
-    /// to the lines below, which a changed end state can change,
-    /// and stops at the first line that ends in the state it ended
-    /// in before, because every line after it is then unchanged.
-    /// Lexing also stops at the end of `window`, or before it if
-    /// `window` starts below the edit, and leaves the lines from
-    /// there on stale. [`Highlights::runs`] lexes them when it reads
-    /// them, and [`Highlights::stale_from`] says where they start.
+    /// count as changed. Lexing starts at the edit and goes on to
+    /// the lines below, which a changed end state can change. It
+    /// stops at the first line that ends in the state it ended in
+    /// before, because every line after it is then unchanged, or at
+    /// the end of `window`, and leaves the lines from there on
+    /// stale. [`Highlights::runs`] lexes them when it reads them,
+    /// and [`Highlights::stale_from`] says where they start.
     ///
     /// The window is the lines the caller draws. Give `0..u32::MAX`
     /// to lex until the states converge.
     ///
+    /// An edit above the window lexes nothing. It leaves every line
+    /// from the edit on stale and returns `0..0`.
+    ///
     /// An edit below stale lines first lexes the stale lines above
-    /// it, so a caller that edits far below its window pays for
-    /// the work it put off. An edit above stale lines lexes at least
-    /// as far as the first stale line, unless the states converge.
+    /// it, so a caller that edits far below its window pays for the
+    /// work it put off. An edit below the window lexes its own lines
+    /// at once.
     ///
     /// # Panics
     ///
@@ -69,8 +111,21 @@ impl Highlights {
             .filter(|&count| count > 0)
             .expect("edit leaves no lines");
 
-        let lowest = self.exact.min(first);
-        self.catch_up(first, lines);
+        if first < window.start {
+            self.defer(edit, lines);
+            return 0..0;
+        }
+
+        let region_end = first + inserted;
+        let mut hull = Hull::new(window.clone(), first..region_end);
+        self.catch_up(first, lines, &mut hull);
+        if self.compare_deferred() {
+            self.defer(edit, lines);
+            let upto =
+                window.end.min(self.line_count()).max(region_end);
+            self.catch_up(upto, lines, &mut hull);
+            return hull.finish();
+        }
 
         let end = first + removed;
         let boundary = self.lines.start_state(end).clone();
@@ -79,11 +134,9 @@ impl Highlights {
         } else {
             new_count
         };
-        let force_to = if resume < new_count { resume } else { 0 };
 
         self.splice(edit, lines);
 
-        let region_end = first + inserted;
         let mut expected = boundary;
         let mut line = first;
         let converged = loop {
@@ -91,15 +144,14 @@ impl Highlights {
                 if *self.lines.start_state(line) == expected {
                     break true;
                 }
-                if line >= new_count
-                    || (line >= force_to && !window.contains(&line))
-                {
+                if line >= new_count || !window.contains(&line) {
                     break false;
                 }
             }
-            let before = self.relex(line, lines);
+            let relexed = self.relex(line, lines);
+            hull.note(line, relexed.changed);
             if line >= region_end {
-                expected = before;
+                expected = relexed.before;
             }
             line += 1;
         };
@@ -108,9 +160,12 @@ impl Highlights {
             true => new_count,
             false => line,
         };
-
-        let start = lowest.max(window.start);
-        start..line.min(window.end).max(start)
+        self.compare_from = if resume < new_count {
+            line.max(resume)
+        } else {
+            line
+        };
+        hull.finish()
     }
 
     /// The runs of a line, lexing first any stale lines up to it, in
@@ -125,7 +180,7 @@ impl Highlights {
         lines: &(impl Lines + ?Sized),
     ) -> &[Run] {
         assert!(line < self.line_count(), "line past the end");
-        self.catch_up(line + 1, lines);
+        self.catch_up(line + 1, lines, &mut Hull::new(0..0, 0..0));
         self.stored_runs(line)
     }
 
@@ -134,6 +189,33 @@ impl Highlights {
     /// current.
     pub fn stale_from(&self) -> Option<u32> {
         (self.exact < self.line_count()).then_some(self.exact)
+    }
+
+    fn compare_deferred(&self) -> bool {
+        self.exact < self.line_count()
+            && self.compare_from > self.exact
+    }
+
+    fn defer(
+        &mut self,
+        edit: LineEdit,
+        lines: &(impl Lines + ?Sized),
+    ) {
+        let LineEdit {
+            first,
+            removed,
+            inserted,
+        } = edit;
+        let chain_from = self.compare_from.max(self.exact);
+        let stale = self.exact < self.line_count();
+        self.splice(edit, lines);
+        self.compare_from = if stale && chain_from >= first + removed
+        {
+            chain_from - removed + inserted
+        } else {
+            first + inserted
+        };
+        self.exact = self.exact.min(first);
     }
 
     fn splice(
@@ -155,12 +237,25 @@ impl Highlights {
         }
         let mut start = first_start;
         for line in first..first + inserted {
+            let raw = lines.line(line);
+            let content = raw.strip_suffix('\r').unwrap_or(raw);
+            let runs = self.runs.len() as u32;
+            if !content.is_empty() {
+                self.runs.push(Run {
+                    end: content.len() as u32,
+                    kind: Kind::Plain,
+                });
+            }
             self.lines.insert_at_gap(
                 start,
-                Line::new(0, 0..0, State::default()),
+                Line::new(
+                    content.len() as u32,
+                    runs..self.runs.len() as u32,
+                    State::default(),
+                ),
             );
             start = start
-                .checked_add(lines.line(line).len() as u32 + 1)
+                .checked_add(raw.len() as u32 + 1)
                 .expect("text of 4 GiB or more");
         }
         let end = (self.lines.end() - removed_span)
@@ -169,11 +264,19 @@ impl Highlights {
         self.lines.set_end(end);
     }
 
-    fn catch_up(&mut self, upto: u32, lines: &(impl Lines + ?Sized)) {
+    fn catch_up(
+        &mut self,
+        upto: u32,
+        lines: &(impl Lines + ?Sized),
+        hull: &mut Hull,
+    ) {
         while self.exact < upto {
             let line = self.exact;
-            let before = self.relex(line, lines);
-            self.exact = if self.lines.get(line).end == before {
+            let relexed = self.relex(line, lines);
+            hull.note(line, relexed.changed);
+            let converged = line >= self.compare_from
+                && self.lines.get(line).end == relexed.before;
+            self.exact = if converged {
                 self.line_count()
             } else {
                 line + 1
@@ -185,23 +288,29 @@ impl Highlights {
         &mut self,
         line: u32,
         lines: &(impl Lines + ?Sized),
-    ) -> State {
+    ) -> Relexed {
         let raw = lines.line(line);
         let content = raw.strip_suffix('\r').unwrap_or(raw);
         let first = self.runs.len() as u32;
         let state = self.lines.start_state(line);
         let end = lex_line(self.lang, content, state, &mut self.runs);
         let saved = self.lines.get_mut(line);
-        self.garbage += saved.runs.len();
-        saved.runs = first..self.runs.len() as u32;
+        let old = mem::replace(
+            &mut saved.runs,
+            first..self.runs.len() as u32,
+        );
+        self.garbage += old.len();
         saved.len = content.len() as u32;
         let before = mem::replace(&mut saved.end, end);
+        let new = first as usize..self.runs.len();
+        let changed = self.runs[old.start as usize..old.end as usize]
+            != self.runs[new];
         if self.garbage > MIN_GARBAGE
             && self.garbage > self.runs.len() - self.garbage
         {
             self.compact();
         }
-        before
+        Relexed { before, changed }
     }
 
     fn compact(&mut self) {
