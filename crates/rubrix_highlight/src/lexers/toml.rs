@@ -10,9 +10,8 @@
 //!
 //! Multi-line strings (`"""` and `'''`) and multi-line arrays span
 //! lines. The state holds the open string and a stack of the open
-//! arrays and inline tables. The stack records 48 levels. The count
-//! of open levels lives in the state's word up to 62 and in its tail
-//! from 63, so deeper levels are counted but read as arrays.
+//! arrays and inline tables, 48 levels deep. Deeper levels are
+//! counted but read as arrays.
 //!
 //! Not handled: the whitespace that a line-ending backslash trims
 //! at the start of the next line is plain string text, dates and
