@@ -19,11 +19,6 @@ const DEPTH_MAX: u8 = (1 << 5) - 1;
 const MAX_FRAMES: u32 = 7;
 const LEN_SHIFT: u32 = 56;
 
-/// The open strings and f-string replacement fields at a line
-/// boundary, one byte per frame, innermost last. A string frame holds
-/// its quote, whether it is triple-quoted, raw, or an f-string. A
-/// field frame holds its bracket depth and whether it is in the
-/// format spec after a `:`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Stack {
     frames: u64,
@@ -89,9 +84,7 @@ impl Stack {
             .find(|&(_, frame)| frame & TAG == STR)
     }
 
-    /// Drops the frames that cannot span lines: a string with one
-    /// quote unless a `\` continues it, and everything inside it.
-    fn end_line(&mut self, continued: bool) {
+    fn drop_single_line_frames(&mut self, continued: bool) {
         let mut multiline = false;
         for index in 0..self.len {
             let frame = self.frame(index);
@@ -146,7 +139,7 @@ pub(crate) fn lex(
             _ => lexer.code(),
         }
     }
-    lexer.stack.end_line(lexer.continued);
+    lexer.stack.drop_single_line_frames(lexer.continued);
     lexer.stack.store()
 }
 
@@ -186,7 +179,7 @@ impl Lexer<'_, '_, '_> {
             match b {
                 b'#' => self.emit(self.s.len(), Kind::Comment),
                 b'"' | b'\'' => {
-                    if self.open_string(self.i, false, false) {
+                    if self.try_open_string(self.i, false, false) {
                         return;
                     }
                     self.emit(self.i + 1, Kind::Plain);
@@ -293,10 +286,7 @@ impl Lexer<'_, '_, '_> {
         self.stack.set_top(depth << DEPTH_SHIFT | flags);
     }
 
-    /// Opens the string whose quote is at `quote`, after an optional
-    /// prefix that starts at `self.i`. Returns whether it opened,
-    /// which it does not when the stack is full.
-    fn open_string(
+    fn try_open_string(
         &mut self,
         quote: usize,
         raw: bool,
@@ -489,15 +479,13 @@ impl Lexer<'_, '_, '_> {
         self.emit(end, Kind::FunctionDecorator);
     }
 
-    /// Lexes a name, keyword, or string prefix. Returns whether it
-    /// opened a string.
     fn word(&mut self, prev: Prev) -> bool {
         let s = self.s;
         let end = ident_end(s, self.i);
         let word = &s[self.i..end];
         if matches!(s.get(end), Some(b'"' | b'\''))
             && let Some((raw, fmt)) = string_prefix(word)
-            && self.open_string(end, raw, fmt)
+            && self.try_open_string(end, raw, fmt)
         {
             return true;
         }
@@ -528,8 +516,6 @@ fn closes(s: &[u8], at: usize, quote: u8, triple: bool) -> bool {
     !triple || s.get(at + 1..at + 3) == Some(&[quote, quote][..])
 }
 
-/// The prefix letters before a quote, as whether the string is raw
-/// and whether it holds replacement fields.
 fn string_prefix(word: &[u8]) -> Option<(bool, bool)> {
     let mut raw = false;
     let mut fmt = false;

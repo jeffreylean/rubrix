@@ -49,10 +49,10 @@ pub(crate) fn lex(
         s: line.as_bytes(),
         i: 0,
         out,
-        first: open == Open::Code,
+        at_line_start: open == Open::Code,
         prev: Prev::Other,
-        params: 0,
-        after_params: false,
+        param_depth: 0,
+        prev_closed_params: false,
     };
     while lexer.i < lexer.s.len() {
         open = match open {
@@ -68,14 +68,10 @@ struct Lexer<'s, 'o, 'r> {
     s: &'s [u8],
     i: usize,
     out: &'o mut Runs<'r>,
-    /// No token yet on this line, so a name followed by a type is a
-    /// declaration.
-    first: bool,
+    at_line_start: bool,
     prev: Prev,
-    /// Open parentheses of the parameter list after `func`, or 0.
-    params: u32,
-    /// The token before this one closed a parameter list.
-    after_params: bool,
+    param_depth: u32,
+    prev_closed_params: bool,
 }
 
 impl Lexer<'_, '_, '_> {
@@ -97,10 +93,11 @@ impl Lexer<'_, '_, '_> {
                 self.i = end;
                 continue;
             }
-            let first = core::mem::replace(&mut self.first, false);
+            let at_line_start =
+                core::mem::replace(&mut self.at_line_start, false);
             let prev =
                 core::mem::replace(&mut self.prev, Prev::Other);
-            let after = core::mem::take(&mut self.after_params);
+            let after = core::mem::take(&mut self.prev_closed_params);
             match b {
                 b'/' => match self.at(1) {
                     Some(b'/') => {
@@ -122,16 +119,17 @@ impl Lexer<'_, '_, '_> {
                 b'.' => self.dot(),
                 b'(' => {
                     if prev == Prev::Func {
-                        self.params = 1;
-                    } else if self.params > 0 {
-                        self.params += 1;
+                        self.param_depth = 1;
+                    } else if self.param_depth > 0 {
+                        self.param_depth += 1;
                     }
                     self.emit(self.i + 1, Kind::PunctuationBracket);
                 }
                 b')' => {
-                    if self.params > 0 {
-                        self.params -= 1;
-                        self.after_params = self.params == 0;
+                    if self.param_depth > 0 {
+                        self.param_depth -= 1;
+                        self.prev_closed_params =
+                            self.param_depth == 0;
                     }
                     self.emit(self.i + 1, Kind::PunctuationBracket);
                 }
@@ -156,7 +154,7 @@ impl Lexer<'_, '_, '_> {
                     self.emit(self.i + 1, Kind::Operator);
                 }
                 _ if is_ident_start(b) => {
-                    self.word(prev, after, first)
+                    self.word(prev, after, at_line_start)
                 }
                 _ => self.emit(self.i + 1, Kind::Plain),
             }
@@ -272,7 +270,12 @@ impl Lexer<'_, '_, '_> {
         }
     }
 
-    fn word(&mut self, prev: Prev, after_params: bool, first: bool) {
+    fn word(
+        &mut self,
+        prev: Prev,
+        prev_closed_params: bool,
+        at_line_start: bool,
+    ) {
         let s = self.s;
         let end = ident_end(s, self.i);
         let word = &s[self.i..end];
@@ -287,13 +290,13 @@ impl Lexer<'_, '_, '_> {
             Prev::Dot if call => Kind::FunctionMethod,
             Prev::Dot => Kind::Property,
             Prev::Other
-                if after_params
+                if prev_closed_params
                     && matches!(next, Some(b'(' | b'[')) =>
             {
                 Kind::FunctionDefinition
             }
             Prev::Other => keyword(word).unwrap_or_else(|| {
-                if first && declares(s, end) {
+                if at_line_start && declares_name(s, end) {
                     Kind::Property
                 } else {
                     name_kind(word, call)
@@ -314,9 +317,7 @@ impl Lexer<'_, '_, '_> {
     }
 }
 
-/// Whether a name at the start of a line is followed by a type, as
-/// in a struct field or a var block entry.
-fn declares(s: &[u8], end: usize) -> bool {
+fn declares_name(s: &[u8], end: usize) -> bool {
     let rest = &s[end..];
     let space = space_end(rest, 0);
     space > 0
