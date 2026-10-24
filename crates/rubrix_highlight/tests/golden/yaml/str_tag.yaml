@@ -1,0 +1,14 @@
+a: !!str 5
+b: !!str true
+c: !!str null
+d: !!str 5 # comment
+e: !!int 5
+f: &x !!str 5
+g: !!str &y 5
+h: !!str "5"
+i: {k: !!str 1, l: 2}
+---
+- !!str 7
+- 8
+---
+!!str 9: key
