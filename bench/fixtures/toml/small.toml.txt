@@ -35,6 +35,8 @@ inf = inf
 inf_plus = +inf
 inf_neg = -inf
 nan = nan
+nan_plus = +nan
+nan_minus = -nan
 yes = true
 no = false
 
@@ -218,7 +220,7 @@ stack-buffer = [
   0b11111110111, # Unity quiver ribbon.
   0o5400, # Xenon cable stack badge buffer.
   -3920,
-  nan, # Spruce signal cache.
+  -nan, # Spruce signal cache.
   '~/.config/theme',
   2000-11-25 16:07:06.273341,
 ]
@@ -252,7 +254,7 @@ cluster_frame_velvet = 20081
 "Zipper." = 2010-01-07 09:08:16
 frame_gateway_246 = "cache radar frame zone" # Timber, glacier alpha walnut.
 glacier = '..\..\rocket'
-token-needle-canvas = -inf
+token-needle-canvas = -nan
 island = []
 
 [paths.Beacon-anchor-bishop-281.Node_cipher.Helix-256]
@@ -361,7 +363,7 @@ Widget rocket lantern alpha yield alpha falcon timber token cluster saddle.
 [[fixture]]
 buffer-daemon = "scroll stack mesh badge\n buffer"
 # Worker glacier ledger tablet quiver.
-jacket = -inf
+jacket = -nan
 
 [logging.Cobalt_nickel_velvet.Violet-node-arena]
 86093 = "pebble\\"
@@ -391,7 +393,7 @@ needle_timber_table = "packet forest timber castle badge"
 d_valley_garden.castle = "filter theme patch\u00e9 pillar mesh falcon\\ meadow buffer"
 node_zipper_ledger = '~/.config/cable'
 badge = { "spruce meadow" = 00:22:08, layer_cluster_13 = 0x8148A131 } # Helix gateway widget yield.
-d_anchor.arena = +inf
+d_anchor.arena = inf
 ribbon-zone = 07:46:38
 node_ferry_meadow = [09:18:31,[]]
 worker_timber_396 = 2026-02-06T00:39:15
@@ -399,7 +401,7 @@ gadget_route_index = [
   843.2397, # Orbit stack token.
   838_531_383,
   [ 2007-09-22 ],
-  inf,
+  +nan,
   "glacier\n daemon",
   "stack walnut cluster kernel",
 ]
@@ -434,7 +436,7 @@ d_copper_forest_197.ember = { ladder_falcon_266 = 1992-01-26 18:08:19.184702 }
 basin = 00:20:05
 "Arena." = [
   "zipper spruce socket vector ledger",
-  nan, # Island.
+  -nan, # Island.
   "view glyph\u00e9",
   "token yield",
   "violet theme lantern pillar oasis token frame",
@@ -458,7 +460,7 @@ lantern_spruce = '\\server\share\gadget'
 [features.Socket_glacier_cache]
 d_orbit-kernel.garden = "rabbit\\ valley velvet jacket nickel daemon badge"
 # copper_beacon = "valley\u00e9 theme radar rocket radar cache badge"
-marble-mesh = nan
+marble-mesh = -inf
 #Pebble beacon route delta.
 yield-cobalt = """
 Ribbon, widget xenon arena shader. \
@@ -521,7 +523,7 @@ kernel-shader = [
 
 [server.Tunnel]
 needle_view = 925.7114
-d_basin_violet_rocket.radar = [[ 2015-07-10T12:00:36, inf, nan, "cipher cable spruce signal view\\ cursor" ],"cable",{ socket-pillar-delta = "beacon kernel cable yonder worker node", orbit = "tablet", "mesh unit" = false },"gadget\\ quiver glyph",[ -2664, 2030-12-02, "basin cache garden tablet orbit socket\"", "meadow buffer scroll planet buffer timber arena yield spruce" ]]
+d_basin_violet_rocket.radar = [[ 2015-07-10T12:00:36, +inf, nan, "cipher cable spruce signal view\\ cursor" ],"cable",{ socket-pillar-delta = "beacon kernel cable yonder worker node", orbit = "tablet", "mesh unit" = false },"gadget\\ quiver glyph",[ -2664, 2030-12-02, "basin cache garden tablet orbit socket\"", "meadow buffer scroll planet buffer timber arena yield spruce" ]]
 pebble_tablet = [ [ "patch harbor violet ferry zipper basin xenon\\ signal yield", 2033-12-19, -4384, "timber gadget daemon xenon unit velvet spruce worker spruce" ], '%APPDATA%\ferry', "daemon glyph engine orbit copper" ]
 
 
@@ -531,7 +533,7 @@ d_window_badge_vector_260.view = "cursor cobalt violet\U0001F600 planet delta wi
 spruce-yield = "ember\n ladder\\ unity meadow marble"
 patch_unit_cipher = 2025-12-23T06:30:49Z
 d_oasis-glyph-bishop.yonder = +517
-"Daemon orbit filter." = [inf,"garden\u00e9 daemon"]
+"Daemon orbit filter." = [+nan,"garden\u00e9 daemon"]
 planet-anchor = ["mirror ladder radar kernel mirror badge tunnel",true,"xenon rocket cobalt bridge saddle yield theme\n ember\t"] # Zone cable.
 tunnel-basin-yield = '%APPDATA%\patch'
 tablet_planet_tablet = "gadget orbit vector tunnel\" violet"
@@ -593,7 +595,7 @@ filter-meadow-anchor = true
 yonder-delta = """
 Cipher tunnel cobalt pillar forest, saddle packet dialog."""
 zenith_patch_node = [
-  +inf,
+  inf,
   true,
   "cable pillar meadow rabbit",
   0o1726,
@@ -607,13 +609,13 @@ zipper = "unity glyph quiver stack valley unit"
 oasis-forest = []
 beacon-node = "timber valley marble cursor basin"
 meadow-route = +566
-quartz-yield = -inf
+quartz-yield = nan
 copper_signal_zenith = false
 badge_anchor_zone = { rabbit = "canvas" }
 tablet_token = [ "cipher engine delta frame\\ forest buffer", "arena\U0001F600 orbit alpha forest zone tunnel dialog zipper" ]
 
 [theme.View-yield.Daemon-harbor.Canvas-saddle]
-'beacon.yonder' = inf
+'beacon.yonder' = +inf
 
 glacier = '''Needle radar alpha filter.
 Island cursor filter yield timber castle glyph timber.
@@ -715,7 +717,7 @@ d_valley_lantern_widget.pebble = "jacket vector index kernel\U0001F600 token bad
 [[stage]]
 "Island." = 2016-07-25T04:27:31
 d_queue.forest = "worker ember" # Gateway signal ledger lantern widget tunnel.
-d_filter.meadow = [ { gateway-helix = false }, '/usr/local/lib/alpha', +inf, "glacier bishop shader window ferry needle gadget garden tablet", "zenith forest frame timber stack view helix queue" ]
+d_filter.meadow = [ { gateway-helix = false }, '/usr/local/lib/alpha', inf, "glacier bishop shader window ferry needle gadget garden tablet", "zenith forest frame timber stack view helix queue" ]
 
 # ----------------------------------------
 # Quiver joint node socket.

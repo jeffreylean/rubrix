@@ -35,6 +35,8 @@ inf = inf
 inf_plus = +inf
 inf_neg = -inf
 nan = nan
+nan_plus = +nan
+nan_minus = -nan
 yes = true
 no = false
 
@@ -176,7 +178,7 @@ timber-meadow = "glacier bishop walnut forest rocket glacier glyph"
 socket = true
 garden_packet = "walnut\" dialog"
 # table_route_marble = "rocket"
-theme_bishop = { island = { pillar-meadow-canvas-88 = false, jacket_glyph = "kernel castle table joint\\ harbor zenith arena", zone_meadow = 2025-05-13T09:32:52 }, zenith_yield_jacket = "ember gateway\t garden", socket_mirror_ledger = { anchor_route_oasis = 5.4e26, beacon-valley-patch = "index packet filter ember route cipher cache", cache_kernel = 10:24:52.965479 }, alpha_falcon = +inf }
+theme_bishop = { island = { pillar-meadow-canvas-88 = false, jacket_glyph = "kernel castle table joint\\ harbor zenith arena", zone_meadow = 2025-05-13T09:32:52 }, zenith_yield_jacket = "ember gateway\t garden", socket_mirror_ledger = { anchor_route_oasis = 5.4e26, beacon-valley-patch = "index packet filter ember route cipher cache", cache_kernel = 10:24:52.965479 }, alpha_falcon = +nan }
 ## Gadget table queue filter ledger forest.
 gateway-valley = "zone patch" # Rocket.
 ## Quiver xenon gadget buffer window ledger.
@@ -192,7 +194,7 @@ Cache violet yonder harbor scroll.
 # Tablet vector.
 Unity yonder unit beacon zipper cache vector layer, token bridge."""
 unity-kernel = 9.19e+16
-alpha-kernel = inf
+alpha-kernel = +inf
 76853 = [
   "ember walnut\t valley rocket socket falcon",
   1985-04-14T11:37:22.43620, # Vector yield.
@@ -305,7 +307,7 @@ yonder_stack_orbit = "basin"
 
 [logging."Valley.ladder".Cursor_dialog]
 garden_glyph_370 = [
-  nan,
+  -nan,
   2010-12-14 18:39:20, # Basin glyph saddle.
   [2006-07-03T05:21:27-09:00],
   [23:36:42,+322,"engine cobalt","cable mesh route bridge table\U0001F600","mesh cipher vector quiver frame"], # Mesh quiver copper.
@@ -344,7 +346,7 @@ gateway_cobalt_cursor_11 = """Shader, jacket zipper unity."""
 joint = "falcon buffer cipher unity lantern spruce garden helix"
 rabbit-glyph = 4.11e-26
 ladder-route-jacket = "window quartz anchor\u00e9 oasis shader nickel buffer theme cobalt"
-nickel = inf
+nickel = +inf
 ## Harbor.
 falcon = 0b1100010
 ferry-mirror = """
@@ -374,7 +376,7 @@ bishop_mirror = 2002-01-20T17:14:29z
 ## Oasis token theme ferry jacket rocket.
 violet-oasis-window = 2005-12-26
 planet_jacket_island = '%APPDATA%\quartz' # Layer anchor kernel.
-unit = nan
+unit = -inf
 arena-route = "bishop patch nickel badge"
 10979 = 2019-09-27
 daemon = 2024-06-27
@@ -618,7 +620,7 @@ daemon = "layer dialog zenith harbor window gateway anchor rocket\" gateway"
 mesh_buffer_island = +241
 d_anchor-quiver-228.bridge = "bishop rocket cable alpha walnut"
 radar_harbor = 0b101110011110
-bishop-zipper = inf
+bishop-zipper = +inf
 buffer_unit = "layer unit cipher ledger"
 helix = 11:34:26
 "Cursor." = '~/.config/index'
@@ -663,7 +665,7 @@ d_packet.unity = 15:40:27
 d_glyph-nickel.basin = [
   false,
   2010-01-18,
-  -inf,
+  -nan,
 ]
 d_worker_helix_quartz.layer = [
   "violet glyph island", # Frame.
@@ -797,7 +799,7 @@ cipher-meadow = 1973-07-11 22:57:33
 delta_rocket_violet = [
   689.1483,
   7.72e+5,
-  [ true, "beacon node badge widget quiver stack widget spruce velvet", -inf, 50350 ], # Forest ribbon falcon queue.
+  [ true, "beacon node badge widget quiver stack widget spruce velvet", -nan, 50350 ], # Forest ribbon falcon queue.
   'C:\Users\name\rabbit',
   '/usr/local/lib/gadget', # Zone buffer cursor ladder unit.
 ]
@@ -839,7 +841,7 @@ patch_token_225 = 838_994_071
 d_patch.view = "theme velvet nickel shader"
 xenon-gadget = { packet = "quartz bishop delta xenon bridge\u00e9 rocket cipher zenith canvas" }
 
-"Glyph pillar gadget." = { timber-gadget-delta = -inf, valley_cache = "falcon velvet ladder daemon oasis pillar tunnel" }
+"Glyph pillar gadget." = { timber-gadget-delta = nan, valley_cache = "falcon velvet ladder daemon oasis pillar tunnel" }
 yonder_unit_buffer = [ "cable\t", "ribbon dialog packet cipher ledger engine castle route", 0x3E095A59, +437 ]
 'pebble.forest' = 70689
 token-xenon = 2004-02-03 01:57:55
@@ -941,7 +943,7 @@ Canvas jacket valley planet helix cipher.'''
 ladder-xenon-zone = 1975-07-05T23:00:43
 
 [theme."Route.valley".Yonder_gateway_beacon."Falcon.route"]
-delta_valley = { "arena glacier" = { cache_valley_quiver = 1999-07-12T18:49:45, bridge = 13:14:38, castle_253 = +46, "index tablet" = 1995-04-05 }, lantern_filter_falcon = inf, timber-zone = "shader", badge_zenith = 2008-03-10 10:55:47.726263 }
+delta_valley = { "arena glacier" = { cache_valley_quiver = 1999-07-12T18:49:45, bridge = 13:14:38, castle_253 = +46, "index tablet" = 1995-04-05 }, lantern_filter_falcon = +inf, timber-zone = "shader", badge_zenith = 2008-03-10 10:55:47.726263 }
 frame_pillar = 14:22:33.897534
 d_delta-45.gadget = true # Gateway signal badge bridge kernel.
 70763 = 0o522
@@ -1032,7 +1034,7 @@ copper-154 = [
   -4793,
   30535,
   "tablet cluster falcon gateway helix theme engine", # Zenith canvas yield.
-  +inf,
+  +nan,
   1972-02-07,
 ]
 castle_390 = '/usr/local/lib/cobalt'
@@ -1079,7 +1081,7 @@ pillar_quartz_worker = '..\..\harbor'
 # window_needle_ladder = '..\..\layer'
 'violet.dialog' = -4916
 quiver-xenon = +642
-scroll_widget = inf
+scroll_widget = +nan
 
 valley_unity_oasis = 0o1345 # Basin arena, scroll pillar.
 orbit = 0.56e+2
@@ -1219,7 +1221,7 @@ packet_cipher = '\\server\share\beacon'
 "Signal." = 0b100110101 # Kernel, yield quiver ferry.
 filter = "canvas scroll joint castle ember glyph tunnel nickel rabbit"
 # Jacket xenon, timber cursor orbit.
-gadget-velvet-rabbit = [ "filter bridge violet mirror tablet", 2028-05-09 15:25:28.383644, inf, "buffer zipper" ]
+gadget-velvet-rabbit = [ "filter bridge violet mirror tablet", 2028-05-09 15:25:28.383644, +inf, "buffer zipper" ]
 d_gadget_cobalt.daemon = 2033-10-03
 yonder_zipper_cipher = false
 gadget = [{ anchor = 0b111011000001 },"castle tablet widget","canvas kernel zenith filter mirror engine zenith needle","socket glyph harbor gadget",{ kernel = 589_397_778 }]
@@ -1265,7 +1267,7 @@ quiver-token = "oasis gateway valley theme socket ferry"
 [paths.Jacket.Yield-306]
 "Spruce basin." = "ember"
 layer = [
-  -inf,
+  nan,
   "glyph\u00e9 cluster\U0001F600 cobalt ladder yield bridge radar beacon",
   1984-01-11T23:42:42,
   2029-11-01,
@@ -1440,7 +1442,7 @@ tunnel_timber_beacon = [
   true,
   "badge shader table xenon zipper dialog planet jacket beacon", # Bishop castle velvet canvas.
 ]
-ferry-falcon = inf
+ferry-falcon = +nan
 marble_cobalt = [ { cluster-jacket-shader = "delta stack\" route\"", mirror_quiver_helix = "basin mesh zone\" xenon rabbit valley node buffer badge", canvas = 19:25:10, joint-241 = -1814 }, 2025-11-21, 77.3514 ]
 worker_rocket_signal = 2001-03-01T08:49:12Z
 cursor_tunnel_gadget = 21:26:40.821395
@@ -1468,7 +1470,7 @@ worker = [
 #Table patch token.
 joint-mesh = 44177
 ledger_mirror_index = [
-  +inf,
+  +nan,
   1985-02-23 21:51:50.336180,
 ]
 vector = 2029-11-07 05:25:04
@@ -1486,7 +1488,7 @@ nickel = true # Island zone token zenith.
 "Mirror zone index." = 5.23e16 # Cobalt arena yonder anchor index.
 worker = '/usr/local/lib/zone'
 
-77158 = nan
+77158 = -inf
 walnut_cobalt_rocket = { "falcon valley" = "cable ribbon glacier cluster quartz zone tunnel", tablet_route_filter = "badge rabbit index harbor ferry cursor bishop", mesh = 2015-08-02T12:02:51z, cable = "harbor ribbon dialog badge castle delta\U0001F600 delta" } # Packet spruce badge dialog rabbit ferry.
 joint_160 = """
 yield = "joint"
@@ -1610,7 +1612,7 @@ table-route = 15:38:29
 d_arena_route.theme = 2030-03-18T23:54:38
 
 [theme.Zone]
-bishop-stack = inf # Basin layer badge orbit.
+bishop-stack = +inf # Basin layer badge orbit.
 valley-widget-theme = 437.9914
 
 
@@ -1761,7 +1763,7 @@ Needle valley oasis lantern view, token shader harbor."""
 [logging.Cache-beacon]
 'vector.zone' = "glacier"
 #Dialog delta.
-yonder_arena = +inf
+yonder_arena = inf
 # garden-ledger = "velvet badge table rabbit"
 pillar_387 = "cipher quartz violet\\ velvet"
 arena_pillar = "ledger scroll orbit tablet alpha alpha delta cluster"
@@ -1926,7 +1928,7 @@ planet_mirror_planet = [
   0b100001000101,
   2020-05-22T12:43:29z, # Filter radar glacier bishop.
   "view meadow cache glacier signal cursor tablet", # Token joint filter.
-  [inf,1999-07-16T19:04:41,2002-07-04 01:54:01,"rocket",1979-08-10 20:33:01],
+  [+inf,1999-07-16T19:04:41,2002-07-04 01:54:01,"rocket",1979-08-10 20:33:01],
   "yield pebble alpha badge", # Cipher glacier cache ribbon, oasis.
 ]
 # glyph-signal-canvas = 0x1AB4546
@@ -1963,7 +1965,7 @@ yield = [ '~/.config/signal', "needle pillar joint mesh node needle ladder", { "
   "signal saddle violet view rocket badge\U0001F600 ledger timber daemon",
   [ "view layer ledger" ],
   "needle quartz dialog jacket",
-  [ nan, "stack pebble unit\\ widget glacier scroll" ], # Jacket.
+  [ -nan, "stack pebble unit\\ widget glacier scroll" ], # Jacket.
   0o3406,
 ]
 stack-violet-cursor-158 = false
@@ -2010,7 +2012,7 @@ mirror = "marble"
   "delta mesh glacier cipher falcon marble worker bridge ribbon",
   "planet yield cipher signal ember oasis buffer",
   [],
-  -inf,
+  -nan,
 ]
 window-canvas = true
 badge_zenith = "packet\""
@@ -2092,7 +2094,7 @@ helix_ladder_worker_278 = -1550
 pebble = false
 
 [ render.Theme-ember.Planet_window.Delta_unit ]
-token = [ [], "ferry worker", ["xenon spruce falcon cluster valley filter planet yonder daemon",+inf] ]
+token = [ [], "ferry worker", ["xenon spruce falcon cluster valley filter planet yonder daemon",+nan] ]
 dialog-radar-dialog = { harbor_island = -2271, mesh_widget = [ 773_482_068 ], cursor_saddle_rabbit = 2018-12-05 17:01:43.274208, cache = 5.96e-0 }
 "Cluster lantern nickel." = 0x9600BE28 # Theme valley dialog packet violet.
 ledger-saddle-basin = "garden glacier ribbon queue spruce"
@@ -2169,7 +2171,7 @@ node_theme = 0.49e-13
 [[fixture]]
 ledger = "delta ladder\u00e9 filter socket"
 tunnel_copper_yonder = "saddle mirror bishop worker\U0001F600"
-timber_packet_pillar_179 = [ '\\server\share\socket', 0xCC0BAE35, [ "unity" ], -inf, "needle spruce harbor pebble\" beacon lantern meadow" ]
+timber_packet_pillar_179 = [ '\\server\share\socket', 0xCC0BAE35, [ "unity" ], nan, "needle spruce harbor pebble\" beacon lantern meadow" ]
 "Bridge." = "meadow orbit alpha"
 ## Ember violet shader violet mesh zenith.
 saddle-alpha-view = true
@@ -2186,7 +2188,7 @@ castle-forest = 0xBC7735C7
 socket = "mesh jacket bridge saddle signal"
 
 [network.Quartz-canvas-236]
-ember = { buffer_radar = ["unity\t route\" queue",true,inf,1998-01-26T06:38:49Z,+398], "pebble frame" = "socket badge island quiver marble quiver xenon" }
+ember = { buffer_radar = ["unity\t route\" queue",true,+nan,1998-01-26T06:38:49Z,+398], "pebble frame" = "socket badge island quiver marble quiver xenon" }
 d_filter-basin-quartz.index = "walnut table queue delta tablet meadow orbit delta"
 d_daemon_tablet.planet = [ "filter zone ribbon", '..\..\queue' ]
 ## Frame cursor needle.
@@ -2204,7 +2206,7 @@ cable-velvet = 0x683F61AF # Table badge route cursor timber cache.
 # Glyph route, route quartz unit valley.
 'falcon.shader' = """
 [widget.scroll]"""
-meadow-delta = [ { bishop-window-xenon = 2016-01-08 06:07:18, ember_violet_quartz = "quiver lantern velvet table walnut nickel mirror ember" }, [ "frame alpha kernel", 2031-11-17T11:53:42, nan, 2012-03-24T22:55:26+00:30, true ], +700, 9.33e-13 ]
+meadow-delta = [ { bishop-window-xenon = 2016-01-08 06:07:18, ember_violet_quartz = "quiver lantern velvet table walnut nickel mirror ember" }, [ "frame alpha kernel", 2031-11-17T11:53:42, -nan, 2012-03-24T22:55:26+00:30, true ], +700, 9.33e-13 ]
 
 [[service]]
 62971 = 0.90e14
@@ -2247,7 +2249,7 @@ table = 1971-01-22
 walnut-dialog = -1658
 harbor_engine_canvas = [
   "cursor",
-  inf,
+  +nan,
   "packet anchor buffer",
   "vector stack token oasis planet orbit buffer",
   "cache queue ferry worker rocket arena tunnel route canvas", # Patch token spruce.
@@ -2255,7 +2257,7 @@ harbor_engine_canvas = [
 tunnel_timber = "ember"
 # Basin tunnel needle glyph forest.
 island_castle_cipher = '%APPDATA%\forest'
-zipper-vector = +inf # Route socket table alpha.
+zipper-vector = +nan # Route socket table alpha.
 quartz_falcon_walnut = [
   "patch bishop window",
   "meadow cobalt canvas mesh pebble",
@@ -2291,7 +2293,7 @@ island-kernel = """Xenon index velvet falcon, ember window lantern, velvet token
 Packet meadow lantern helix yield oasis. \
 Filter pebble buffer gadget."""
 #Token.
-patch_yield_falcon_176 = [ 2016-01-26T23:12:26z, -3413, { "scroll table" = 0xD9B5F8C2, arena_basin = "violet ember harbor\u00e9", quartz_208 = -inf, canvas_needle_cluster_327 = "cursor socket" } ]
+patch_yield_falcon_176 = [ 2016-01-26T23:12:26z, -3413, { "scroll table" = 0xD9B5F8C2, arena_basin = "violet ember harbor\u00e9", quartz_208 = -nan, canvas_needle_cluster_327 = "cursor socket" } ]
 "Rabbit pillar." = "zipper daemon\U0001F600 cursor lantern ladder bishop"
 
 [storage.Castle_tablet]
@@ -2348,7 +2350,7 @@ glacier_signal = [
   "mirror\" engine buffer bridge planet engine",
   +302, # Socket.
   { "zenith unit" = '%APPDATA%\gadget', "delta garden" = 871_970_807, saddle_46 = 09:41:26.909513, mesh_328 = '..\..\forest' },
-  ['/usr/local/lib/buffer',0o3433,6.30e-29,inf],
+  ['/usr/local/lib/buffer',0o3433,6.30e-29,+nan],
 ]
 mirror-scroll = [
   '/usr/local/lib/forest',
@@ -2423,7 +2425,7 @@ glacier-patch = 1998-10-11
 [server.Valley-cluster.Node-helix-ribbon-322]
 island_needle_needle = "forest rabbit marble\n socket cluster"
 "Spruce." = 10:36:29
-radar-ribbon = +inf
+radar-ribbon = +nan
 cable_cursor_anchor = "falcon vector filter"
 arena_route_212 = "radar patch oasis cursor widget timber"
 
@@ -2510,7 +2512,7 @@ beacon = [
 ]
 22966 = +inf
 # Window stack ribbon table helix garden.
-glacier-theme-oasis = { zenith_xenon = [ 1973-03-25, inf, "ember garden lantern cipher" ], island_radar_anchor = [ "cable joint cable", "window cipher velvet jacket worker bishop\u00e9 walnut\u00e9 scroll" ], buffer_route_engine = { forest_node = "patch" } }
+glacier-theme-oasis = { zenith_xenon = [ 1973-03-25, +nan, "ember garden lantern cipher" ], island_radar_anchor = [ "cable joint cable", "window cipher velvet jacket worker bishop\u00e9 walnut\u00e9 scroll" ], buffer_route_engine = { forest_node = "patch" } }
 # timber = "tablet needle token ledger\n lantern\t table"
 helix_layer = true
 layer-filter = +562
@@ -2561,7 +2563,7 @@ badge = [
   "jacket window socket yield worker nickel", # Daemon jacket quartz helix.
   { joint_mesh_token = 2028-01-06T20:52:57Z },
   { "signal packet" = true, zipper = 1982-12-08T08:28:28+00:30, "cache joint" = 2022-03-04 16:27:13 },
-  nan,
+  -inf,
   [],
   1994-09-12,
 ]
@@ -2697,7 +2699,7 @@ glacier_garden_beacon = [
 queue-basin = { dialog_island = "patch route scroll table mirror cipher alpha bridge", cluster_tunnel_harbor = 1972-08-08, "forest radar" = [] }
 gateway_delta = "frame layer zipper falcon vector quartz window"
 garden = "harbor engine orbit harbor cache packet radar"
-buffer_frame_glyph_336 = { "queue jacket" = { zipper-falcon-velvet = "cobalt oasis quartz route", basin_falcon = "node vector ladder glacier", zone-stack = "meadow", token-ledger-zipper = "walnut index badge bishop\\ badge" }, filter_glyph_canvas = ["velvet basin","needle ledger lantern buffer queue window",246_787_177,"daemon glyph bridge island arena socket cobalt",inf], "nickel spruce" = 0b10101101010, "velvet radar" = '%APPDATA%\needle' }
+buffer_frame_glyph_336 = { "queue jacket" = { zipper-falcon-velvet = "cobalt oasis quartz route", basin_falcon = "node vector ladder glacier", zone-stack = "meadow", token-ledger-zipper = "walnut index badge bishop\\ badge" }, filter_glyph_canvas = ["velvet basin","needle ledger lantern buffer queue window",246_787_177,"daemon glyph bridge island arena socket cobalt",+nan], "nickel spruce" = 0b10101101010, "velvet radar" = '%APPDATA%\needle' }
 ## Shader, mirror ledger timber.
 packet_view = '''
 Buffer timber violet.
@@ -2721,7 +2723,7 @@ scroll_tunnel = "mesh\" ember xenon mirror"
 # Forest rocket castle rocket, cache shader basin castle nickel.
 quiver_window_token = 0b11011110
 bishop-badge = "falcon basin"
-ember_ledger = inf
+ember_ledger = +inf
 layer_index_unity = +492
 saddle = "gadget cobalt"
 d_valley-planet-nickel.yonder = "scroll castle\U0001F600 valley"
@@ -2768,7 +2770,7 @@ zipper-buffer = [
   "theme cobalt daemon meadow rabbit shader ladder buffer gadget",
   0x3C5E5DEC, # Beacon ledger lantern frame.
   1975-03-13T08:32:28.558847,
-  +inf, # Delta index, velvet token.
+  inf, # Delta index, velvet token.
   [ 0b111101101, "forest", "filter daemon radar badge gateway helix", '~/.config/engine' ], # Cipher meadow scroll unity.
 ]
 signal = 06:27:16
@@ -2876,7 +2878,7 @@ d_engine.xenon = { violet_joint_view = '~/.config/rabbit' }
 harbor = "nickel"
 window_badge_forest_168 = [
   "route",
-  +inf, # Pillar vector, node.
+  +nan, # Pillar vector, node.
   "meadow window cipher helix quiver ledger theme violet joint",
   2000-04-06T17:06:15.501027+05:30,
   "node kernel shader",
@@ -2930,7 +2932,7 @@ zenith-anchor = [196.6528]
 "Bridge saddle." = [
   "view filter copper gadget pebble\u00e9 kernel",
   +243,
-  inf,
+  +nan,
 ]
 island-radar = 825.5493 # Theme.
 mirror = [
@@ -2949,7 +2951,7 @@ Bridge needle patch tunnel mirror basin quiver zipper ferry island bridge, falco
 theme-zipper-yield = 13:47:42
 glacier = [0xFD57733D,"cipher marble velvet"]
 tablet_view_139 = 2015-02-19T08:03:24
-rabbit-spruce = inf
+rabbit-spruce = +inf
 zone-glyph = "oasis canvas cluster scroll zipper node ledger scroll garden"
 window-quiver = 12:16:27
 
@@ -2978,7 +2980,7 @@ alpha_ember_garden_392 = [2031-12-14T14:01:07,'/usr/local/lib/gadget',{ index = 
 copper-planet = false # Ladder widget rocket valley tablet.
 meadow = 0x85EA6EAA
 view_cache_107 = []
-pebble-buffer = inf # Helix jacket.
+pebble-buffer = +nan # Helix jacket.
 d_patch_index.node = 36241
 timber_0 = -1635
 d_cable.stack = 0xE1D965
@@ -3017,7 +3019,7 @@ anchor-stack = -3788
 cipher-table = [
   "cable castle packet nickel", # Delta planet walnut.
   1971-04-17T18:40:47.804277,
-  +inf, # Socket yonder.
+  inf, # Socket yonder.
 ]
 planet = 0b1110011001
 
@@ -3063,7 +3065,7 @@ copper_80 = true
 # ----------------------------------------
 # Pillar gateway.
 [logging.Timber_delta.Worker-signal-violet]
-marble_filter_zipper = inf
+marble_filter_zipper = +inf
 planet = { "engine oasis" = '/usr/local/lib/joint' }
 gadget-patch-planet = [
   0.51e-19,
@@ -3221,7 +3223,7 @@ table_54 = [
 beacon = "signal zone arena" # Dialog beacon cursor zone route forest.
 needle-kernel = 1983-10-22
 forest_85 = 14:18:51
-route = [414.9716,"anchor cobalt stack",+inf]
+route = [414.9716,"anchor cobalt stack",inf]
 rabbit-velvet = "cable ferry tunnel violet xenon index"
 island_filter = 1998-04-21T03:40:56z
 31799 = "ledger tunnel buffer filter velvet badge socket"
@@ -3359,7 +3361,7 @@ d_patch_ember.cable = '/usr/local/lib/ladder' # Table.
 
 d_spruce_castle_378.planet = 1982-05-25
 dialog = [
-  ["route\" zone",-inf,2029-07-19],
+  ["route\" zone",nan,2029-07-19],
   2000-09-14T09:02:57Z,
   2009-05-10 23:19:40.101418,
 ]
@@ -3403,7 +3405,7 @@ orbit = 685_964_088
 node_buffer_daemon = '~/.config/xenon'
 ## Violet patch rabbit, lantern.
 kernel_arena_zone = -inf
-helix_worker = [-289,inf]
+helix_worker = [-289,+nan]
 
 
 [render.Engine-garden-helix]
@@ -3430,7 +3432,7 @@ dialog_jacket_394 = "cobalt filter daemon"
 
 92215 = { glyph_rabbit = "index dialog", "daemon engine" = 4.36e22 }
 
-copper = nan
+copper = -inf
 d_basin.quartz = 1974-02-20 00:09:29
 
 [render.Pebble-rocket]
@@ -3451,7 +3453,7 @@ orbit = { radar = false }
 #Cluster, filter.
 glyph = [ [ "nickel forest mirror engine theme", "timber socket radar oasis filter kernel patch zipper" ], [ "pillar rocket" ], false, false ]
 d_node_worker_window.ribbon = 05:24:48
-table-yield = { node-unity = "gateway valley unity buffer planet", zipper = nan, zone = [ "vector saddle ladder zone theme yield", "frame node mirror needle canvas", 2011-03-03T20:36:02, 0xF44A5486, "canvas gateway meadow" ], daemon_pillar_quiver = 2030-11-10 }
+table-yield = { node-unity = "gateway valley unity buffer planet", zipper = -inf, zone = [ "vector saddle ladder zone theme yield", "frame node mirror needle canvas", 2011-03-03T20:36:02, 0xF44A5486, "canvas gateway meadow" ], daemon_pillar_quiver = 2030-11-10 }
 theme-buffer-helix = "canvas joint"
 jacket-canvas = "cable jacket"
 helix = 1991-02-05 11:46:44.793169
@@ -3470,7 +3472,7 @@ unit_cobalt_cobalt = "bridge"
 
 [server.Pillar]
 badge-copper = 2022-02-26T20:43:33
-# zipper_bishop = nan
+# zipper_bishop = -inf
 packet = '..\..\ember'
 table = { yonder_kernel = [ "garden route view" ], "frame cable" = "shader frame walnut meadow alpha stack\n" }
 yield_spruce_queue = "glyph index bridge zenith alpha meadow route"
@@ -3509,7 +3511,7 @@ node-island = "engine cipher engine gateway cable quartz ribbon ferry"
 violet_cache_86 = '~/.config/planet'
 
 [[fixture]]
-needle_socket = +inf
+needle_socket = +nan
 vector = "vector layer\\"
 
 [theme.Queue_beacon_zenith]
@@ -3526,7 +3528,7 @@ mesh-kernel = "oasis" # Bishop ember ladder.
 "Ember scroll." = ["packet theme vector ember","dialog valley lantern radar",11:31:56.601661,1.21e+7,[]]
 
 [[product]]
-# shader_badge = +inf
+# shader_badge = +nan
 alpha = [
   -4247,
   ["stack cluster cluster mirror queue token"],
@@ -3602,7 +3604,7 @@ view_canvas = """Basin quartz socket ember zone layer, needle ferry.
 Table cable, glyph radar tablet packet yonder planet harbor castle ribbon lantern."""
 "Cache orbit signal." = 22:55:08
 mirror-mesh = "walnut helix route frame\\ ledger"
-glacier = [{ marble-canvas-stack = nan, "gadget harbor" = -17, ember-ledger-quiver = 'C:\Users\name\radar' },+756]
+glacier = [{ marble-canvas-stack = -nan, "gadget harbor" = -17, ember-ledger-quiver = 'C:\Users\name\radar' },+756]
 velvet = """
 [lantern.nickel]
 Dialog quiver anchor beacon dialog queue filter, lantern ribbon yield packet.
@@ -3810,7 +3812,7 @@ walnut_packet = false
 d_lantern.zenith = "glyph ferry island unit"
 frame = "spruce pebble buffer falcon\" table bridge cobalt anchor"
 index_anchor_daemon = false
-helix = [ +608, nan, "valley falcon saddle island" ]
+helix = [ +608, -nan, "valley falcon saddle island" ]
 index_token = "alpha tunnel"
 d_anchor_delta_spruce_153.delta = []
 46816 = true
@@ -3822,7 +3824,7 @@ harbor-window = "harbor ledger anchor yonder joint meadow helix copper"
 
 d_badge_208.table = [ "anchor beacon index meadow radar arena layer", 1993-04-18 08:46:02.406175, 5.80e20, ["orbit tablet table theme view cursor theme\\ castle packet\t","velvet timber jacket ember radar signal badge"], "ribbon patch dialog zipper helix" ]
 # Daemon widget joint joint pebble tablet helix xenon.
-cache = ["token ferry rabbit joint quartz cache index","worker bridge","dialog yield",1980-07-18,inf]
+cache = ["token ferry rabbit joint quartz cache index","worker bridge","dialog yield",1980-07-18,+inf]
 
 helix_pillar = -inf
 bridge = 84143
@@ -3874,7 +3876,7 @@ buffer = 1971-06-04T02:54:40-07:00 # Needle cobalt violet.
 walnut_worker_94 = "rabbit zipper token walnut lantern"
 xenon_175 = "orbit unit forest shader gadget cluster walnut delta"
 ## Tunnel zenith zipper alpha pebble.
-rocket-ribbon = [+672,-inf,"frame engine ferry theme",2010-03-01 22:15:58.656266,"delta tablet rocket cipher"]
+rocket-ribbon = [+672,-nan,"frame engine ferry theme",2010-03-01 22:15:58.656266,"delta tablet rocket cipher"]
 gateway_timber = [
   '/usr/local/lib/queue', # Token rabbit valley valley cache.
   "gateway glacier signal\n needle layer token engine kernel",
@@ -4089,7 +4091,7 @@ meadow-widget = 9486
 d_marble_engine_398.cluster = 0x98B7344B
 
 # yonder = "rabbit glacier"
-d_forest_vector_canvas.worker = inf
+d_forest_vector_canvas.worker = +nan
 queue-needle = 2024-12-05 13:35:07
 worker_quiver_node = "widget glyph ribbon mirror\U0001F600 widget alpha garden lantern"
 "Token bishop." = true
@@ -4155,7 +4157,7 @@ harbor_daemon = [
   2003-02-14,
 ]
 patch-widget = "window"
-ledger-badge-filter = [ "kernel daemon glyph filter view frame unity", inf, "glacier ferry needle rocket\u00e9 yonder meadow spruce socket zipper", true, "queue table" ]
+ledger-badge-filter = [ "kernel daemon glyph filter view frame unity", +inf, "glacier ferry needle rocket\u00e9 yonder meadow spruce socket zipper", true, "queue table" ]
 "Nickel badge rocket." = 481_666_276
 valley_meadow_socket = "xenon cable filter cache widget canvas arena"
 dialog-vector = [
@@ -4305,8 +4307,8 @@ window_shader = [
   "canvas",
 ]
 pebble_engine = +863
-cache_joint = [ 1994-06-27T13:10:13-10:00, { falcon_unity_worker = +817, ladder = 320, marble_yonder_frame_66 = "yonder", dialog_island_engine = "marble planet tablet shader" }, "cursor garden basin signal castle timber oasis", -4797, -inf ]
-ember = -inf
+cache_joint = [ 1994-06-27T13:10:13-10:00, { falcon_unity_worker = +817, ladder = 320, marble_yonder_frame_66 = "yonder", dialog_island_engine = "marble planet tablet shader" }, "cursor garden basin signal castle timber oasis", -4797, -nan ]
+ember = nan
 "View." = 0xE90BBFDD # Spruce bishop layer island cobalt.
 bishop = 2015-12-06
 
@@ -4330,7 +4332,7 @@ zone-falcon-cache = "ember"
 ## Spruce quiver yield walnut cache.
 shader_mesh = "cobalt spruce\" mesh mesh"
 glyph_timber = []
-cluster_socket = [ 254.7264, "bishop mirror forest window quiver\\", "packet ferry", -inf ]
+cluster_socket = [ 254.7264, "bishop mirror forest window quiver\\", "packet ferry", -nan ]
 cipher_quiver = 0b111100000110
 dialog-ladder = { orbit_nickel_saddle = 16:03:11, ferry_ladder_island = +412 } # Tablet bishop unit.
 helix-392 = "cluster ribbon index ladder buffer cipher spruce nickel jacket"
@@ -4440,7 +4442,7 @@ layer_cobalt_pebble = { signal_mesh = "daemon", arena_patch_scroll = ["anchor em
 
 [server.Zenith]
 index-gateway = 09:13:23
-d_basin.castle = -inf
+d_basin.castle = -nan
 'stack.alpha' = [ '..\..\forest', [false,2017-02-02,"anchor\n ledger radar ladder buffer\U0001F600 planet"], '/usr/local/lib/badge', "cursor gadget oasis\\ canvas node unit forest timber filter", 1984-03-06 ]
 
 [paths.Zenith.Unity_beacon_castle]
@@ -4479,7 +4481,7 @@ buffer-jacket = 1984-04-25T21:57:41.904887z
 kernel-dialog-lantern = "timber jacket stack"
 view = +571
 nickel_frame_planet = [
-  -inf, # Ribbon.
+  -nan, # Ribbon.
   "node walnut",
 ]
 
@@ -4523,7 +4525,7 @@ theme_index = [
   +897, # Shader ledger vector copper.
 ]
 alpha = "jacket ferry queue ledger engine" # View arena pillar pebble stack.
-forest-shader-timber = -inf # Shader garden pebble canvas.
+forest-shader-timber = -nan # Shader garden pebble canvas.
 delta = 0o1640 # Index harbor tablet alpha glyph.
 marble = "unity basin lantern zone tunnel pillar"
 "Frame." = "node dialog patch"
@@ -4572,7 +4574,7 @@ helix_walnut_kernel = "cable zenith zone route quartz unit beacon index"
 d_alpha_shader_marble.quiver = [
   4.9e+11,
   { kernel-yonder = 34952, "radar unit" = 1977-03-05, "walnut cache" = +574, quartz-orbit-daemon = "ember dialog" },
-  inf,
+  +inf,
 ]
 packet = { violet_yonder_harbor = "forest vector", unit_basin = "forest ribbon planet" }
 
@@ -4631,7 +4633,7 @@ mirror-cipher = false
   2004-04-06 18:15:09,
   nan, # Ember node rabbit scroll.
   2024-12-23 18:28:40,
-  [2006-10-07,2029-02-20T11:37:34,0b11010101100,inf], # Table helix saddle badge.
+  [2006-10-07,2029-02-20T11:37:34,0b11010101100,+nan], # Table helix saddle badge.
 ]
 
 [ limits.Timber ]
@@ -4674,7 +4676,7 @@ Mirror copper view zipper needle.
 Joint cache theme, queue arena pebble mirror velvet.
 Zone frame jacket harbor theme."""
 zipper_pebble_cobalt = 2003-01-13
-copper_ladder_oasis_393 = ['~/.config/meadow',[ true ],"filter",nan,+356]
+copper_ladder_oasis_393 = ['~/.config/meadow',[ true ],"filter",-inf,+356]
 node = -516 # Signal falcon ledger canvas filter.
 d_rabbit.filter = 2025-12-26T22:10:15 # Planet.
 theme = 1990-02-14
@@ -4735,7 +4737,7 @@ alpha-token = true
 theme_quartz = [[ false, 54_821_441, '..\..\island' ],[ "mesh route basin tunnel valley\t buffer quartz", "vector cable filter rocket", 0b11110111100, 2017-08-05T16:55:32.227823Z ]]
 buffer = 'C:\Users\name\yonder'
 xenon_102 = "pillar spruce quartz"
-jacket-violet-theme = -inf
+jacket-violet-theme = nan
 tablet-mesh-orbit = -4701 # Ribbon ribbon castle widget zipper ledger.
 
 # ----------------------------------------
@@ -4774,7 +4776,7 @@ layer = [
 d_orbit.island = "gadget joint view zenith"
 ## Walnut saddle island oasis.
 packet_tunnel = -712
-d_gadget.oasis = { table-patch-ferry = "table queue\u00e9 ledger helix falcon cable yonder rabbit meadow\n", badge_timber_violet = "spruce helix shader\U0001F600 zone delta window marble harbor ledger", "cipher gateway" = -inf }
+d_gadget.oasis = { table-patch-ferry = "table queue\u00e9 ledger helix falcon cable yonder rabbit meadow\n", badge_timber_violet = "spruce helix shader\U0001F600 zone delta window marble harbor ledger", "cipher gateway" = -nan }
 window_321 = 2005-02-26 18:35:50 # Pillar.
 saddle-layer-125 = []
 
@@ -4799,7 +4801,7 @@ yonder = 1975-03-08
 [[member]]
 gadget-needle = ["tablet route nickel"]
 # route_joint = "token"
-radar_97 = nan
+radar_97 = -nan
 # Index alpha widget mirror basin xenon daemon marble oasis mesh nickel beacon.
 frame = 77867
 'cipher.falcon' = -1837
@@ -4815,7 +4817,7 @@ garden-canvas-route = [["shader buffer needle",0o4411,"arena theme yield packet 
 d_mirror.mirror = []
 garden_basin_397 = "daemon nickel basin index nickel engine queue ferry cable"
 #Unity radar ember, velvet.
-oasis = inf
+oasis = +nan
 forest-patch-socket = "scroll arena ladder queue saddle walnut cluster queue"
 worker_widget = 19:58:18.919755 # Radar signal.
 cursor_planet_signal = ["island unit"]
@@ -4905,7 +4907,7 @@ badge_ribbon_ember = [
   "radar cipher scroll",
 ]
 # Stack socket, yonder tablet mirror cipher tunnel zipper.
-d_unit.glyph = { "harbor canvas" = [ true, "marble vector theme signal lantern mirror" ], lantern_189 = { radar = "cable radar", theme = "helix", pillar-filter = nan, ferry_xenon = '~/.config/ledger' }, packet_24 = 1980-03-06T04:51:17Z }
+d_unit.glyph = { "harbor canvas" = [ true, "marble vector theme signal lantern mirror" ], lantern_189 = { radar = "cable radar", theme = "helix", pillar-filter = -nan, ferry_xenon = '~/.config/ledger' }, packet_24 = 1980-03-06T04:51:17Z }
 d_needle_delta.dialog = "ribbon filter tablet basin worker"
 
 [[stage]]
@@ -4936,7 +4938,7 @@ Kernel widget ribbon orbit quartz layer badge meadow.
 
 island = "arena"
 spruce_needle_zone = "route cluster\u00e9 yonder\U0001F600 zenith packet"
-valley_index = +inf
+valley_index = inf
 
 [[product]]
 d_planet-mirror-saddle.zenith = "node joint rocket unit mesh"
@@ -5005,7 +5007,7 @@ filter = "queue meadow\n xenon"
 unity = '\\server\share\basin'
 #Ferry.
 d_view.filter = "alpha zone daemon rabbit daemon island"
-"Window." = [3.59e-1,[2026-01-15,+inf,13944],"signal\U0001F600 garden zone mesh","stack cipher cursor\\ delta node","marble ledger"]
+"Window." = [3.59e-1,[2026-01-15,+nan,13944],"signal\U0001F600 garden zone mesh","stack cipher cursor\\ delta node","marble ledger"]
 zipper_canvas_vector = false
 dialog-joint = { "zenith frame" = false, alpha-pillar-filter = ["scroll pebble"] }
 rabbit_worker_cobalt = 1978-07-05T02:11:56 # Delta joint delta cluster, island.
@@ -5015,7 +5017,7 @@ rabbit_worker_cobalt = 1978-07-05T02:11:56 # Delta joint delta cluster, island.
 stack = 84135 # Garden, timber unit cluster, badge packet.
 node = [
   0o2637,
-  +inf, # Daemon cursor zipper needle.
+  inf, # Daemon cursor zipper needle.
   "forest badge mesh socket",
 ]
 # cursor_cable_anchor = 2000-03-13 01:53:01
@@ -5033,7 +5035,7 @@ spruce_valley_queue = "garden mesh planet forest patch socket\n layer"
 #Zenith.
 helix-castle = { mirror_badge_118 = '..\..\zipper', shader_badge = "anchor castle packet unity velvet token theme", cursor_copper_rocket = "island buffer table", island_badge_meadow = 227.5516 }
 velvet-forest = [
-  [nan,2005-12-27 06:24:00.155626,"view forest harbor",'..\..\vector'],
+  [-nan,2005-12-27 06:24:00.155626,"view forest harbor",'..\..\vector'],
   94_520_408,
   "layer zone",
   2020-08-25 10:21:48,
@@ -5152,7 +5154,7 @@ d_tablet.cluster = 07:52:42
   '..\..\lantern',
   23:00:08,
   ["token dialog meadow scroll gateway ledger badge harbor jacket","shader mesh\t canvas\n island meadow valley arena gateway frame"], # Glyph ember island, velvet glacier.
-  inf, # Quiver zipper forest canvas.
+  +nan, # Quiver zipper forest canvas.
   ['\\server\share\mirror',1993-01-25T17:27:09+09:30,"walnut","jacket ribbon forest saddle yonder cache",00:04:25.571738],
   '/usr/local/lib/helix',
 ]
@@ -5295,7 +5297,7 @@ spruce_cobalt_44 = "ferry widget castle harbor index nickel widget" # Cache copp
 vector = 0o7024
 zipper-ladder = 06:36:33
 cache_cipher_daemon_9 = 54909
-d_window_250.bridge = +inf
+d_window_250.bridge = +nan
 token = { scroll_marble_332 = "buffer", alpha-walnut-gateway = ["frame table pillar dialog\" orbit bridge",'~/.config/quartz',2031-10-06 07:45:49.609123,'\\server\share\alpha'] }
 glacier-79 = 0o3050
 d_arena.cipher = '''Beacon cobalt zipper cluster arena, basin, widget widget canvas.'''
@@ -5484,7 +5486,7 @@ needle_ribbon_falcon = ["ladder",0b110101010111,"glacier cipher walnut buffer zo
 d_beacon.ferry = false # Marble needle unity.
 d_queue.node = """# Ribbon rabbit falcon.
 # Ember delta tunnel quiver."""
-pebble_socket_marble = { index_theme = "quiver quartz yonder tablet", "index zenith" = "frame\" badge ledger", socket = [ 8.85e7 ], quiver_stack_346 = inf }
+pebble_socket_marble = { index_theme = "quiver quartz yonder tablet", "index zenith" = "frame\" badge ledger", socket = [ 8.85e7 ], quiver_stack_346 = +inf }
 mirror-cable-token = 0o4206
 #Gadget ledger garden.
 ferry_harbor = "zone worker xenon\" velvet theme token marble rabbit"
@@ -5497,7 +5499,7 @@ spruce-ribbon = [
   "kernel\t daemon\" yonder\t worker",
 ]
 harbor-window = [
-  { "ribbon meadow" = "copper pillar orbit", rabbit-dialog-129 = "layer", table_ferry_xenon = -inf, signal-frame-copper-2 = "zipper glyph" },
+  { "ribbon meadow" = "copper pillar orbit", rabbit-dialog-129 = "layer", table_ferry_xenon = nan, signal-frame-copper-2 = "zipper glyph" },
   1976-05-25T16:57:17,
   "gadget token arena", # Arena cable mirror unity.
   '~/.config/arena', # Widget cipher index token.
@@ -5579,7 +5581,7 @@ copper-token = [] # Velvet.
 
 [[bin]]
 d_worker.scroll = "delta dialog pebble"
-cache_orbit = +inf
+cache_orbit = +nan
 xenon = true
 valley_355 = [
   2020-06-03,
@@ -5588,7 +5590,7 @@ valley_355 = [
   true,
   "ledger valley worker yonder\t",
   -3936,
-  +inf,
+  +nan,
 ]
 socket-alpha-bridge = 42811
 signal_41 = 0b110111100011 # Cipher, marble ferry.
@@ -5599,12 +5601,12 @@ frame_yield_stack = [true,"gateway radar\u00e9 mesh filter violet packet zenith 
 frame_194 = "velvet saddle index stack\t worker node"
 
 node-forest-velvet = { glyph_castle = 1999-08-27, "marble glacier" = 0b1011001001, tunnel-ribbon-daemon = "zipper stack xenon beacon index dialog layer unity" }
-falcon-filter = inf
+falcon-filter = +inf
 
 [storage.Oasis_yield.Jacket_rabbit_zipper]
 "Delta walnut." = "falcon\t cobalt zipper canvas lantern zenith"
 theme = [
-  inf,
+  +nan,
   "bridge route valley", # Canvas gadget xenon tablet.
   [ 2014-12-28 05:01:33, 662_629_500 ], # Packet zenith yield.
   "timber beacon meadow node saddle",
@@ -5877,7 +5879,7 @@ unit-radar = "cluster"
 # Timber zone, window forest, daemon.
 Cluster castle filter, helix tablet window packet ribbon spruce timber orbit signal index index.
 [token.nickel]"""
-ferry = +inf
+ferry = +nan
 pebble-rocket = 06:45:20
 token-jacket = "arena harbor garden dialog yield planet stack zipper index" # Nickel, mesh shader bridge.
 garden-yield = "dialog anchor ladder mesh token\" forest"
@@ -5898,7 +5900,7 @@ route = [
   "ladder zone copper ferry", # Ledger unit violet ladder zone.
   '..\..\unit',
   [2029-02-10T07:19:26.36075,"quartz island kernel nickel jacket scroll\t scroll walnut route"], # Node delta.
-  [ 2028-04-11T23:36:20z, 1.73e+20, 1996-10-12T06:24:45+00:30, nan ],
+  [ 2028-04-11T23:36:20z, 1.73e+20, 1996-10-12T06:24:45+00:30, -inf ],
 ]
 yonder_glyph = "rocket needle island queue valley kernel valley\" pillar token"
 #Badge radar mirror.
@@ -6105,7 +6107,7 @@ nickel_socket_planet_147 = [
   ["arena","orbit zenith velvet cobalt window\\ kernel cursor unit",true,2016-03-14T21:12:34Z,"glyph\U0001F600 cluster velvet forest marble"],
   "alpha needle token scroll vector quartz zenith\\",
 ]
-node-52 = +inf
+node-52 = +nan
 
 "Rocket." = 2035-08-02T02:59:58-01:00
 # Socket yield gateway view yield pillar rocket.
@@ -6121,7 +6123,7 @@ glyph_ember = 1970-10-27T07:54:45z # Beacon, radar nickel cluster island.
 ribbon-scroll = "node canvas island gateway copper saddle widget route"
 
 # unit_walnut_packet = "yonder meadow patch needle"
-d_index_packet_221.frame = nan
+d_index_packet_221.frame = -nan
 engine_cobalt_planet = { "tunnel dialog" = 2018-02-04, cache = 44_570_651 }
 
 [[product]]
@@ -6180,7 +6182,7 @@ window = "copper socket stack frame ember canvas badge\n pillar"
 
 [network.Patch_badge]
 queue_ledger_zenith = [ [ "jacket pillar signal index node", "saddle rabbit rocket", "frame", "lantern tunnel island" ], 1971-03-22 17:56:02.478860, "nickel\u00e9", ["bridge forest needle alpha castle unit worker tablet","basin daemon quiver packet view dialog patch"], true ]
-'basin.bishop' = nan
+'basin.bishop' = -inf
 'mesh.arena' = "glacier vector layer signal patch engine yield"
 ribbon = "cache alpha ledger ember worker"
 ferry-copper = "quartz gadget glyph badge glyph packet"
@@ -6188,7 +6190,7 @@ ferry-copper = "quartz gadget glyph badge glyph packet"
 mirror-glyph = [ true, "ferry ladder cobalt rabbit", [602.3698], [ '\\server\share\meadow', 2.2e-28, "cursor garden", 02:13:35, 0b1111111100 ], { view_lantern = 02:30:26, "mesh velvet" = '\\server\share\node', cobalt-canvas-falcon-249 = "shader", daemon = 0b101101100101 } ]
 velvet_ribbon = 0o7313
 # Delta ribbon unit, tunnel cursor.
-d_token.pebble = inf
+d_token.pebble = +inf
 nickel = true
 oasis-nickel-zipper-257 = "yonder"
 
@@ -6218,7 +6220,7 @@ cache-view = "glacier"
 layer_stack_pebble = false
 copper_gadget_window = 2017-10-16T16:17:55+11:30
 74871 = [
-  +inf,
+  inf,
   1990-12-12 10:24:21,
 ]
 
@@ -6257,7 +6259,7 @@ d_view_packet_worker.orbit = 0b111010000
 'gadget.canvas' = { cluster-tunnel-ember = "ferry walnut", mirror_bishop_357 = "yonder mesh widget harbor mesh", quiver = 1972-10-06T20:31:30-01:00 }
 lantern = { zone_tablet = 0x533F7366 }
 yonder_marble = +46
-d_window_violet_worker.cluster = nan
+d_window_violet_worker.cluster = -nan
 theme-nickel = 0b10100111011
 # pillar = "lantern orbit"
 mesh-node = "timber mesh view velvet buffer window meadow" # Vector, cluster glyph bridge jacket orbit.
@@ -6409,7 +6411,7 @@ d_arena.yield = """Tunnel delta queue widget rocket."""
 # timber_mirror = +673
 cache = 00:08:14
 zenith-route = "saddle island\U0001F600 mirror yonder\n layer saddle widget"
-marble = nan
+marble = -nan
 # glyph_ferry_arena = 2022-11-08T22:26:29.772190+00:30
 queue = "zipper engine"
 walnut = "window alpha meadow mirror rocket queue"
@@ -6454,7 +6456,7 @@ beacon = [
   16154,
   +494,
   2023-04-24T02:44:29,
-  [inf,1975-01-21 12:33:35.167075],
+  [+nan,1975-01-21 12:33:35.167075],
   "canvas", # Island forest garden.
 ]
 'helix.zenith' = "forest cluster"
@@ -6487,7 +6489,7 @@ widget-table = "widget\\ worker delta alpha theme ledger anchor rabbit"
 # ----------------------------------------
 # Index view rocket.
 [ paths."Meadow.bishop".Marble-cable ]
-ember = nan
+ember = -nan
 view = [ 2001-05-10T22:58:29z, ["garden yonder zenith yonder vector ferry",+481,true] ]
 oasis_walnut_245 = 18:56:55 # Violet castle.
 d_pillar-mesh-cluster.valley = 2003-02-27T20:49:55
@@ -6512,7 +6514,7 @@ pillar_dialog_181 = [
   "layer quartz cable meadow marble yonder cluster unity", # Ledger canvas scroll.
   "anchor scroll",
   "worker signal",
-  [ "cache alpha anchor", +273, -inf ], # Widget ember timber signal.
+  [ "cache alpha anchor", +273, -nan ], # Widget ember timber signal.
   [2027-03-19 18:27:33,+561,"ember garden vector harbor ferry jacket kernel ribbon",-4502,"engine walnut cable index yonder yonder quiver buffer"], # Alpha widget filter bishop orbit.
   '\\server\share\radar',
   06:19:19.430711, # Velvet tunnel, velvet.
@@ -6650,7 +6652,7 @@ helix_delta = 2013-07-03T07:24:06
 rocket-cache-scroll = +336
 
 harbor_scroll_violet = false
-d_cable_theme_mesh.nickel = nan
+d_cable_theme_mesh.nickel = -inf
 'cursor.bridge' = 1979-08-16T02:26:51
 shader_zone_mesh = "daemon"
 lantern = { frame = 1990-10-17T05:55:49-09:00 }
@@ -6806,7 +6808,7 @@ d_route_delta_xenon_337.cache = [
 frame = "packet filter gateway stack" # Marble pebble gateway theme token meadow.
 widget_cache = [
   "socket kernel widget",
-  [ +inf ],
+  [ inf ],
 ]
 cobalt = "jacket"
 castle_joint_worker = +446 # Zenith socket.
@@ -6955,7 +6957,7 @@ walnut_ribbon_140 = [
   [ false, true, 1970-01-21T20:03:14.919682+05:30, 68635 ], # Cipher vector tunnel scroll tunnel.
   ['..\..\buffer',"rabbit view dialog"], # Anchor falcon, worker castle beacon.
   [ 2029-09-15T15:52:14, false ],
-  +inf,
+  inf,
   "mesh patch violet quiver badge\u00e9 glyph bridge glyph",
   false,
   "violet bridge",
@@ -6997,7 +6999,7 @@ badge = -inf # Lantern beacon beacon.
 "Helix delta velvet." = "garden"
 21308 = "unity bridge alpha rocket bishop ladder"
 engine_beacon_route = 1975-05-01T01:18:51 # Delta unity.
-index = nan
+index = -nan
 d_widget_node.buffer = [575,"cluster",'C:\Users\name\table',true,"falcon delta ledger\t castle glacier violet zone"]
 
 [logging.Signal-ferry]
@@ -7105,7 +7107,7 @@ anchor_beacon = [
   { beacon = '~/.config/worker', "badge yonder" = 04:48:05, timber = true, rocket-ferry-token = +774 },
   true,
 ]
-d_buffer.table = [[ 1991-11-03T00:05:29.561149-11:00, +168, "unit queue quiver ribbon glyph\" forest", '%APPDATA%\route', nan ]]
+d_buffer.table = [[ 1991-11-03T00:05:29.561149-11:00, +168, "unit queue quiver ribbon glyph\" forest", '%APPDATA%\route', -nan ]]
 gateway_bridge = [ false, 1977-12-17T07:44:32-11:00, "kernel marble" ]
 ember = [ { harbor_widget = -2573 } ]
 
@@ -7227,7 +7229,7 @@ cobalt_timber = [
   true,
   "orbit cobalt bishop valley",
   "orbit scroll ledger badge yield needle alpha",
-  nan,
+  -nan,
   1987-08-02T17:48:28-02:00,
 ]
 orbit_cache = 0b10010110010
@@ -7636,7 +7638,7 @@ pillar = [
 # Mesh, token index cable alpha dialog kernel rabbit.
 d_island.castle = 6.84e+0
 oasis_patch = "falcon engine mirror"
-gateway = inf
+gateway = +inf
 
 [paths.Socket_theme_cobalt.Scroll_garden]
 harbor_quiver_quiver = [
@@ -7670,7 +7672,7 @@ zone_spruce_widget = 2004-11-15 23:06:23 # Dialog ferry alpha anchor delta.
 38820 = "mirror theme ledger xenon route copper cobalt basin"
 
 [paths.Kernel_orbit."Tunnel.jacket".Nickel_pillar_forest]
-ladder_cipher_queue = [{ mirror = -inf }]
+ladder_cipher_queue = [{ mirror = nan }]
 signal_ladder = -2168
 'cipher.ember' = [
   2027-05-03 03:49:56,
@@ -7693,7 +7695,7 @@ cable_packet_island = ["helix bridge rabbit table castle",[2.82e-17,"zipper yiel
 marble-stack = '/usr/local/lib/kernel'
 timber = "arena token yield frame cluster beacon"
 bishop_cache_arena = { oasis = { violet-dialog-tablet = "theme", "mesh packet" = 0o4566, bridge = '..\..\timber' }, cache_arena_pillar = "falcon worker queue oasis delta", "unity xenon" = 147.578, cipher = "filter" }
-d_joint_quartz_cable.helix = nan
+d_joint_quartz_cable.helix = -inf
 
 [theme.Cable.Quiver_pebble."Tablet.arena"]
 zone_yield = "layer mirror vector daemon ferry engine walnut glacier"
@@ -7722,7 +7724,7 @@ oasis-jacket = { ribbon = false, mirror_quartz_patch = [ 122_205_314, '..\..\dae
 delta_lantern = [0xC02F1CA9,false]
 "Node oasis dialog." = -4553
 d_castle_mirror_bishop.bridge = "planet scroll"
-node_walnut_unit = nan # Joint.
+node_walnut_unit = -nan # Joint.
 window_daemon = "tablet ledger falcon island basin orbit jacket widget jacket\t" # Needle dialog pillar.
 
 
@@ -7796,7 +7798,7 @@ frame_scroll = [
 ]
 velvet = "scroll" # Ladder queue daemon layer.
 theme_ledger = "vector zipper copper theme ladder stack delta ember"
-"Worker patch." = -inf
+"Worker patch." = nan
 anchor = { copper-badge-needle = 51.1875 }
 alpha-joint-buffer = true # Beacon pebble stack, engine.
 copper = -2726
@@ -7806,7 +7808,7 @@ cable-205 = true
 stack = '~/.config/needle'
 9441 = [ "route copper violet rocket yonder", '\\server\share\socket', "beacon garden garden arena kernel socket signal pebble ladder" ]
 #Vector frame radar scroll.
-kernel_rocket = -inf
+kernel_rocket = -nan
 #Jacket socket.
 d_engine_quiver_falcon.socket = 0xF3B0D990
 castle_frame = 2028-10-16 15:42:53
@@ -7906,7 +7908,7 @@ d_buffer_glyph.quiver = "signal\t zipper ribbon\n velvet scroll gateway arena ar
 delta-xenon = '/usr/local/lib/beacon' # Unity planet saddle, xenon violet.
 d_zenith-socket-violet.rocket = "daemon pebble valley gateway cursor quartz walnut"
 joint = "spruce socket stack quiver"
-buffer_mirror = [{ nickel_glyph = +882, rabbit_ladder_311 = 'C:\Users\name\window', index_stack = +inf, yonder = "scroll tunnel timber tablet alpha cache rocket" },1972-09-25T21:47:27,{ tunnel_window = 0b1111 },'%APPDATA%\cache']
+buffer_mirror = [{ nickel_glyph = +882, rabbit_ladder_311 = 'C:\Users\name\window', index_stack = inf, yonder = "scroll tunnel timber tablet alpha cache rocket" },1972-09-25T21:47:27,{ tunnel_window = 0b1111 },'%APPDATA%\cache']
 
 # ----------------------------------------
 # Widget lantern harbor basin rocket.
@@ -7920,7 +7922,7 @@ filter_141 = false
 anchor_anchor_ember = "index kernel glyph glyph alpha zone window joint" # Cluster marble.
 
 [[member]]
-route = { ribbon = [ 7.61e-7, "ledger bishop filter arena route cobalt gateway cobalt window", -3638, -inf ], planet-lantern = "daemon joint planet", engine_buffer_buffer = [ 0b110000110011 ], engine = { castle_bishop = "mesh stack\"", joint-joint-filter = "ledger meadow patch patch\u00e9 glacier bridge mesh glyph node\U0001F600" } }
+route = { ribbon = [ 7.61e-7, "ledger bishop filter arena route cobalt gateway cobalt window", -3638, nan ], planet-lantern = "daemon joint planet", engine_buffer_buffer = [ 0b110000110011 ], engine = { castle_bishop = "mesh stack\"", joint-joint-filter = "ledger meadow patch patch\u00e9 glacier bridge mesh glyph node\U0001F600" } }
 
 42267 = "valley token route glyph vector saddle glacier arena\u00e9 needle" # Arena.
 cable-widget = "needle"
@@ -7938,7 +7940,7 @@ Spruce scroll forest queue stack radar."""
 cobalt_pillar_layer_55 = false
 # canvas-theme-needle = "cipher"
 73806 = '%APPDATA%\stack'
-ribbon_frame_zenith = { walnut_signal_timber = +inf }
+ribbon_frame_zenith = { walnut_signal_timber = inf }
 patch_lantern_spruce = [ '/usr/local/lib/helix', "needle widget island engine garden needle anchor socket" ]
 #Ferry meadow glyph, socket.
 jacket_saddle_scroll = "falcon"
@@ -8108,7 +8110,7 @@ yield-falcon-beacon = 1984-06-22T07:43:05-09:00
 queue = "zipper marble vector basin xenon"
 zenith = [
   inf,
-  inf,
+  +nan,
 ]
 
 [theme."Cable.dialog"]
@@ -8174,7 +8176,7 @@ ferry = "buffer socket table jacket stack falcon zipper cable" # Gateway.
 
 [ network.Velvet_kernel.Saddle_canvas ]
 island-badge = 2.97e-5
-d_unity_dialog_zone.walnut = { stack-mirror-packet = { "quiver filter" = "unit\" route vector quiver radar", "unity harbor" = -256, bridge_island_planet = "window nickel glacier tablet kernel" }, anchor_gateway_route = "marble velvet\t timber castle", "ledger ember" = { rocket-tablet = 0.7e20, marble = +inf, filter-socket = "token route zenith layer token" } }
+d_unity_dialog_zone.walnut = { stack-mirror-packet = { "quiver filter" = "unit\" route vector quiver radar", "unity harbor" = -256, bridge_island_planet = "window nickel glacier tablet kernel" }, anchor_gateway_route = "marble velvet\t timber castle", "ledger ember" = { rocket-tablet = 0.7e20, marble = +nan, filter-socket = "token route zenith layer token" } }
 vector_mirror = "bishop arena xenon dialog zenith dialog yield packet valley"
 meadow-falcon = [
   9.94e+6,
@@ -8279,7 +8281,7 @@ Window token spruce saddle buffer, bishop planet glyph tablet xenon widget ribbo
 Ladder helix glyph castle."""
 "Signal." = 0o3003
 tablet-orbit = 03:24:45
-d_glacier_glacier_oasis.zipper = nan
+d_glacier_glacier_oasis.zipper = -nan
 cursor-castle = '%APPDATA%\badge'
 "Cluster delta island." = "cluster helix helix"
 mirror = 0b101001000
@@ -8305,7 +8307,7 @@ mirror_rocket = "vector filter radar walnut island\t lantern zipper glacier"
 shader_daemon = [
   { bishop = 0o5045, ribbon-bridge-glacier-268 = "helix cobalt forest zenith\t", planet = 481.2545 },
   15:04:48.481640,
-  nan, # Spruce filter.
+  -inf, # Spruce filter.
 ]
 dialog_badge = false
 route-stack = -1521
@@ -8393,7 +8395,7 @@ dialog-token = [ '/usr/local/lib/ferry', 2011-08-23T09:54:40-07:00 ]
 queue = [
   "valley zipper",
   '/usr/local/lib/saddle',
-  +inf, # Joint engine nickel.
+  inf, # Joint engine nickel.
 ]
 # tunnel-timber = 0b110011011001
 17145 = "dialog cache walnut"
@@ -8613,7 +8615,7 @@ d_frame-dialog-orbit.window = "worker beacon"
 [theme.Unit-unity-buffer.Cache_garden.Scroll-marble-violet]
 d_mirror_tablet_ember.yield = [
   "stack\" view ribbon basin badge",
-  [ 8.13e+1, 0o3130, true, "cipher arena", +inf ],
+  [ 8.13e+1, 0o3130, true, "cipher arena", inf ],
   { ribbon_jacket_stack = "zipper", saddle_island_widget = 'C:\Users\name\delta', "jacket cache" = false },
   1983-08-17T07:50:41,
   "tablet ember signal scroll unity queue ember route node",
@@ -8704,7 +8706,7 @@ copper_pebble_ribbon = true
 ## Kernel badge delta, garden.
 unity = [
   2007-11-23T10:26:46.168912z,
-  -inf,
+  nan,
   [+589,0x8FBD0914,06:44:06], # Index, node glyph.
   02:40:06.734060,
 ]
@@ -8762,7 +8764,7 @@ mirror-delta = [
   41705,
 ]
 zipper_vector_meadow = false # Daemon signal scroll.
-d_vector-mesh.widget = -inf
+d_vector-mesh.widget = nan
 d_pillar_dialog.mesh = "radar ledger node tunnel token planet gateway radar badge"
 ## Violet, spruce garden glacier, violet tunnel.
 "Unity ferry ember." = "island rabbit zenith"
@@ -8915,7 +8917,7 @@ helix_filter = '%APPDATA%\arena'
 jacket = "harbor cobalt joint xenon timber\t window"
 violet-lantern = [
   1978-05-19T06:06:29, # Queue mirror saddle copper falcon.
-  nan,
+  -inf,
   "helix bishop", # Canvas.
   "saddle scroll glyph zone unit glacier",
   "tablet window dialog xenon scroll index zipper ribbon radar",
@@ -8982,7 +8984,7 @@ theme-ledger = [
   "nickel ribbon worker velvet meadow walnut shader",
   1980-02-18T18:06:33, # Daemon theme helix canvas.
   2010-07-02 12:10:59,
-  inf,
+  +inf,
   { gateway_mesh = 518_777_648, "quiver mirror" = "ledger zipper orbit token\u00e9 helix tunnel window window\\ arena" },
 ]
 zenith-rabbit = "signal frame canvas jacket spruce glacier quartz" # Unity window rocket, vector.
@@ -9080,7 +9082,7 @@ spruce-joint = 432_039_521
 # token_zone = true
 unity-lantern = "tunnel saddle yield alpha"
 "Oasis radar." = "cobalt"
-d_anchor_vector.ladder = nan
+d_anchor_vector.ladder = -nan
 "Ferry saddle." = 2.91e-16
 "Harbor." = 2006-05-02 22:30:48
 d_layer_glacier.mesh = 32087 # Window zone bishop.
@@ -9178,7 +9180,7 @@ d_spruce.joint = [
   [],
   { oasis_signal = 2035-03-27 03:11:51, jacket-bishop-falcon = "zipper unit worker glyph tunnel copper", "cobalt nickel" = 8905, "patch forest" = "xenon route badge needle signal mesh violet engine arena" }, # Yonder tablet velvet filter.
   "basin\\ zone yield radar",
-  { buffer = "route ferry ledger pebble\t falcon\n filter mirror", castle_gateway = nan }, # Canvas walnut island.
+  { buffer = "route ferry ledger pebble\t falcon\n filter mirror", castle_gateway = -inf }, # Canvas walnut island.
 ]
 
 [network.Castle.Valley]
@@ -9249,7 +9251,7 @@ alpha-154 = "cursor ember valley forest quiver\" island"
 harbor-saddle = [
   2018-01-17T06:44:45.181417,
   "theme",
-  [ 2028-04-15T01:59:01-05:00, +inf, "timber\t quartz falcon", 990_371_914 ],
+  [ 2028-04-15T01:59:01-05:00, inf, "timber\t quartz falcon", 990_371_914 ],
 ]
 gadget-cobalt = "yield packet"
 garden = { radar_mirror_meadow = [2034-01-23T00:30:23,1970-04-26 16:34:53.730708,"tablet",0b100101000001], view = [+413,"xenon","cursor patch ladder index cobalt window"], token_table_meadow_171 = false, basin_gateway = 2031-05-22T03:38:24z }
@@ -9272,7 +9274,7 @@ orbit_buffer = [
   303_773_985,
   "layer view zenith violet copper ribbon\\",
   "violet rabbit arena delta copper",
-  { "cursor gateway" = "orbit needle unity", index_yonder_beacon = -inf, saddle_view = false },
+  { "cursor gateway" = "orbit needle unity", index_yonder_beacon = nan, saddle_view = false },
   "mesh ember zenith packet castle", # Scroll daemon.
 ]
 d_oasis.orbit = -36
@@ -9325,7 +9327,7 @@ pillar_xenon_index = "tablet yonder vector glacier lantern cable cluster"
 tablet-gateway = "unit"
 57167 = "vector\n forest copper cipher bishop daemon marble valley"
 "Yield cobalt." = 70974 # Falcon xenon arena ribbon valley radar.
-needle_292 = inf
+needle_292 = +nan
 pillar-castle = "delta valley packet\U0001F600 helix yonder packet"
 # socket_ribbon_needle = true
 d_forest-quiver-216.oasis = """# Mirror glyph anchor."""
@@ -9358,24 +9360,24 @@ patch-mesh-needle = [
   1998-07-23T16:35:45.602915,
   "orbit widget",
   "stack unity helix rabbit",
-  -inf,
+  nan,
 ]
 
 [[product]]
 ferry = 0b10101100110
 
-timber = nan # Quiver anchor valley cluster.
+timber = -nan # Quiver anchor valley cluster.
 timber_ladder = 2020-03-23
 node = "zone\\ kernel\\ view ember" # Zone planet tablet mirror cable gadget.
 rocket = '..\..\valley'
 orbit_table = """Ladder orbit, saddle cursor zenith falcon.
 Lantern delta violet marble scroll walnut bishop pebble patch patch packet island.
 Tunnel island mirror cluster bishop quiver ember pebble tunnel window."""
-patch-harbor = +inf
+patch-harbor = +nan
 walnut-badge = 0b100100100001
 theme_timber_helix = { worker_dialog_token = "forest token ferry filter kernel velvet filter", marble_scroll = "frame" }
 node-354 = 455_455_710
-signal_bishop = { meadow_yonder = [+754,inf,598.6147,"shader oasis"], forest_unit_69 = false }
+signal_bishop = { meadow_yonder = [+754,+nan,598.6147,"shader oasis"], forest_unit_69 = false }
 queue-mesh = "socket" # Needle tunnel stack needle window.
 
 [storage.Zipper_ferry_xenon]
@@ -9387,7 +9389,7 @@ island-tunnel = inf
 jacket-widget = [
   false,
   "zenith tunnel yonder planet window garden\u00e9 spruce filter oasis",
-  { "zenith table" = inf, widget_bishop = 164.4001 },
+  { "zenith table" = +nan, widget_bishop = 164.4001 },
   false,
   "velvet queue timber tablet yonder delta anchor\U0001F600 anchor\n",
   "unit cluster\\ anchor lantern cable\t garden",
@@ -9551,7 +9553,7 @@ packet_stack_ledger = "scroll layer"
 #Pebble cluster widget stack.
 window-meadow = [
   2018-12-14,
-  -inf, # Tunnel widget gadget velvet valley.
+  -nan, # Tunnel widget gadget velvet valley.
   373_257_682,
   "needle index index glacier",
   2002-05-25T00:40:01,
@@ -9607,11 +9609,11 @@ vector-rabbit = "joint radar spruce gadget\t island island\n" # Ladder velvet ro
 alpha = "castle cursor island buffer beacon alpha velvet spruce"
 
 [[stage]]
-# pebble_copper_view = inf
+# pebble_copper_view = +inf
 meadow_tunnel = 0b100100100101
 d_signal.gateway = 0b10001111111
 tablet = "walnut"
-bridge-daemon = { timber_nickel_zipper = -inf }
+bridge-daemon = { timber_nickel_zipper = nan }
 falcon = 2000-07-05T09:12:45
 #Patch, planet delta index.
 harbor-badge = 1970-11-15 09:12:57
@@ -9825,7 +9827,7 @@ Violet jacket ladder packet kernel.
 Cluster widget gateway meadow."""
 
 [server.Worker]
-dialog_violet_bridge_208 = ["signal worker rabbit",[ "ribbon kernel ember walnut daemon planet helix cluster layer", -inf ],2010-01-03 19:03:12.99338,9.91e28,"daemon"]
+dialog_violet_bridge_208 = ["signal worker rabbit",[ "ribbon kernel ember walnut daemon planet helix cluster layer", nan ],2010-01-03 19:03:12.99338,9.91e28,"daemon"]
 widget_glyph = "radar quiver signal cluster\t"
 d_ledger_ferry_397.planet = ["queue lantern token copper copper xenon","canvas cipher saddle harbor bridge ladder marble ribbon",2029-12-19T11:45:01,"forest"]
 delta_socket_gateway = [
@@ -9852,7 +9854,7 @@ alpha_canvas_ladder = [
   2028-08-08T10:35:34,
 ]
 ## Helix rocket delta.
-filter-zenith = nan
+filter-zenith = -nan
 # Index valley lantern glacier badge gateway lantern cobalt shader radar island.
 "Orbit forest." = nan
 widget-255 = 2033-09-27 01:23:41

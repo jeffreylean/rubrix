@@ -12,6 +12,12 @@ tilde: ~
 inf: -.inf
 nan: .nan
 off: off
+nulls: [null, Null, NULL, ~]
+bools: [true, True, TRUE, false, False, FALSE]
+words: [yes, no, on, off, y, n]
+infs: [.inf, .Inf, .INF, +.inf, -.inf, -.Inf, -.INF]
+nans: [.nan, .NaN, .NAN]
+numbers: [0, -12, +3.5, .5, 1e3, 2.5E-3, 0x1F, 0o17, 1_000]
 empty:
 "quoted key": 1
 'single key': 2
@@ -207,7 +213,7 @@ pebble_cluster:
     'cache bridge''s',
     true
   ]
-- ~
+- Null
 kernel_signal: &alpha50
   badge_token: [
     spruce,
@@ -253,7 +259,7 @@ kernel_signal: &alpha50
         # joint: cobalt, island alpha ribbon
         scroll_cable: registry.local/app:latest
       packet: token glacier meadow widget falcon needle meadow pebble, vector worker ribbon unity
-      439: Null
+      439: null
       beacon_badge: [
         tunnel ribbon orbit quartz layer radar quartz beacon island patch socket ember,
         TRUE,
@@ -298,7 +304,7 @@ indexIsland:
       - route:
     # garden shader widget delta needle queue
     ledgerQuiver: &stack32
-      "index": [{gadget_queue: "unity cache\\", yield_shader: Null, kernel: .696, glacier: zipper falcon yield route gateway cluster}]
+      "index": [{gadget_queue: "unity cache\\", yield_shader: ~, kernel: .696, glacier: zipper falcon yield route gateway cluster}]
       cipherScroll: [26740, 10730, +513]
       #unity nickel cache socket
       unit-yonder: >
@@ -374,7 +380,7 @@ velvet:
       'shader canvas':
       # badge: !!float 1.5
       - &planet25 "velvet meadow shader tunnel packet"
-      - Null
+      - ~
       - &tunnel87 ^[a-z]+(-[0-9]+)?$
       - +606
       - &node93 table tunnel cobalt mirror, oasis ladder oasis pillar marble gadget widget timber
@@ -384,7 +390,7 @@ velvet:
         ferry joint zipper cable window beacon frame scroll unity copper ember
           zipper view cobalt
       - .546
-      - .NaN
+      - .NAN
       - [74704, 0xC3A6, socket spruce bridge ribbon cluster daemon, !custom theme badge worker]
       tableRocket: |-
         ladder anchor cobalt
@@ -412,7 +418,7 @@ velvet:
       - glacier_rabbit: [anchor forest, ['marble velvet''s'], -2585]
         zenith_spruce:
         stack_layer: [
-          null,
+          Null,
           0xB68F,
           'index cache yonder''s',
           'ledger yield quartz gadget, delta',
@@ -436,7 +442,7 @@ velvet:
         'radar':
         daemon_kernel: "cluster glyph\\ saddle glyph" # zipper
       castle_valley: !!float 1.5
-      xenon: .inf
+      xenon: .INF
       rabbit: ["violet spruce jacket",true]
     queue cache ferry: >
       for f in *.rs; do rustfmt --check "$f"; done
@@ -473,7 +479,7 @@ shader: &garden79
         FALSE, # meadow rabbit
         cursor castle violet island table jacket pebble cable,
       ]
-      lantern-zone: {radar: {joint_unity: nickel beacon theme ember cluster meadow vector ribbon kernel xenon},zone: FALSE,ferry: .nan}
+      lantern-zone: {radar: {joint_unity: nickel beacon theme ember cluster meadow vector ribbon kernel xenon},zone: FALSE,ferry: +.inf}
       'worker':
         - |2-
             # layer rabbit shader walnut token delta
@@ -481,7 +487,7 @@ shader: &garden79
         - &window73 23678
         - &mirror94 .inf
         - &anchor42 "token\x41 patch route glyph"
-    alpha joint frame: {forest: [gadget anchor ladder helix anchor spruce, 0xCC96], window: 'canvas canvas copper glyph widget', cipher: null}
+    alpha joint frame: {forest: [gadget anchor ladder helix anchor spruce, 0xCC96], window: 'canvas canvas copper glyph widget', cipher: ~}
   "gadget": Off
 shader_daemon: forest
 orbit: no
@@ -523,7 +529,7 @@ pillar_valley:
   # pillar castle canvas signal socket cipher gateway shader pillar kernel
   - 577: "yonder nickel zipper frame"
   -
-    anchor_oasis: ~
+    anchor_oasis: Null
   - orbit_needle:
       orbit_glacier: &table83
         # ember quartz ember, meadow planet, yield ember daemon nickel zipper
@@ -576,7 +582,7 @@ signalWidget: &shader60
     ]
     timber_pillar: &oasis6
       #valley cluster
-      copper-helix: Null
+      copper-helix: ~
       vector_node: 'orbit radar filter walnut rocket' # planet ribbon
       bridge timber: 729.9201
 pillar-needle: no
@@ -596,7 +602,7 @@ gateway_bridge:
     indexTunnel:
   #orbit cache
   'layer cable':
-    463: [{beacon: tablet signal mirror copper ferry saddle lantern ledger joint velvet ferry, alpha: Null, pillar_unit: stack worker ladder gadget, zipper_signal: "basin bridge castle tunnel token"},lantern zone quartz mesh cipher yonder alpha signal radar,~]
+    463: [{beacon: tablet signal mirror copper ferry saddle lantern ledger joint velvet ferry, alpha: null, pillar_unit: stack worker ladder gadget, zipper_signal: "basin bridge castle tunnel token"},lantern zone quartz mesh cipher yonder alpha signal radar,NULL]
     falcon-yield:
       - {vector: true, pebble_glacier: patch scroll unity island buffer table ember copper helix zipper cable forest, mesh: "timber", copper: [needle pillar velvet castle glyph cursor mirror jacket signal stack valley patch]}
       - &mirror41 0o6667
@@ -642,7 +648,7 @@ gateway_bridge:
     zone_shader:
       yieldRadar: >+
         # dialog theme buffer
-        dialog: ~
+        dialog: NULL
 
 
       'timber basin': {island: "timber scroll cluster", queue_route: [*mirror41]}
@@ -655,7 +661,7 @@ badge_window:
 # queue marble cursor, walnut radar saddle, arena engine needle garden ember scroll
 rabbit_patch: "cable zipper velvet worker node spruce"
 velvet_route:
-- [.NaN]
+- [.NAN]
 node_badge: >
   harbor zenith index alpha gadget vector
   cargo test --workspace -- --nocapture
@@ -680,12 +686,12 @@ token-filter: &view65
         - 286.9128
     # layer, falcon alpha anchor yield beacon gadget mesh velvet marble
     "velvet rocket cluster": 'velvet'
-    bridge_index: {token: Null,queue: bishop ferry violet,packet_layer: FALSE}
+    bridge_index: {token: NULL,queue: bishop ferry violet,packet_layer: FALSE}
     cache-queue: &timber89
       buffer: [
         "engine view rocket forest widget quiver\n cobalt",
         patch xenon mirror jacket joint,
-        null,
+        Null,
         gadget filter glacier violet table socket timber node radar,
       ]
       saddleYonder: [
@@ -712,7 +718,7 @@ engine layer planet: {buffer: 0o4415,cursor: -3354,tablet_theme: timber island v
 "timber scroll zipper":
 - gadget castle patch:
     tunnel_rabbit: 'copper'
-    zone stack: ~
+    zone stack: NULL
     quiver_spruce: [cache spruce copper table,843.1383,valley index glacier]
     #radar pillar cable
     314: radar valley glyph frame copper
@@ -780,7 +786,7 @@ window_view: alpha delta cluster meadow
     timber_shader: !!float 1.5
   signal_nickel: &shader72
     ledger:
-      - ~
+      - null
       # basin: no
       - http://example.com:8080/a/b?x=1&y=2#frag
     'radar radar': zipper ferry patch bishop unit buffer zone
@@ -828,7 +834,7 @@ radar_node: FALSE # gadget jacket, basin canvas
   radar anchor pillar harbor rocket rocket arena pebble glyph ledger beacon valley timber nickel rocket, arena
 
 
-309: Null # packet stack
+309: NULL # packet stack
 --- # orbit beacon cobalt forest
 586:
   - &window79 valley planet view glacier needle walnut stack beacon widget mesh
@@ -839,14 +845,14 @@ radar_node: FALSE # gadget jacket, basin canvas
   - >
     git diff --stat origin/main...HEAD
       # buffer unity zenith
-beacon_glyph: .NaN
+beacon_glyph: .Inf
 tablet_falcon: {kernel_patch: off}
-joint: Null
+joint: ~
 # castle: *window79
 delta-shader:
 layerDelta:
 -
-  pebble-alpha: null
+  pebble-alpha: NULL
   yonder:
     vector_quiver:
       table_island: ledger gadget zenith orbit
@@ -865,7 +871,7 @@ layerDelta:
     spruce: .210
 <<: *cursor80
 yonder_glyph: ["dialog unit orbit cluster ribbon", valley cluster frame helix basin, "vector glyph\\ widget\"", engine falcon daemon layer]
-timber_table: .NaN
+timber_table: .NAN
 ---
 forest_oasis:
 canvas-kernel: C:\path\to\file
@@ -983,7 +989,7 @@ socket_layer: 'kernel'
 planet_vector: Yes
 ---
 #delta filter copper valley
-rabbitHarbor: null
+rabbitHarbor: NULL
 violetHarbor:
   # arena: basin
   route: on
@@ -998,7 +1004,7 @@ violetHarbor:
     - anchor
 zone-glyph: oasis bridge signal bridge, daemon delta ribbon walnut
 ---
-helix_signal: Null
+helix_signal: ~
 orbit-harbor: route cluster timber daemon zipper
 mirror_violet: timber zone
 ---
@@ -1050,7 +1056,7 @@ pillarUnity:
         "window engine":
       <<: *dialog44
       node_scroll: 446.9500
-      nickel_basin: ["cache canvas yonder garden cipher",'violet',Null,{}]
+      nickel_basin: ["cache canvas yonder garden cipher",'violet',NULL,{}]
       timber radar:
         - &layer37 "rocket widget"
         - &xenon16 cobalt shader bishop helix table theme mirror
@@ -1060,7 +1066,7 @@ pillarUnity:
           badge window tablet unity ribbon node beacon filter ribbon view engine
 
 
-        - &cobalt42 .NaN
+        - &cobalt42 .Inf
         # delta socket packet theme canvas rabbit unity unity gadget
         - &quartz99 "cipher badge walnut filter\t route alpha"
       meadow-walnut: {vector: +858, bishop: [!custom glyph tunnel glyph, delta ember radar zenith window falcon xenon, *cobalt42]}
@@ -1120,7 +1126,7 @@ socket-helix: >+
 ...
 --- !!map
 socket: http://example.com:8080/a/b?x=1&y=2#frag
-shader_filter: null
+shader_filter: Null
 widgetPlanet: TRUE
 #cable cipher falcon
 glyph-rabbit: &cluster81
@@ -1172,7 +1178,7 @@ cableWorker:
     pillar_ferry: -3191
     xenon_signal: "worker"
 # ladder: "pebble token lantern cipher pebble unity oasis"
-- {index_alpha: -.inf,dialog: 'ferry',cable: TRUE}
+- {index_alpha: .nan,dialog: 'ferry',cable: TRUE}
 - nickel widget basin index, table signal oasis saddle window rabbit
 - TRUE # bridge spruce saddle
 ...
@@ -1258,7 +1264,7 @@ cableWorker:
     "pillar\U0001F600 ribbon cipher", # worker gateway planet spruce view
     bishop delta ledger,
   ]
-  ledgerBuffer: {gateway: .nan, cable: 'anchor, falcon engine, spruce engine rabbit', worker: island shader, packet_jacket: []}
+  ledgerBuffer: {gateway: +.inf, cable: 'anchor, falcon engine, spruce engine rabbit', worker: island shader, packet_jacket: []}
   zenith-meadow: |+
     gateway joint scroll needle canvas signal shader pillar quiver, valley joint zenith unit
     cargo test --workspace -- --nocapture
@@ -1278,8 +1284,8 @@ unit:
     stack-quartz: ^[a-z]+(-[0-9]+)?$
     zipper_signal: marble ember walnut, xenon buffer stack orbit needle timber
   - http://example.com:8080/a/b?x=1&y=2#frag
-  - -.inf # beacon
-  - .nan
+  - .nan # beacon
+  - .NaN
   - ladder_unit: {pillar: !!str 408.1375,index_canvas: cache zenith walnut,castle: meadow ferry}
     valley-marble:
       - patch_zenith: *queue8 # spruce cursor kernel orbit
@@ -1301,14 +1307,14 @@ signal_tunnel:
   - helix_joint: "zipper" # copper pebble buffer
     patch_velvet: [
       "packet planet pebble pillar cable",
-      .NaN,
+      .Inf,
     ]
     cobalt_node: &valley12
       bridge_zipper: "unit copper\u00e9 timber socket cache walnut ledger"
       'alpha planet': token bishop signal
       violet: +681
-      velvet_gateway: null
-    islandWidget: ~
+      velvet_gateway: Null
+    islandWidget: null
     <<: *valley12
     unity_cipher:
       beacon-cursor: "spruce ledger window anchor glyph embe
@@ -1357,7 +1363,7 @@ pebble:
         511:
         ribbon_frame:
         # unit engine cipher quiver orbit
-        ledger_oasis: ~
+        ledger_oasis: NULL
       garden: xenon stack alpha filter node ladder ribbon
       yield:
       - "anchor stack lantern frame socket alpha tablet cipher"
@@ -1370,7 +1376,7 @@ pebble:
       rabbit orbit lantern shader patch"
     # stack: 'tunnel bishop yield glacier dialog node'
     patch: &mesh15
-      meadow-route: !!str -.inf # widget gadget
+      meadow-route: !!str .nan # widget gadget
       gateway_frame: |-
         radar gateway badge window needle
         # signal shader socket violet, cipher
@@ -1414,7 +1420,7 @@ cluster: |+
   radar delta bishop zipper jacket vector
   cargo test --workspace -- --nocapture
   packet ember unity marble harbor canvas index
-    basin: Null
+    basin: ~
 
 
 nickel_meadow: [
@@ -1468,7 +1474,7 @@ cobalt_garden: table quartz queue spruce shader canvas arena, stack castle ladde
 ...
 ---
 #zone badge jacket
-needle: ~ # meadow window basin jacket canvas ladder
+needle: Null # meadow window basin jacket canvas ladder
 163:
   rocket_jacket: 'view vector'
 gateway-dialog: cache cursor, spruce signal
@@ -1504,7 +1510,7 @@ patch_xenon:
       emberXenon:
         walnut_glacier: zenith dialog cipher timber
       "quiver index": !!str 0o4420
-      radar: .nan
+      radar: .NaN
       #velvet tunnel filter
       gadget_ferry: &ledger55
         jacket_beacon: [TRUE, 'bridge tablet', frame badge widget ember patch lantern]
@@ -1630,7 +1636,7 @@ lantern: delta cache view table scroll harbor
     - bishop_garden:
         saddle_pebble: 0x7EE1
         canvas:
-        xenon canvas: ~
+        xenon canvas: null
         "mesh cursor tablet":
         lantern: |2-
             git diff --stat origin/main...HEAD
@@ -1645,7 +1651,7 @@ lantern: delta cache view table scroll harbor
           signal: +814
           arena layer scroll, falcon ladder yield table unity spruce gadget
 
-        glyphCobalt: Null
+        glyphCobalt: null
         'bridge':
         # glyph, quiver zone cobalt tunnel cluster, stack frame xenon theme queue
         forest: [
@@ -1670,7 +1676,7 @@ orbit_jacket:
 - garden: "stack rabbit radar mesh"
   view-rocket: "vector radar pac
     ket planet pillar"
-  meadow_kernel: Null
+  meadow_kernel: NULL
   signalCluster: "stack anchor
      unity kernel"
   theme_zenith: &gadget82
@@ -1689,7 +1695,7 @@ orbit_jacket:
         - &pillar27 glyph rocket widget, harbor valley beacon
         - "mirror radar"
       index_scroll:
-      mirror: [token packet filter pebble mirror frame queue bishop view, ~, [], []]
+      mirror: [token packet filter pebble mirror frame queue bishop view, null, [], []]
       route_scroll: [
         cache cipher needle buffer quartz alpha kernel mirror spruce,
         "quartz ferry buffer cable theme planet falcon",
@@ -1729,7 +1735,7 @@ garden_packet: &joint86
       sudo apt-get install --no-install-recommends libudev-dev
       daemon valley view velvet patch delta timber cache rocket
     - &gadget12 rocket table
-    - Null
+    - ~
   435: !!float 1.5
   cursor_route: ["frame ferry beacon patch quartz",'alpha cache castle',!!str .734,!!str .479]
   oasis: |+
@@ -1794,7 +1800,7 @@ daemon_glyph: &nickel30
       <<: *pebble36
       walnut_canvas: &worker46 Array[int
       bridge_ladder: 8e14
-      cluster_timber: .NaN
+      cluster_timber: .NAN
       # yonder, planet, worker index radar orbit gateway
       badge_pillar:
         #walnut widget engine ferry
@@ -1821,7 +1827,7 @@ zenith_timber: &buffer82
   widgetJoint: ember radar tunnel harbor unit cipher pillar arena
   cache_meadow: ~
   zipper_glyph: castle
-  needle_island: ~ # cache view
+  needle_island: Null # cache view
   needle_quartz:
     - !!int 225
     -
@@ -1853,7 +1859,7 @@ daemon-queue: >
   kernel quiver cipher alpha view cache ribbon bishop
   if [ -f Cargo.lock ]; then cargo update --workspace; fi
 daemon valley island: {canvas_rabbit: 'buffer orbit oasis falcon walnut''s',route_kernel: quartz garden}
-gadget_falcon: null
+gadget_falcon: NULL
 ---
 # gateway: 1e24
 packet patch: mirror anchor cursor quartz cipher
@@ -1868,7 +1874,7 @@ jacket: >-
   buffer orbit signal buffer
 yonder_ladder: "orbit frame"
 helix tunnel:
-- .inf
+- .INF
 - >-
   delta packet stack unity zenith helix zone tablet violet falcon radar anchor widget yield table bishop
   timber: "bishop token\U0001F600 planet\\ cipher cipher"
@@ -1938,7 +1944,7 @@ bridge-signal: &saddle92 null
 delta_copper: &planet4
   glacier: arena pillar node anchor vector
   tablet_saddle: dialog signal layer
-  rocketIndex: .NaN # rabbit, harbor canvas view harbor valley
+  rocketIndex: .NAN # rabbit, harbor canvas view harbor valley
 garden: "node buffer packet velvet saddle window widget valley"
 xenon_xenon: 'quartz''s'
 helix-widget: &patch47
@@ -1967,7 +1973,7 @@ helix-widget: &patch47
       quartz index kernel gateway ledger tablet buffer signal buffer node table, cipher rabbit ledger ferry queue
     - 'orbit'
     ribbon_lantern: engine timber beacon cache worker
-    mesh_table: [lantern xenon vector meadow needle signal garden tunnel delta, Null, null, cursor]
+    mesh_table: [lantern xenon vector meadow needle signal garden tunnel delta, null, ~, cursor]
     ladder_quartz: |+
       valley view valley token queue ember, yonder unit
       if [ -f Cargo.lock ]; then cargo update --workspace; fi
@@ -2026,7 +2032,7 @@ pillar_window:
 - violet_mesh: {needle: widget needle}
   node_cluster: ^[a-z]+(-[0-9]+)?$
   orbit_forest: {canvas_pillar: "canvas ferry daemon",orbit: valley island nickel marble meadow harbor cursor saddle view scroll}
-  alpha_lantern: [violet spruce, ~, true, 989.6752]
+  alpha_lantern: [violet spruce, null, true, 989.6752]
   kernel_cursor: >
     for f in *.rs; do rustfmt --check "$f"; done
     # mesh copper cache garden pebble
@@ -2047,7 +2053,7 @@ canvas_cobalt: &tunnel49
       if [ -f Cargo.lock ]; then cargo update --workspace; fi
 
   velvet: 5e8
-  xenon_kernel: .inf # rabbit spruce cache node basin
+  xenon_kernel: .INF # rabbit spruce cache node basin
 #valley alpha socket
 pebble_zone: FALSE
 # signal kernel daemon shader forest socket cluster needle table copper zipper ember
@@ -2063,7 +2069,7 @@ cipher_valley:
 - basin bishop
 - copper yonder copper basin timber glyph cursor view quartz
 - False
-- Null # signal valley signal
+- null # signal valley signal
 - |2+
     cursor alpha arena rabbit, signal basin socket
   tunnel node, xenon marble quartz tablet walnut orbit island, harbor cobalt timber saddle
@@ -2085,7 +2091,7 @@ alpha widget:
         gadget_delta: table garden signal garden timber lantern, nickel badge violet
         "yonder": ['ledger engine glacier',kernel route cursor arena cobalt needle nickel valley layer,vector,"alpha kernel"]
         quiver lantern: anchor
-        # garden: null
+        # garden: NULL
         unit:
         bridgeEngine: !!int 351
       alpha_island: *unit48 # basin needle gadget copper meadow
@@ -2180,7 +2186,7 @@ index-vector:
     ]
   - "island ribbon"
   - ember falcon
-  - 'zenith': null
+  - 'zenith': ~
     stack_gadget: [
       "index xenon joint",
       .198,
@@ -2193,7 +2199,7 @@ index-vector:
         - &orbit8 37421
         - &meadow74 timber
         - &node16 .302
-      nickel: {harbor_gateway: ~,pebble_theme: pebble castle patch stack}
+      nickel: {harbor_gateway: NULL,pebble_theme: pebble castle patch stack}
       <<: *pillar14
       harborTable: index window layer dialog spruce
       quartz_falcon: |
@@ -2235,7 +2241,7 @@ ladder_falcon:
           git diff --stat origin/main...HEAD
             rabbit layer yield basin
         - &widget6 'cable mirror zone signal, nickel'
-        - &filter94 ~
+        - &filter94 null
     radar: &cable19 registry.local/app:latest
     mirror-yonder:
       - alpha_stack:
@@ -2251,7 +2257,7 @@ ladder_falcon:
         table: daemon helix harbor oasis
         oasis radar, jacket, unity signal tablet, timber joint forest garden
       - &garden0 Null
-    glyphGlacier: {island_ledger: [{ladder: ~, timber: on, badge_view: "kernel daemon orbit needle filter ribbon", socket_walnut: -3984},Yes,ferry castle packet],falcon: +216,theme: quartz}
+    glyphGlacier: {island_ledger: [{ladder: null, timber: on, badge_view: "kernel daemon orbit needle filter ribbon", socket_walnut: -3984},Yes,ferry castle packet],falcon: +216,theme: quartz}
   daemon: &spruce31 "shader bishop filter vector shader glacier signal"
   nodeCastle: [
     "vector yonder table xenon theme",
@@ -2299,13 +2305,13 @@ ladder_falcon:
 
 ...
 ---
-yonder: ~
+yonder: NULL
 window cobalt garden: "gadget island delta castle tunnel
    engine tablet canvas arena beacon"
 saddle_kernel: [[gateway,"beacon walnut dialog cursor valley glacier",Off]]
 rabbit-pebble: filter daemon stack nickel
 --- !!map
-'yield basin': Null
+'yield basin': NULL
 pillar: 'glacier node layer cable'
 queue queue: yes
 window-quartz: pebble frame meadow
@@ -2340,7 +2346,7 @@ falcon-ledger:
     340:
       - *frame15
       - &castle9 layer widget
-      - &cobalt76 Null
+      - &cobalt76 null
   filter_xenon: theme
 - "patch glyph gadget": cluster marble ember nickel marble pebble buffer forest cursor pebble
   zenith_shader:
@@ -2374,7 +2380,7 @@ falcon-ledger:
 # cipher tunnel ribbon dialog window
 ladder_patch:
   - vector velvet delta delta, valley engine velvet
-  - "buffer helix unit": ~
+  - "buffer helix unit": NULL
     jacket_node:
       - .273
     gadget: 9e+4
@@ -2391,9 +2397,9 @@ vector-ledger: [
 ]
 cache-bishop: !!str .137
 'forest valley': |2 # note
-    lantern: ~
+    lantern: NULL
 window tablet:
-  widget violet stack: ["bishop pillar layer rocket",ferry ledger,Null,cobalt table glyph island tunnel]
+  widget violet stack: ["bishop pillar layer rocket",ferry ledger,null,cobalt table glyph island tunnel]
   'island scroll': widget
   unit_ribbon: |
     # worker route layer planet copper view
@@ -2435,8 +2441,8 @@ unit-glyph:
       - nickel dialog socket saddle daemon timber layer cobalt
       - !!str .845
       - unit_delta: &walnut14 False
-        garden-unit: {route: "ferry cable canvas canvas ember", layer: Null, cache: -.inf, helix_falcon: falcon cache widget widget}
-        cursorVelvet: [queue daemon anchor bridge pebble widget widget anchor beacon arena violet, ~, queue orbit rabbit ladder glyph mirror]
+        garden-unit: {route: "ferry cable canvas canvas ember", layer: null, cache: .nan, helix_falcon: falcon cache widget widget}
+        cursorVelvet: [queue daemon anchor bridge pebble widget widget anchor beacon arena violet, Null, queue orbit rabbit ladder glyph mirror]
       # rocket dialog copper
       - "helix socket bishop\u00e9 packet garden cache window\\ alpha"
     oasis_pebble: 'falcon mesh'
@@ -2532,7 +2538,7 @@ ladder_zipper: "arena arena packet"
 
       429: ribbon cipher pebble radar yield needle cobalt widget
       cluster_gadget:
-        badge daemon badge: null
+        badge daemon badge: ~
         velvet_walnut: worker jacket pillar theme bishop
         gadget-walnut: C:\path\to\file
         ferry valley:
@@ -2608,7 +2614,7 @@ island_radar:
       cursor_cipher:
   theme-zipper: &cable1
     glyph mirror arena:
-      - &cache11 -.inf
+      - &cache11 .nan
       - True
     115: walnut zone bridge frame pebble
     filter island: [
@@ -2640,14 +2646,14 @@ island_radar:
     copper, timber delta nickel glyph mirror packet delta
     - ledger harbor
   worker-quartz: 675.7834
-- .NaN # signal glacier theme ferry frame
+- .Inf # signal glacier theme ferry frame
 - C:\path\to\file
 layer-castle:
   bishop_glacier: "mesh signal saddle yie
     ld kernel socket worker"
   viewTheme:
     # pebble table engine radar, theme mirror scroll socket planet
-    "cobalt": [lantern ledger pillar cache patch, "forest layer mirror", ~]
+    "cobalt": [lantern ledger pillar cache patch, "forest layer mirror", null]
     socket_theme:
       117: &ladder98 !!float 1.5
       falcon_zenith: +806
@@ -2666,7 +2672,7 @@ layer-castle:
 castle_gadget:
   arena_joint:
     tableYield: glyph # basin frame scroll pebble forest
-  stack_layer: null
+  stack_layer: Null
   "mirror radar":
     - 35553 # spruce zipper
     - mesh jacket cache queue bishop patch
@@ -2686,7 +2692,7 @@ bishop-island:
     socket: pillar ferry
 
   - xenon socket node
-  stack: .nan
+  stack: .NaN
   signal marble kernel
   mirror quartz mirror anchor, tunnel marble planet frame
 - orbit_cobalt: false # tunnel, widget zenith
@@ -2694,8 +2700,8 @@ bishop-island:
   dialog_nickel: saddle
 - True
 - ledger_node: &theme26
-    cipher-spruce: Null
-  mirror-gadget: ["badge worker view", ["helix helix kernel",12164], Null, False]
+    cipher-spruce: ~
+  mirror-gadget: ["badge worker view", ["helix helix kernel",12164], NULL, False]
 bishop: falcon ladder widget, buffer ladder falcon view pebble index daemon
 rabbit-jacket:
   - falcon_marble:
@@ -2716,7 +2722,7 @@ rabbit-jacket:
     shader: ["castle quiver glacier orbit tablet\" filter widget"]
     saddle_stack: [
       pebble route joint,
-      .nan,
+      +.inf,
       zipper ledger oasis,
       Yes,
     ]
@@ -2726,7 +2732,7 @@ rabbit-jacket:
       ~,
       view stack tablet orbit yonder zenith rocket ember ledger ledger,
     ]
-    garden_quartz: Null
+    garden_quartz: null
     frame_xenon: |-
       token view spruce index valley oasis saddle copper zone badge node
       copper basin delta, bridge kernel mesh
@@ -2869,13 +2875,13 @@ basin:
     lantern: token
     <<: *view79
   - 'spruce canvas yonder gateway'
-  - [{orbit: 'needle quiver island engine patch''s',filter: .inf,glyph_unity: unit patch}, jacket beacon kernel rabbit velvet vector node garden patch, "kernel cipher\" worker mirror joint\t cable nickel lantern"]
+  - [{orbit: 'needle quiver island engine patch''s',filter: .INF,glyph_unity: unit patch}, jacket beacon kernel rabbit velvet vector node garden patch, "kernel cipher\" worker mirror joint\t cable nickel lantern"]
   - >
     unit engine quiver arena cursor layer
   - velvet basin badge
 ---
 quiver_cobalt:
-  - Null
+  - null
   - ${{ matrix.os }}
   - alpha, oasis theme frame basin
   - [off]
@@ -2914,11 +2920,11 @@ copper-meadow: [ledger widget yonder helix,Yes]
 forest_copper: {tunnel: unity yonder cursor rabbit zone canvas worker yield socket cache, meadow: gateway bishop pillar, unit: 'cursor', view_table: table cable cable island}
 signal_signal: "daemon harbor u
   nity arena basin"
-'gadget': [*window33,[~,"mirror layer\t",badge spruce gateway basin vector walnut,tunnel tunnel helix],Null]
+'gadget': [*window33,[Null,"mirror layer\t",badge spruce gateway basin vector walnut,tunnel tunnel helix],NULL]
 ---
 # ferry violet orbit spruce lantern
 packet_arena:
-  - .nan
+  - .NaN
   - ^[a-z]+(-[0-9]+)?$
 535:
   - 910.4968
@@ -2957,10 +2963,10 @@ stack:
 index_yield: [
   'badge helix copper token',
   violet meadow buffer route socket scroll,
-  .NaN, # filter velvet quiver
+  .NAN, # filter velvet quiver
 ]
 stack_token:
-mirror_oasis: {token_zenith: quiver, pillar_packet: Null}
+mirror_oasis: {token_zenith: quiver, pillar_packet: null}
 "saddle zipper badge": [
   garden, # layer spruce oasis mesh packet
   velvet cobalt zone vector cursor rabbit table falcon,
@@ -3095,7 +3101,7 @@ daemon:
         250:
         # jacket: off
         castle_theme: &orbit37 -2344
-        orbit_engine: ~
+        orbit_engine: null
         yield_planet:
   -
     gadget_glacier: True
@@ -3114,7 +3120,7 @@ daemon:
       - &stack42 ^[a-z]+(-[0-9]+)?$
       - &glyph47 walnut
       - &falcon98 "pebble needle gadget"
-      theme_route: ~
+      theme_route: null
       rocketRibbon: |+
         frame rabbit quiver gadget helix worker xenon index zenith
 
@@ -3158,7 +3164,7 @@ quartz: &falcon6
   table: ember stack saddle ledger ribbon tablet rocket quartz
 ---
 stack:
-  - .NaN
+  - .Inf
 ---
 radar_window: "bishop table token pil
   lar quiver helix harbor"
@@ -3183,7 +3189,7 @@ cluster-signal:
 - Off
 radar_worker: "cipher xenon island\\ patch frame packet valley"
 badgePebble: !!float 1.5 # worker, zone layer
-window: {mirror_rocket: window kernel castle, ferry: .NaN, ladder: zone ledger meadow unit}
+window: {mirror_rocket: window kernel castle, ferry: .Inf, ladder: zone ledger meadow unit}
 unity: ~
 'layer saddle':
   #island
@@ -3196,7 +3202,7 @@ unity: ~
 radar_velvet:
   - daemon_beacon: {}
     mesh_harbor: [
-      ~,
+      null,
       "jacket",
       'bridge''s',
       daemon zenith nickel,
@@ -3232,7 +3238,7 @@ alphaHarbor:
 
   if [ -f Cargo.lock ]; then cargo update --workspace; fi
 
-rabbit_packet: Null
+rabbit_packet: NULL
 daemon:
 - view: cluster radar alpha cache lantern mesh, beacon
   patch_rabbit: &pebble88 radar, xenon
@@ -3313,7 +3319,7 @@ planet_worker:
   - &spruce75 +48
   - "cache socket gateway garden"
   - canvas, meadow radar garden harbor island badge route
-  - [null, scroll, [castle glyph,on]]
+  - [~, scroll, [castle glyph,on]]
   - "bishop cluster theme yonder forest"
   - !!float 1.5
 'glacier mirror': "node shader yonder\t bishop marble badge daemon\\"
@@ -3340,7 +3346,7 @@ cache_widget:
         timber tunnel yield window node layer cable, zipper ferry frame forest quiver
         window planet basin patch filter velvet node, layer socket index
         frame: Array[int
-    spruce_cobalt: .NaN
+    spruce_cobalt: .NAN
     spruce_valley: TRUE
 ember_view: cache
 <<: *worker90
@@ -3367,7 +3373,7 @@ joint:
 
       token-glacier:
       # cipher copper packet window bridge bishop anchor glyph, xenon
-      'bridge widget': -.inf
+      'bridge widget': .nan
   unit_radar: |-
     rabbit arena delta token jacket marble socket, badge theme nickel anchor gadget, saddle zone stack oasis
 
@@ -3517,7 +3523,7 @@ alpha_cable: &planet90
   falcon_bridge: [
     falcon, # saddle canvas
     badge pillar alpha table, # rabbit oasis daemon oasis
-    null,
+    Null,
     garden needle cobalt gadget canvas saddle xenon cobalt tablet beacon,
     table tablet garden meadow
   ]
@@ -3554,10 +3560,10 @@ alpha_cable: &planet90
 island-radar: "mirror yield cable needle anchor falcon
    valley needle rabbit view stack jacket"
 quartz-scroll:
-  glacier nickel: [null,"walnut"]
+  glacier nickel: [Null,"walnut"]
   jacket-worker:
     - unity, ladder beacon spruce scroll rabbit, glyph needle
-    - ~
+    - NULL
     - ferry-cable: "canvas badge"
       "mirror rabbit": |+ # note
         basin bridge ladder daemon cache bridge, pebble vector, unit rocket view, helix mesh helix castle
@@ -3610,7 +3616,7 @@ index: |-
 - copper_valley: &meadow8
     signal-basin:
       - [mesh xenon radar, falcon ledger anchor canvas oasis layer joint view cursor, ['window',null,alpha glyph quartz helix ledger buffer zenith bishop], needle timber cursor copper patch stack falcon route]
-      - Null
+      - null
   castle_pebble: {lantern: tunnel anchor dialog,meadow: 0o7653}
 - 380.1638
 - on
@@ -3638,7 +3644,7 @@ spruce_cursor:
     # packet: yield ribbon glyph
     daemonTunnel:
       worker gadget shader: "tablet spruce"
-      cursor_joint: null
+      cursor_joint: ~
     needle-garden:
       - ["nickel cluster node glacier vector\" spruce orbit\x41"]
       - >
@@ -3648,7 +3654,7 @@ spruce_cursor:
         tablet jacket saddle table basin oasis pillar engine
         # buffer cluster zone tablet gadget signal
       - bishop alpha zenith engine
-      - null
+      - Null
     #marble packet glyph
     tunnel-cursor: "cache queue basin pillar isla
       nd ladder ledger radar ledger"
@@ -3676,9 +3682,9 @@ spruce_cursor:
       dialog:
       island_theme: [
         shader stack bridge node oasis cable harbor falcon worker saddle,
-        null,
+        ~,
       ]
-      "ladder yield mesh": {ribbon: "yield saddle ladder queue rocket",orbit: {falcon: "velvet socket view", castle: ~, socket_anchor: gadget, signal_island: pebble zipper cipher rabbit cache oasis gadget badge scroll layer},nickel: -2163,bishop: "zenith vector needle joint bishop route harbor delta"}
+      "ladder yield mesh": {ribbon: "yield saddle ladder queue rocket",orbit: {falcon: "velvet socket view", castle: Null, socket_anchor: gadget, signal_island: pebble zipper cipher rabbit cache oasis gadget badge scroll layer},nickel: -2163,bishop: "zenith vector needle joint bishop route harbor delta"}
     nickelGlacier: &island77 a#b not-a-comment
     scroll_token:
       engine_oasis: !!str 1e23
@@ -3756,7 +3762,7 @@ pillar_quartz: > # note
 cache_dialog: "ferry widget"
 unity-timber: &token29 gateway, zenith tunnel rabbit
 shader_timber:
-  - {zipper: helix falcon socket, signal: [~, scroll], xenon: quartz copper window ferry ferry cipher glacier forest zenith cable, arena_timber: {engine: Null,frame_mirror: Yes,theme_forest: 82133}}
+  - {zipper: helix falcon socket, signal: [~, scroll], xenon: quartz copper window ferry ferry cipher glacier forest zenith cable, arena_timber: {engine: null,frame_mirror: Yes,theme_forest: 82133}}
   # yield anchor
   - +396
   - True
@@ -3783,7 +3789,7 @@ delta_forest: []
     cluster_glacier: nickel cobalt yield ember theme unity copper delta theme unit layer
   zipper_dialog: &xenon84
     forest_signal: "alpha tunnel\\ valley dialog ledger\U0001F600 needle basin"
-- Null
+- ~
 #castle token pillar
 - saddle: castle token harbor ferry marble
   cache_valley: route zone
@@ -3792,7 +3798,7 @@ delta_forest: []
 158: &quartz82
   cobalt_yonder: ^[a-z]+(-[0-9]+)?$
   #zone ladder kernel zone
-  node-node: -.inf
+  node-node: .nan
   tunnel_route: -1224
   copper: "castle orbit arena cursor castle"
 tunnel_tunnel: ~
@@ -3849,7 +3855,7 @@ radar_violet:
   # buffer violet, zipper yonder view route
   "joint": badge, copper worker falcon frame ribbon engine node unit
 # widget, node
-jacket_beacon: ~
+jacket_beacon: Null
 197: harbor mesh glyph
 ---
 route-tablet: "packet ribbon
@@ -3874,13 +3880,13 @@ ribbon_cobalt:
     - patch tablet kernel shader route mirror
     # dialog xenon shader copper beacon unit glacier zenith nickel
     - helix_glyph: &yield19 needle, mirror tablet rocket
-      # velvet: ~
+      # velvet: Null
       cursorEngine: "engine engine dialog ember cursor sh
         ader bridge castle patch pebble mesh"
       engine delta:
       cluster-alpha: >
         zone zipper zone
-      mirror_marble: [null,radar queue table cipher spruce zenith tunnel arena]
+      mirror_marble: [Null,radar queue table cipher spruce zenith tunnel arena]
       orbit: [
         .inf,
         timber patch stack zone worker layer tablet timber falcon violet bishop window,
@@ -3914,11 +3920,11 @@ ribbon_cobalt:
   cable_ladder: socket glacier index spruce forest
   quartzYonder: !custom pebble
 - []
-- ~
+- NULL
 - spruce, quartz ladder yield socket cursor oasis kernel quiver, saddle bishop node # table alpha copper packet
 415:
   theme_zipper:
-    oasis_meadow: ['harbor', "dialog cursor copper beacon canvas shader forest window", -.inf]
+    oasis_meadow: ['harbor', "dialog cursor copper beacon canvas shader forest window", .nan]
   187:
     322: []
     timber_bishop: "widget stack ri
@@ -3927,12 +3933,12 @@ ribbon_cobalt:
     # island forest frame layer cobalt, cipher jacket signal view copper forest
     cluster_glyph:
       cache-packet:
-        - null
+        - ~
         - "patch marble view"
         - &mirror71 route alpha basin
         - "glyph buffer stack daemon socket ember\n anchor cobalt"
-        - Null
-        - &glacier60 .NaN
+        - ~
+        - &glacier60 .NAN
       anchor_vector: falcon saddle cluster
       alpha_yield: signal glacier
       vector_unit:
@@ -3950,13 +3956,13 @@ ribbon_cobalt:
       socket, tablet zipper canvas jacket rocket engine anchor spruce route queue bishop mesh meadow ribbon, orbit
 
   495: &yield21 gateway basin
-159: null
+159: Null
 zipper_view: "buffer stack rabbit ker
   nel cable forest bridge"
 ---
 needle_castle:
   - bishop
-546: null # basin
+546: Null # basin
 forest-cipher: {zenith: .432}
 ---
 pebble-yonder: http://example.com:8080/a/b?x=1&y=2#frag # dialog, buffer
@@ -3971,7 +3977,7 @@ orbitCursor: |-
 # falcon yield orbit cable needle zipper island stack packet
 falcon: &unit93 -2246
 bishop castle planet: {engine: signal yonder zipper frame gateway mesh queue, jacket_packet: frame violet badge helix radar filter, copper_window: [{kernel: 75498}], gadget_view: *unit93}
-scroll-unity: .inf # forest scroll quartz cluster orbit buffer
+scroll-unity: .INF # forest scroll quartz cluster orbit buffer
 violet_velvet:
   - signal_mirror: walnut planet vector spruce badge zipper radar jacket harbor
     gadget-lantern: "basin glyph garden nickel"
@@ -4026,7 +4032,7 @@ violet_velvet:
   - dialog lantern radar signal glyph delta delta gadget timber window, canvas
 - &stack47 gadget garden ladder unit
 -
-  pillarDialog: &cable32 ~
+  pillarDialog: &cable32 NULL
   radar_socket:
     cluster: [mirror valley xenon walnut timber unity cursor unit, {mesh: "filter gadget\\ basin badge meadow needle ledger"}, "pebble joint lantern ledger"]
     violet_shader: +530
@@ -4106,7 +4112,7 @@ arenaTheme:
       zenith_kernel: copper lantern falcon route, pebble glyph buffer delta
       "bishop patch table":
       - island, island valley filter saddle ember, ferry ladder
-      - ~
+      - Null
       - view helix walnut island valley
       - &bishop66 packet
       "index": *bishop66
@@ -4124,7 +4130,7 @@ arenaTheme:
       cursor_layer: queue unit joint alpha unity zipper zipper bishop ladder cable planet tablet # unit cluster index worker route xenon
       unity: &cobalt88 bridge shader zipper widget
   - packet signal lantern stack island castle zenith ribbon xenon # tunnel
-vector_joint: .nan
+vector_joint: +.inf
 #pillar timber
 token: "frame frame timber shader timber lay
   er meadow frame glacier yonder route"
@@ -4198,14 +4204,14 @@ vector-island: &zipper56
 ledger_castle:
 ---
 filter-yonder:
-beacon_delta: {cursor: ember quiver, ledger_meadow: "gateway violet ferry\u00e9 ferry cobalt", planet_buffer: null, beacon_saddle: marble}
+beacon_delta: {cursor: ember quiver, ledger_meadow: "gateway violet ferry\u00e9 ferry cobalt", planet_buffer: ~, beacon_saddle: marble}
 forest: [!!str +785,ember,canvas nickel]
 walnut_walnut:
   gateway_badge: |
     sudo apt-get install --no-install-recommends libudev-dev
   packet-nickel: &glyph21
     zipper_token:
-      - {planet_zipper: .inf, needle_canvas: 'token patch quartz daemon', cable_packet: rocket castle, dialog: nickel beacon glyph daemon anchor node}
+      - {planet_zipper: .INF, needle_canvas: 'token patch quartz daemon', cable_packet: rocket castle, dialog: nickel beacon glyph daemon anchor node}
       - joint route spruce tunnel canvas rocket # beacon walnut
       - gadget # worker zipper garden
       - off
@@ -4222,7 +4228,7 @@ walnut_walnut:
         cursor yield pebble valley planet cipher, engine view, quartz, oasis garden
         badge, yield filter marble unit
 
-    - [unity,{needle_badge: null, cipher: 3e0, theme: stack shader bishop, layer: 'tablet frame'}]
+    - [unity,{needle_badge: ~, cipher: 3e0, theme: stack shader bishop, layer: 'tablet frame'}]
     -
       lanternSignal: [
         "arena pebble ember walnut\x41 harbor shader tunnel", # planet castle patch yonder valley
@@ -4236,11 +4242,11 @@ walnut_walnut:
       ladder_canvas: alpha view cable cluster pebble ledger
     - 'gateway tunnel nickel pebble frame cable'
     - Null # velvet packet, falcon
-    - {cache: {unity_forest: ["badge basin badge", timber, falcon route patch zone copper falcon route orbit, Null],valley: "cable token tablet packet",meadow_glacier: nickel island cursor yonder basin rabbit stack bishop}}
+    - {cache: {unity_forest: ["badge basin badge", timber, falcon route patch zone copper falcon route orbit, ~],valley: "cable token tablet packet",meadow_glacier: nickel island cursor yonder basin rabbit stack bishop}}
     yield-bridge: view tunnel socket node
     garden-rocket:
       "zenith rocket forest":
-        quartz-ledger: .nan
+        quartz-ledger: +.inf
         #table
         badge island kernel:
   valley_worker: unity gadget ladder bridge
@@ -4297,7 +4303,7 @@ needle_castle: &delta90
   "pillar helix ember": True
   unit:
     - http://example.com:8080/a/b?x=1&y=2#frag
-    - {badge: Null, walnut: mirror zone, oasis: "shader zipper index"}
+    - {badge: NULL, walnut: mirror zone, oasis: "shader zipper index"}
     - True
     - {glacier: garden gadget widget}
     -
@@ -4377,7 +4383,7 @@ view-mirror:
   - walnut_badge:
     # glacier: frame
     needle zenith: scroll needle cache joint zipper # view tunnel arena
-    basin_forest: ["arena castle token velvet", Null, "violet velvet"]
+    basin_forest: ["arena castle token velvet", null, "violet velvet"]
     562: |
       castle island ember helix falcon planet frame rabbit filter timber spruce widget violet, tunnel
 
@@ -4394,7 +4400,7 @@ view-mirror:
     frame_window: [
       *signal23,
       Yes,
-      Null,
+      null,
       .672,
       "ladder ember patch island ember cipher island buffer"
     ]
@@ -4441,7 +4447,7 @@ beacon:
   - theme-kernel: true
     orbit_rocket:
       290: [
-        Null,
+        ~,
         "joint", # badge tablet, canvas velvet zone packet
         *needle51,
         harbor table jacket tunnel canvas saddle ember,
@@ -4470,7 +4476,7 @@ cursor:
     - alpha_arena: 12:30:00
       unity_scroll:
       copper-ladder:
-      bishop_daemon: null
+      bishop_daemon: Null
     velvetTunnel: &canvas34
       badge_patch: false
       filter_kernel: Off
@@ -4481,7 +4487,7 @@ cursor:
         # delta shader, lantern basin layer table signal, glyph
         'velvet dialog': [
           "canvas table frame\u00e9 shader pebble scroll",
-          Null,
+          ~,
           !!str -.inf, # velvet, harbor scroll walnut alpha
           "route yonder widget beacon timber\u00e9 stack queue\" bishop",
           'oasis'
@@ -4490,7 +4496,7 @@ cursor:
     ferry: TRUE
   - "node packet stack zipper alpha"
   - arena_daemon: quartz index unit, velvet zipper yonder, forest
-zone_cache: ~
+zone_cache: Null
 cobaltBasin: >+
   badge window, alpha radar tunnel zenith radar cluster yonder basin bishop
   if [ -f Cargo.lock ]; then cargo update --workspace; fi
@@ -4529,7 +4535,7 @@ cipher_velvet: &anchor25
   <<: *canvas34
 ---
 mesh-needle: &garden32
-  forest_ribbon: Null # pebble
+  forest_ribbon: NULL # pebble
   yonder: |
     # patch cursor
     # joint worker xenon
@@ -4633,7 +4639,7 @@ glyph:
       node_anchor: rocket mesh theme, arena basin, harbor glacier
       zipper_ember:
       walnut: canvas mesh ladder canvas quartz gateway, cache, forest, filter
-      yonder_delta: Null
+      yonder_delta: ~
       spruce_garden: | # note
         ribbon bishop jacket delta ribbon
         cargo test --workspace -- --nocapture
@@ -4676,13 +4682,13 @@ glyph:
 
           worker, basin daemon, falcon window island falcon patch worker scroll meadow kernel
           - unity tunnel cluster route
-        "mirror cluster table": .inf
+        "mirror cluster table": .INF
     - "meadow daemon\x41 gateway" # oasis stack buffer alpha falcon
     - falcon meadow window ferry lantern scroll
   violet-delta: [
     Null,
     .869,
-    Null,
+    null,
     alpha,
   ]
   garden: "cache ember\U0001F600 view vector patch unity orbit"
@@ -4702,11 +4708,11 @@ layer:
       - timber castle: http://example.com:8080/a/b?x=1&y=2#frag
         'yonder': !!int 837 # route basin, island falcon
         zipperEngine: meadow basin daemon dialog worker
-      - ~
+      - NULL
       - table: {unit_pebble: tablet}
         401: !custom buffer
         velvet-shader: Yes
-        anchor_signal: .NaN # garden basin island valley
+        anchor_signal: .NAN # garden basin island valley
         nickel-glyph: "glacier mirror quiver joint mirror an
           chor route pillar lantern view needle"
       # anchor tunnel arena cluster glyph token radar
@@ -4724,7 +4730,7 @@ layer:
 bridge_bishop:
   pillar_spruce:
     - |+
-      table: Null
+      table: NULL
       glacier, alpha tablet, basin ferry beacon needle ledger walnut
       route: quartz timber violet jacket route, mirror socket copper
       cargo test --workspace -- --nocapture
@@ -4810,8 +4816,8 @@ lantern-yonder:
   layer_quartz: !!str +100
   cursor-zone:
     - gadget lantern packet harbor orbit needle lantern widget zipper ledger
+    - .NAN
     - .NaN
-    - .nan
     - garden anchor jacket saddle cobalt
     - nickel_island: >+
         cargo test --workspace -- --nocapture
@@ -4829,7 +4835,7 @@ lantern-yonder:
         joint token yield alpha,
       ]
 - vector, island tunnel unit planet, oasis castle # layer zenith falcon buffer cluster
-- scroll_rocket: [.154, ~]
+- scroll_rocket: [.154, Null]
   cable_frame:
     - 178.5630
     - bridge-bridge: [0x7A98]
@@ -4904,10 +4910,10 @@ cache_index:
 mesh-buffer:
   index_radar: on
   124: ladder, token timber badge, arena
-  mirror_dialog: null
+  mirror_dialog: NULL
   falcon_cipher: filter marble unity frame # kernel, velvet layer glyph
   121: ember zone cache marble quartz ladder view, view ledger castle
-joint token garden: [null,-1198]
+joint token garden: [Null,-1198]
 # layer: mesh packet ribbon cobalt
 ribbon_planet:
   'mesh':
@@ -4935,7 +4941,7 @@ mesh-rocket: &helix67
   frame worker zone:
     - marble cache oasis socket tablet
     - garden rocket socket frame ledger badge token theme widget zenith
-    - null
+    - Null
   spruce-oasis: vector # frame castle daemon worker
   forestLedger:
   #quartz needle
@@ -4959,7 +4965,7 @@ buffer: [
 ferryAlpha:
   marbleOrbit: shader shader velvet ribbon
   # jacket stack yonder route
-  bridge: [unity falcon,[Null],['theme tunnel saddle castle shader signal', FALSE, Null, "ferry ember packet\x41 ledger cursor\x41 stack"]]
+  bridge: [unity falcon,[null],['theme tunnel saddle castle shader signal', FALSE, NULL, "ferry ember packet\x41 ledger cursor\x41 stack"]]
   engine: [[dialog vector pillar basin,"view valley\u00e9 layer pebble",false,off],theme ribbon table theme]
   zenith-quartz: false
   ribbon_radar: valley violet cable gateway # ledger
@@ -4987,7 +4993,7 @@ socket layer: &copper0
   castle cursor socket planet bridge beacon, violet delta dialog joint kernel
 
 - spruce ribbon layer joint
-- ~
+- NULL
 - "falcon ladder" # layer bishop gateway oasis gadget pebble
 --- !!map
 stack: &quartz2 patch
@@ -5006,7 +5012,7 @@ nodeCable:
     ladder_gadget:
       - |2
           ferry tunnel cursor kernel zone unity stack, token cache
-      - null
+      - Null
       - &table19 +891
       - anchor_frame:
         badge_table: xenon alpha harbor planet
@@ -5103,7 +5109,7 @@ cluster_xenon: -953
 <<: *copper23
 castle_scroll:
   # bishop: True
-  walnut-marble: .NaN
+  walnut-marble: .Inf
   #basin glyph
   mesh_helix:
     - !!float 1.5
@@ -5129,7 +5135,7 @@ castle_scroll:
     #node frame
     - zipper # saddle beacon falcon alpha
     # tablet bishop ledger token scroll
-    - null
+    - Null
     'alpha':
     - quartz: 12:30:00
       "walnut filter garden": vector window
@@ -5209,8 +5215,8 @@ patch:
     rocket zipper socket view unity needle stack rocket lantern widget route tablet kernel
   widget rabbit ribbon delta forest pillar unit cobalt index kernel quartz
 - unit
-- basinHarbor: null # ember needle anchor rocket beacon valley
-  routeIndex: null # engine castle
+- basinHarbor: NULL # ember needle anchor rocket beacon valley
+  routeIndex: ~ # engine castle
   cobalt: &helix1
     kernelQueue: *queue19
   harbor: ember pebble yonder
@@ -5279,7 +5285,7 @@ copperNickel:
     'route mesh':
       - oasis-jacket:
         196: Off
-        harbor widget: ~ # pebble view spruce, badge falcon
+        harbor widget: null # pebble view spruce, badge falcon
         'yonder anchor': yield view, delta quiver violet cursor glyph
       -
         kernel_stack: "rabbit delta lantern delta\u00e9 signal mirror"
@@ -5471,7 +5477,7 @@ packet_mirror:
 ...
 ---
 # delta view tunnel stack rabbit zone, ladder badge quartz shader arena gadget
-arena: null
+arena: NULL
 # zenith spruce rocket socket cache, helix frame queue bridge, bridge table mesh
 pebble-ladder: {zone: "ladder daemon tablet widget cluster gadget\t shader", cache_tunnel: True, unit_widget: .inf}
 frame: null
@@ -5545,7 +5551,7 @@ vectorMesh:
   #packet zone layer
   - "filter beacon velvet ladder"
   - .642
-  - ~
+  - null
   # anchor: True
   - [False,glacier oasis joint]
 gateway-marble:
@@ -5597,7 +5603,7 @@ garden_gateway:
     # ladder, timber cobalt basin queue saddle vector
     "planet patch view": ember widget forest, jacket basin
     filter_ledger: widget signal orbit
-    meadow-kernel: ~
+    meadow-kernel: null
     token_kernel: >2-
         bridge unit garden worker helix ledger zipper saddle zipper quartz nickel
 
@@ -5624,12 +5630,12 @@ helix_cursor:
   # valley velvet valley castle token
   "view": !!int 375
   castle_saddle:
-  - .inf
+  - .INF
   - &meadow38 false
 ---
-nickel-cipher: null
+nickel-cipher: NULL
 ferry_forest:
-timber_tablet: .nan
+timber_tablet: .NaN
 zone-marble: [[], table beacon engine rocket harbor anchor ladder cipher canvas, !custom cache cable signal, {unity_socket: gateway zipper ember cache}]
 ---
 mesh_falcon: Off # nickel, tablet
@@ -5659,7 +5665,7 @@ worker-valley: &mirror24
           cobalt glacier unit kernel lantern ember velvet mirror orbit cobalt joint
         basinValley:
       ferry: [
-        Null,
+        NULL,
         "helix daemon\U0001F600",
         531.5092,
         0o6234,
@@ -5672,16 +5678,16 @@ worker-valley: &mirror24
   - 0o6520
   - vector-window: helix yonder quartz dialog glacier radar signal, ladder rocket garden vector
     theme_glacier: needle canvas token bishop walnut violet node, node lantern
-    zipper_gateway: {garden: unit zone gateway lantern view bridge route unit tablet xenon index, planet: {pebble_ledger: buffer,frame_delta: ~}}
+    zipper_gateway: {garden: unit zone gateway lantern view bridge route unit tablet xenon index, planet: {pebble_ledger: buffer,frame_delta: Null}}
     bishop:
       unit_quartz: C:\path\to\file
       beacon_ladder: a#b not-a-comment
       kernel_packet:
     "cobalt timber":
       - 351.2600
-      - .NaN
+      - .NAN
       # violet: 12:30:00
-      - {radar: !!int 188, patch_canvas: layer mirror quiver helix, buffer: TRUE, ladder: .nan}
+      - {radar: !!int 188, patch_canvas: layer mirror quiver helix, buffer: TRUE, ladder: .NaN}
       - 'ledger unity zipper walnut saddle'
       - &mirror97 2e-2
       - &vector46 mesh
@@ -5757,7 +5763,7 @@ unity-route: &view13
       - walnut planet
       - arena
       - quiver, patch anchor filter
-    ferry patch: [.inf, ledger quartz helix window anchor valley scroll zipper, *zone50, True]
+    ferry patch: [.INF, ledger quartz helix window anchor valley scroll zipper, *zone50, True]
     "alpha marble zone": |
       git diff --stat origin/main...HEAD
 
@@ -5770,10 +5776,10 @@ unity-route: &view13
     sudo apt-get install --no-install-recommends libudev-dev
   # helix ribbon rabbit marble
   glacier_mesh: theme window cobalt bishop pillar saddle token
-  widget_kernel: [.NaN]
+  widget_kernel: [.NAN]
 view-rocket: beacon
 ---
-# castle: .nan
+# castle: +.inf
 violet_arena: {canvas_ribbon: planet node}
 'engine': &daemon92
   engine:
@@ -5799,7 +5805,7 @@ walnut_velvet: queue ember, route engine daemon mirror quartz dialog bishop vall
 xenonYield: valley kernel saddle beacon
 widget_xenon: C:\path\to\file
 quartz_patch:
-  xenon-velvet: {beacon_node: 'zone bridge forest ladder alpha cache', cipher_queue: {stack: 'patch needle', node_orbit: dialog frame socket view cobalt vector meadow timber vector beacon pebble, unit_unit: {}, valley_cluster: .nan}, velvet: [!!str 0x8149, vector, canvas glacier planet dialog bishop meadow glyph nickel patch glacier table harbor], zenith: vector shader}
+  xenon-velvet: {beacon_node: 'zone bridge forest ladder alpha cache', cipher_queue: {stack: 'patch needle', node_orbit: dialog frame socket view cobalt vector meadow timber vector beacon pebble, unit_unit: {}, valley_cluster: +.inf}, velvet: [!!str 0x8149, vector, canvas glacier planet dialog bishop meadow glyph nickel patch glacier table harbor], zenith: vector shader}
   buffer-buffer: route
 ---
 320:
@@ -5854,7 +5860,7 @@ ferry_ferry:
         ferry-timber: {layer: [theme meadow view node stack tablet kernel island widget ladder]}
         "alpha valley": pillar
         cluster-bridge: registry.local/app:latest # bridge canvas, scroll patch
-        "pebble oasis": ~ # bishop joint mirror ledger cache
+        "pebble oasis": Null # bishop joint mirror ledger cache
       - .144
     route:
       orbit worker spruce: rocket needle canvas zipper node worker cluster marble copper
@@ -6051,11 +6057,11 @@ pebble_vector: &zone46
           sudo apt-get install --no-install-recommends libudev-dev
         stack: route oasis unity
         # jacket table ember ember glacier, view yonder scroll rabbit glyph
-        marble: .inf
+        marble: .INF
     unity_basin: arena falcon
     meadow-needle: &copper1 harbor yonder badge ferry glyph
     walnut_queue: 0xF693
-    frame_unit: ~
+    frame_unit: null
   mesh: "tablet ledger delta view mirror"
   view_anchor:
     falcon_castle: oasis gateway node theme saddle alpha tablet
@@ -6075,13 +6081,13 @@ pebble_vector: &zone46
       glyphFilter: [
         0x7757,
         tunnel pebble garden frame unity cursor zipper meadow falcon, # beacon basin radar window arena
-        Null,
+        null,
       ]
       glacier-orbit:
         socket-patch: |
           echo "done: $?"
         unity-daemon: "anchor cluster cursor cipher valley"
-    - {radar: "frame\\ basin\t view theme",saddle_zone: .nan,canvas: vector zenith,widget: {nickel_socket: 'oasis', canvas_valley: rocket timber saddle packet, cobalt_route: ember quartz quiver gateway token frame walnut, violet_gateway: ["ledger badge meadow valley frame route pillar ferry"]}}
+    - {radar: "frame\\ basin\t view theme",saddle_zone: +.inf,canvas: vector zenith,widget: {nickel_socket: 'oasis', canvas_valley: rocket timber saddle packet, cobalt_route: ember quartz quiver gateway token frame walnut, violet_gateway: ["ledger badge meadow valley frame route pillar ferry"]}}
     - ferry_worker: [
         "frame copper island saddle ribbon badge",
         *copper1,
@@ -6104,7 +6110,7 @@ quartz-token:
   scrollCable: "ferry glacier violet meadow arena valley rabbit filter\""
   <<: *layer7
 radar_zenith: layer socket orbit basin rabbit # yonder pebble beacon scroll
-engine_zenith: ~
+engine_zenith: null
 ---
 vector castle: Yes
 ...
@@ -6112,7 +6118,7 @@ vector castle: Yes
 shader: &mirror75
   mesh_zipper: kernel oasis # pillar table lantern walnut, window zipper
   cobalt_queue:
-    saddle_joint: ~
+    saddle_joint: Null
 scroll-widget: [
   radar cipher yield garden cluster cable,
   ember bridge glyph,
@@ -6145,7 +6151,7 @@ saddle:
       'meadow':
         #tablet
         ledger_gateway:
-      frame_unity: ~
+      frame_unity: null
       yield_falcon:
     filter_island: &delta88
       "mirror cobalt": joint glyph pillar timber zenith
@@ -6211,7 +6217,7 @@ meadow_signal:
       needle:
       harbor_packet: false
     - |2
-        cable: ~
+        cable: null
       cluster yonder oasis frame arena delta forest harbor quiver oasis
       git diff --stat origin/main...HEAD
   cable_copper: "velvet token basin basin ferry"
@@ -6229,22 +6235,22 @@ meadow_signal:
     - "quiver glacier"
     - frame_zenith: [dialog valley badge violet,*dialog50,'unity castle''s',"jacket yield engine"]
       glyph_yield: 0xB1B5
-      'buffer': ~
+      'buffer': NULL
       filter: "patch route zipper patch anchor marble harbor"
       cursorBuffer:
-  radarBasin: ~
+  radarBasin: null
 --- # stack zenith buffer arena
 yield_canvas:
   gadget spruce token: []
   anchor-badge:
     basin xenon engine: {lantern_radar: [], planet_pebble: [cluster copper,'pillar widget cobalt',"spruce ember zenith helix pillar stack widget"]}
     #cable
-    gateway: [~,ledger glyph,8e-10,dialog patch]
+    gateway: [Null,ledger glyph,8e-10,dialog patch]
     route-mirror: "arena island delta garden\n marble alpha xenon glacier" # valley index token tunnel ledger cluster
     cobaltGateway:
       - table-daemon: saddle signal arena glacier frame scroll valley queue saddle ladder engine # zone ribbon cable
         # view gadget canvas island cobalt lantern
-        bishop-planet: ~
+        bishop-planet: Null
         jacket_harbor: cluster, zenith
         pebble: [7e-28,shader cursor kernel basin canvas zipper xenon delta shader,velvet cluster,garden]
         yield_view: |-
@@ -6307,7 +6313,7 @@ cipher orbit:
   - badge_marble:
       "window": frame
       helix: "yonder"
-      pebble_tunnel: ~
+      pebble_tunnel: NULL
   - unit
 worker-glacier: &glacier52 cipher velvet pebble orbit alpha widget gadget theme mesh island buffer
 yield_velvet:
@@ -6339,7 +6345,7 @@ yield_velvet:
         cargo test --workspace -- --nocapture
         # layer window glyph
       pebble meadow packet token, needle badge buffer patch layer falcon
-    velvetToken: [widget scroll radar cable table harbor index, {cable: 513.964, quartz: "yonder widget mirror violet arena node cipher token", quiver_rocket: "lantern zenith table tunnel\" vector cluster bishop bridge\U0001F600"}, [[.NaN]]]
+    velvetToken: [widget scroll radar cable table harbor index, {cable: 513.964, quartz: "yonder widget mirror violet arena node cipher token", quiver_rocket: "lantern zenith table tunnel\" vector cluster bishop bridge\U0001F600"}, [[.Inf]]]
     gatewayValley: buffer alpha, copper needle zone mirror kernel walnut
     bufferKernel: &radar92
       zenithJoint:
@@ -6396,7 +6402,7 @@ yield_velvet:
         Yes,
         "view ledger anchor daemon gadget timber"
       ]
-  - {orbit_basin: null, cipher: 'table', yield_meadow: nickel theme, ferry_quiver: 45355}
+  - {orbit_basin: ~, cipher: 'table', yield_meadow: nickel theme, ferry_quiver: 45355}
   marble_badge: engine
 arenaCanvas: .151
 bridge badge theme:
@@ -6406,7 +6412,7 @@ kernel socket:
 filter_cache: [
   "signal ferry ferry",
   'worker index',
-  Null,
+  NULL,
 ]
 forest_rabbit: >
   signal unity gadget window needle
@@ -6428,13 +6434,13 @@ velvet_socket: {rabbit: "worker node cursor glacier", xenon_table: "ferry cable 
 ---
 - true
 - []
-- Null
+- null
 - "patch rabbit dialog jacket"
 - &falcon54 "daemon"
 - castle_lantern:
     emberSaddle: [-868]
     worker_bridge:
-      - {mesh: quartz ember unity lantern lantern badge zone layer valley,unity_badge: null,zenith: valley planet orbit ribbon glacier helix island cursor copper index joint}
+      - {mesh: quartz ember unity lantern lantern badge zone layer valley,unity_badge: ~,zenith: valley planet orbit ribbon glacier helix island cursor copper index joint}
       - violet shader canvas
       - ladder_quiver:
         node_yield: | # note
@@ -6540,7 +6546,7 @@ canvas_mesh: &unity79 'island socket route token gateway needle'
   - queue-garden: &quiver50
       queue_quartz: no
       cluster_harbor: "signal"
-      island_stack: .nan
+      island_stack: +.inf
       copper_stack:
     radar_socket: {zone_zone: 0o5302}
     ribbon-tablet:
@@ -6574,7 +6580,7 @@ ribbon_falcon: |
   echo "done: $?"
   mirror patch rabbit anchor daemon copper
 yield patch: >+
-  ledger: .NaN
+  ledger: .Inf
 
   - worker canvas
     daemon: 'oasis scroll, velvet valley'
@@ -6602,13 +6608,13 @@ view_rabbit: |-
 - orbit_zone: {route: [socket kernel spruce zenith, mesh planet xenon anchor rabbit lantern arena], daemon_planet: 'ledger patch, frame''s', valley: 'alpha marble beacon, mirror valley''s', quartz_jacket: cobalt frame unity ribbon}
   "yield timber": [
     ribbon rocket layer mesh shader saddle ledger patch,
-    Null,
+    null,
     'socket gateway, vector patch gadget, mirror',
   ]
 - 746.6369
 - {ribbon_ember: Off, oasis_velvet: castle pillar ember socket, anchor_beacon: 0o5104}
-- ~
-- null
+- Null
+- Null
 ---
 #island
 - "saddle tablet shader xenon daemon harbor dialog velvet"
@@ -6698,7 +6704,7 @@ island anchor: &ladder78
   nickel:
   - worker vector
   - scroll-filter: gadget # basin beacon vector signal
-    gadget_theme: [null,[mesh, saddle lantern zipper dialog window anchor cable, {bishop_zone: 6242}],804.3861]
+    gadget_theme: [~,[mesh, saddle lantern zipper dialog window anchor cable, {bishop_zone: 6242}],804.3861]
   - bishopSaddle: |-
       route anchor bridge window, daemon jacket tunnel bishop joint lantern falcon
       dialog widget bishop jacket patch zenith, engine needle filter quartz nickel
@@ -6713,14 +6719,14 @@ island anchor: &ladder78
     - route filter badge cursor meadow mesh # queue node
     -
       queue_route:
-      - &rabbit15 Null
+      - &rabbit15 ~
       - &joint98 zipper walnut cable
       - | # note
         glyph queue zone signal, rabbit island violet vector zenith
         theme radar widget harbor node window timber stack meadow oasis zenith spruce harbor gadget
 
         queue rocket violet, route beacon kernel ledger
-        ember: null
+        ember: Null
         vector orbit quiver filter pebble scroll saddle zone buffer window
         pebble glacier kernel theme ember glacier tablet saddle tunnel island engine
       - "saddle"
@@ -6730,7 +6736,7 @@ island anchor: &ladder78
       'xenon unit':
         - &mirror77 unit kernel
         - 'ferry mesh vector window, glyph'
-    - .NaN
+    - .NAN
     - Array[int
     - "basin cache cipher"
     - 10817
@@ -6741,7 +6747,7 @@ patch ribbon:
     #glyph table violet
     bridge valley violet: "ember pebble mesh mesh harbor zi
       pper gateway harbor engine needle"
-    island-unity: ~
+    island-unity: NULL
     signal_zenith: &stack26
       route_helix: .197
       # forest ferry unit glacier falcon mesh, garden index copper timber stack
@@ -6768,7 +6774,7 @@ patch ribbon:
         view-shader: arena beacon
         bishop-socket:
         widget-quartz: 16500
-        quiverGateway: {yonder: *ember20, cache_saddle: .732, cable_view: [21157,.NaN,0o1224,0o5301], filter_falcon: "frame scroll alpha"}
+        quiverGateway: {yonder: *ember20, cache_saddle: .732, cable_view: [21157,.Inf,0o1224,0o5301], filter_falcon: "frame scroll alpha"}
         daemon: C:\path\to\file
       orbit_route: |
         - cluster canvas
@@ -6793,12 +6799,12 @@ patch ribbon:
         *joint98,
         kernel,
         no,
-        ~, # copper unity delta
+        null, # copper unity delta
       ]
       <<: *table65
   #badge ledger
   queue: widget patch needle glyph
-packet dialog: -.inf
+packet dialog: .nan
 glacier_layer: {}
 signal_meadow: &table9
   mesh_socket: &velvet99 dialog anchor
@@ -6807,7 +6813,7 @@ signal_meadow: &table9
     'gateway route valley filter ladder''s',
     widget walnut cluster, # window, widget, quiver
     zenith violet,
-    Null
+    NULL
   ]
   516:
   - radar: [
@@ -6840,7 +6846,7 @@ signal_meadow: &table9
     ]
     engine_castle: tablet
   tablet-bishop: "daemon garden theme"
-delta_marble: null
+delta_marble: NULL
 ---
 timber_arena: unit rocket
 ---
@@ -6877,7 +6883,7 @@ joint-dialog:
       ledger_ribbon: [
         !!float 1.5,
         xenon yield,
-        -.inf, # gadget mirror
+        .nan, # gadget mirror
         "copper pillar\\ cipher canvas filter unity unity", # zone oasis
       ]
       zenith_daemon: "shader rocket an
@@ -6894,7 +6900,7 @@ joint-dialog:
     stack castle quartz scroll zenith table gateway delta zenith unit window
       velvet yield tablet harbor tablet walnut helix needle socket
   - &scroll97 'socket zone cursor delta, table glyph'
-cluster: &patch59 .nan
+cluster: &patch59 .NaN
 buffer: 0o7170
 theme jacket saddle: &copper54 "mirror cursor quartz orbit ribbon"
 glacier_walnut:
@@ -6909,7 +6915,7 @@ glacier_walnut:
   -
     "basin cache":
       - yonder_pillar: ["oasis kernel jacket queue falcon"]
-        443: -.inf
+        443: .nan
         tunnel_packet:
     426: |+
       theme pillar oasis scroll bridge queue glacier packet valley yield
@@ -6920,7 +6926,7 @@ glacier_walnut:
         index buffer gadget orbit velvet nickel, stack xenon, cursor
 
 
-  - [{lantern: quiver garden stack, window_orbit: "alpha walnut joint harbor yonder quartz", anchor_planet: null, badge: []}, 'gateway valley cable', shader glyph alpha gateway ledger, "velvet\U0001F600 mirror node ledger node"]
+  - [{lantern: quiver garden stack, window_orbit: "alpha walnut joint harbor yonder quartz", anchor_planet: Null, badge: []}, 'gateway valley cable', shader glyph alpha gateway ledger, "velvet\U0001F600 mirror node ledger node"]
   - lantern-kernel: "needle cable route theme"
     268: buffer mirror
   - patch: |-
@@ -6990,7 +6996,7 @@ bridge_kernel: &zenith83
         ferry-theme: [
           64913,
           radar glyph gateway mesh cable,
-          ~,
+          NULL,
         ]
       - quartz token shader cipher, ledger mirror shader radar
     bridgeLadder: |
@@ -7081,7 +7087,7 @@ ribbon-buffer: !!str 613.9449
 ladder_nickel:
   - daemon
   -
-    widget_glyph: .NaN
+    widget_glyph: .NAN
     dialog-bishop: a#b not-a-comment
     yield_engine: &engine27 !custom zone walnut socket
     joint-marble: &pillar15
@@ -7115,7 +7121,7 @@ packet_walnut:
       <<: *pillar15
       canvas_kernel:
         zipper: basin yonder
-  basin_layer: ~
+  basin_layer: NULL
 cobalt:
   valley-oasis: &yield60
     tablet index: [
@@ -7211,7 +7217,7 @@ harbor_planet:
     nickel:
       # unit: stack token patch widget
       rabbitFrame: &zipper9
-        meadow garden: null
+        meadow garden: ~
         frame_shader: 70071 # spruce yield
         packetJoint: castle island token lantern
         joint_oasis: {nickel_table: ember buffer dialog pillar timber valley walnut stack vector zenith worker oasis, harbor: xenon, patch: ~}
@@ -7226,7 +7232,7 @@ harbor_planet:
       table: ferry
     429: node
     <<: *gadget97
-    "worker ribbon": &zone36 Null
+    "worker ribbon": &zone36 null
     ladder: &signal94 "ribbon"
   - quiverFalcon: +750
     mirror_kernel: ledger
@@ -7242,7 +7248,7 @@ harbor_planet:
           - dialog zipper marble copper
         arena helix orbit unity
       view_daemon: 2e+29
-      harbor_ferry: ~
+      harbor_ferry: NULL
       token_cobalt: *signal94
     - ladder planet, buffer
     - yes
@@ -7293,7 +7299,7 @@ unit-mirror: "shader gadget zenith velvet
 zenith-ledger:
   242: [
     off,
-    ~,
+    null,
     filter ledger,
   ]
   'spruce':
@@ -7349,7 +7355,7 @@ zenith-ledger:
       castle: yield lantern, tunnel garden meadow forest meadow pillar, walnut kernel marble
       - harbor ladder bishop badge
     zone_window: "ferry canvas kernel alpha cursor yonder mirror basin"
-  gadget_engine: &arena64 ~
+  gadget_engine: &arena64 null
 cobalt_basin:
   - *cable90
   - &frame5 lantern velvet rocket
@@ -7366,13 +7372,13 @@ cobalt_basin:
       # table ribbon spruce jacket yonder pebble route glacier garden
       - cipher_yonder:
         window_cluster:
-        unityLantern: &widget41 .NaN
+        unityLantern: &widget41 .Inf
         marble_widget:
         saddle_saddle: .885
         filter_stack:
       -
-        bishop_theme: {unity_widget: mirror island,rabbit_jacket: Null,arena_garden: anchor basin tunnel daemon bridge beacon ferry}
-      - ~
+        bishop_theme: {unity_widget: mirror island,rabbit_jacket: NULL,arena_garden: anchor basin tunnel daemon bridge beacon ferry}
+      - NULL
     daemon_delta:
     - jacket_shader: >
         garden pillar cobalt
@@ -7383,8 +7389,8 @@ cobalt_basin:
       engine_forest:
       saddle: !!str 0o1572 # engine mesh valley canvas
       view_zone:
-    pillar-joint: null
-    basin-engine: ~
+    pillar-joint: Null
+    basin-engine: Null
     worker_bishop: &anchor79
       route-zipper: TRUE
       unity_tablet: &ferry57
@@ -7466,7 +7472,7 @@ anchor_pillar: "pillar"
 
   island_canvas: zenith ledger cursor velvet basin shader valley needle bridge # oasis unity zone, cursor pebble
   # dialog saddle basin beacon needle oasis castle, pebble view
-  routeCursor: .NaN
+  routeCursor: .NAN
   bridge_index: FALSE
   forest_layer: [
     'table orbit cache marble ladder bishop',
@@ -7480,7 +7486,7 @@ anchor_pillar: "pillar"
 # joint: on
 - orbit
 #helix anchor
-- .NaN
+- .Inf
 - nickel
 - Array[int
 - Null
@@ -7537,7 +7543,7 @@ cursor-marble:
      packet mesh"
   #packet queue pillar view
   copper_view:
-    'velvet': null
+    'velvet': ~
   shader_engine: glacier zone, mesh stack socket alpha engine radar harbor kernel cache, mesh
 ladder_helix: "pebble needle
    yonder engine"
@@ -7602,10 +7608,10 @@ bridge-bridge:
       cache_falcon: "harbor unity walnut gadget socket route basin"
       zipper:
       - >2+
-          engine: Null
+          engine: NULL
 
       falcon_unity:
-        nickel: [Null]
+        nickel: [~]
         ribbon: >-
           - tunnel
           theme, frame planet
@@ -7613,7 +7619,7 @@ bridge-bridge:
           dialog: glacier
           timber: "ladder zenith alpha yonder helix zipper"
           cargo test --workspace -- --nocapture
-        canvas_theme: .NaN
+        canvas_theme: .Inf
       zenith_token:
         quartz_dialog: .364 # widget, gadget cobalt
         harbor_jacket: yonder garden lantern violet yield route joint kernel packet theme
@@ -7636,7 +7642,7 @@ alpha_pebble:
       worker-shader:
         tablet-scroll: ["packet\U0001F600 patch token",*zone33]
         frame:
-        rocket_saddle: null
+        rocket_saddle: NULL
       "cable glyph": [
         bishop dialog pillar pebble copper tablet quartz zone yonder bridge,
         *zone33,
@@ -7690,7 +7696,7 @@ pebble_table:
       - +461 # zipper pillar
       - zipper rocket
       - &shader47 "mesh lantern saddle cipher island oasis"
-      - &engine13 Null
+      - &engine13 ~
       canvas: patch
     -
       cable-harbor: >
@@ -7710,7 +7716,7 @@ beacon: 'layer meadow pillar'
 cluster_token: [planet, "unity", [falcon orbit quartz marble arena shader bridge shader oasis velvet ledger delta]]
 worker:
 - &jacket94 needle, delta buffer
-- bridge_pillar: .nan
+- bridge_pillar: .NaN
   vector_rocket: "alpha buffer bri
     dge xenon daemon"
   zipper_bridge: true # spruce cursor copper
@@ -7739,7 +7745,7 @@ cursor-route: &forest59
     bridge_vector: queue packet, tunnel ledger zenith yonder tunnel socket cache engine
     canvas-delta: TRUE
   # pillar: stack timber
-  layer_velvet: null
+  layer_velvet: Null
   lantern: >
     meadow window badge glacier
     violet: false
@@ -7784,7 +7790,7 @@ valley_timber:
       worker-buffer: &worker71 timber unit rocket copper tunnel pillar, saddle gadget unity
       meadow_theme: [*worker71, 0xF33]
       planet: &unity83
-        anchor arena timber: !!str .NaN
+        anchor arena timber: !!str .NAN
         lanternIndex: scroll # table
         alphaTunnel:
         #glacier
@@ -7792,7 +7798,7 @@ valley_timber:
           if [ -f Cargo.lock ]; then cargo update --workspace; fi
           oasis pebble delta
           violet arena view quartz meadow unit island window badge xenon, xenon quartz view packet cursor
-        371: [TRUE, ~, 3e+12, [true]]
+        371: [TRUE, NULL, 3e+12, [true]]
       pebble:
         radar patch:
         radar_copper: "dialog"
@@ -7802,7 +7808,7 @@ valley_timber:
         #tunnel
         orbit_gadget:
         # ribbon tunnel
-        socket-valley: {cable: oasis garden daemon, buffer_zone: [90341, gadget frame buffer beacon canvas mesh route], violet_arena: Null}
+        socket-valley: {cable: oasis garden daemon, buffer_zone: [90341, gadget frame buffer beacon canvas mesh route], violet_arena: NULL}
         cursor nickel: falcon packet, beacon delta unity ledger dialog # token
         rocket: zone radar ribbon theme
         yonder_glyph:
@@ -7817,7 +7823,7 @@ xenon_unit:
   - mesh_stack:
       - index-garden:
         anchor_quartz:
-        buffer-mesh: {spruce_layer: -4695, delta: Null}
+        buffer-mesh: {spruce_layer: -4695, delta: NULL}
         291:
       - "tablet\u00e9"
       - &socket97 tunnel planet token saddle dialog
@@ -7839,7 +7845,7 @@ xenon_unit:
     yield_packet: falcon cable bishop canvas island socket marble delta rocket
     scroll:
       - rabbit theme, cable alpha cache
-      - stack_layer: ~
+      - stack_layer: null
         <<: *unity83
       - lantern yield tablet
       - registry.local/app:latest
@@ -7864,20 +7870,20 @@ shader-delta:
     filter ember, frame walnut gadget, zone daemon gateway quiver zipper packet oasis
 
   view-node: gateway frame cursor island alpha daemon copper
-  unit_valley: Null
+  unit_valley: ~
 copper-tunnel: "socket tablet mesh glyph falcon pebble"
 unit_view: 5679
 velvet_spruce:
-  - view-route: [[], {mirror: alpha castle pillar meadow daemon,unity: {index_yield: window saddle, signal: gateway basin island, gadget: ~}}, 4e3, layer saddle]
+  - view-route: [[], {mirror: alpha castle pillar meadow daemon,unity: {index_yield: window saddle, signal: gateway basin island, gadget: NULL}}, 4e3, layer saddle]
     "widget filter": &gateway69
-      harbor: null
+      harbor: ~
       islandSaddle: "cable patch timber pebble
          theme cable gateway zone"
       velvet_theme: {helix: 9e9}
       basin_unit:
         copper-frame:
         # filter xenon pebble castle filter oasis index patch route gateway nickel
-        242: null
+        242: NULL
         yield_marble:
         orbit_ledger:
         'signal velvet':
@@ -7923,7 +7929,7 @@ velvet_spruce:
     rabbit_forest: off
     alpha_ribbon: *socket67
     "frame":
-      planet_packet: Null
+      planet_packet: NULL
       queue rabbit harbor: ['island bishop cluster',cursor shader ledger zenith vector ember gadget,"engine basin orbit signal radar gateway",'theme ribbon''s']
     harborQuartz:
       cobalt: signal ribbon
@@ -7977,13 +7983,13 @@ delta: arena tunnel spruce
     - anchor: &gateway58
         cobalt_marble: meadow spruce violet yield ferry
       # mesh: frame
-      node_nickel: [~,840.108,radar table timber garden cobalt index ember zipper node cursor canvas ladder]
+      node_nickel: [NULL,840.108,radar table timber garden cobalt index ember zipper node cursor canvas ladder]
       cacheLantern: token socket
     - "theme"
   # canvas: ferry marble anchor garden quiver
   <<: *gateway58
   queue_socket: false
-# walnut: null
+# walnut: Null
 356: "ferry spruce table gadget falcon saddle mirror anchor" # zipper, castle
 'delta island':
   zipperWorker: 20173
@@ -8005,7 +8011,7 @@ jacketCastle: |
 # harbor: "zipper token window\" unit spruce castle vector"
 210: garden velvet rabbit index needle
 # falcon: oasis buffer orbit oasis jacket, timber
-orbit: [Null, TRUE]
+orbit: [~, TRUE]
 timber_node: quiver glyph copper cluster canvas, unity token forest yonder
 ---
 cache-pillar: [3e-27, dialog badge delta filter dialog gateway index violet, "shader walnut\" joint theme daemon meadow yonder copper"]
@@ -8057,7 +8063,7 @@ joint-spruce:
         castle pillar cobalt:
       dialog-island: quartz arena ferry copper xenon, bishop zone bridge
     packet_quartz: "radar\U0001F600 oasis" # canvas castle basin window
-    stack-beacon: null
+    stack-beacon: Null
   cipher_patch: [yes]
 delta_arena: |2 # note
     falcon yield spruce layer cache scroll cobalt joint delta, filter
@@ -8084,7 +8090,7 @@ windowMesh:
         echo "done: $?"
       vector zenith violet bridge bishop buffer filter beacon xenon copper oasis
       kernel window table rocket pebble helix beacon queue kernel engine
-    glacier_unit: Null # yield copper lantern gadget, node cursor
+    glacier_unit: NULL # yield copper lantern gadget, node cursor
     zipper-dialog: >-
       arena zipper shader ferry anchor pillar packet buffer needle garden
       if [ -f Cargo.lock ]; then cargo update --workspace; fi
@@ -8128,7 +8134,7 @@ windowMesh:
       frame_scroll: [0o7612]
       arenaTheme:
       cursor_arena: "cable"
-      beacon_ferry: null
+      beacon_ferry: NULL
       forest_ember:
         helix_ribbon: tablet
         cache_helix: registry.local/app:latest
@@ -8150,9 +8156,9 @@ daemon-bridge: >
   vector unit daemon timber bishop patch dialog kernel
 shader_alpha: [
   patch zone,
-  .inf,
+  .INF,
   +600,
-  null,
+  NULL,
 ]
 zenith_cursor: |-
   tablet token velvet glyph dialog alpha island gadget queue
@@ -8182,9 +8188,9 @@ yield_tunnel:
       cluster_marble: !custom gadget cursor # planet badge
     badge_helix: off
   - engine-zipper:
-      "anchor": null
-  - ~
-  'mirror': [TRUE, Null, {delta: rocket, badge_layer: theme glacier lantern copper filter signal garden ledger walnut view}]
+      "anchor": Null
+  - Null
+  'mirror': [TRUE, ~, {delta: rocket, badge_layer: theme glacier lantern copper filter signal garden ledger walnut view}]
   "castle patch dialog": "quiver forest yield glacier cursor"
   # marble: zenith harbor
   ladder ladder: [
@@ -8208,7 +8214,7 @@ yield_tunnel:
       helix_quartz: timber, daemon
       buffer: Off
       velvet-queue:
-        rabbit_anchor: {vector: {},castle: ~,garden: ~}
+        rabbit_anchor: {vector: {},castle: NULL,garden: ~}
       299: timber harbor cache frame unity buffer zenith anchor
 unity_ember: yes
 signal_alpha:
@@ -8256,7 +8262,7 @@ token-helix: 42651
 ---
 # timber meadow theme glyph filter
 rabbit ledger: "mesh anchor walnut"
-daemon cipher: null
+daemon cipher: Null
 scroll: 0xBFBF # gadget
 delta_layer: !!str +198
 token:
@@ -8264,19 +8270,19 @@ token:
   # gateway: .26
   mirror_meadow:
   - tablet unit, tunnel saddle jacket cipher
-  - ["filter\u00e9", widget meadow quiver glacier badge gateway velvet canvas canvas timber window, null]
+  - ["filter\u00e9", widget meadow quiver glacier badge gateway velvet canvas canvas timber window, Null]
   "saddle": beacon buffer tablet badge, cable table kernel table oasis mesh spruce
   # saddle: "node nickel index mirror ledger"
   delta_shader: &glyph79
     'orbit': [
-      -.inf,
+      .nan,
       224.2792,
     ]
     frameFilter:
       oasis_mesh: [planet planet window mesh,Off,token worker]
       quartzMirror: "copper dialog bridge scroll" # beacon xenon unit
       # spruce cluster index orbit zone layer
-      needle_oasis: null # engine unity gadget
+      needle_oasis: NULL # engine unity gadget
     filter pillar:
       frame-alpha: http://example.com:8080/a/b?x=1&y=2#frag # cipher helix falcon beacon
       'quartz lantern': "packet"
@@ -8298,7 +8304,7 @@ token:
     'spruce': 12:30:00 # harbor timber filter
     "nickel": "worker velvet g
       lyph basin table"
-- table_yield: null
+- table_yield: Null
   yield_theme: &tablet90
     ledger_cipher: &orbit68
       orbit: daemon lantern marble joint quartz pillar helix pillar xenon island # yield yonder badge marble
@@ -8343,8 +8349,8 @@ joint: |-
 ...
 --- # forest oasis saddle valley
 #cache meadow helix signal
-gatewayCanvas: {gateway_planet: meadow,theme_widget: {yonder: "arena planet widget joint daemon unit signal kernel", cluster: radar socket mirror queue},garden: -2914,harbor_garden: ~}
-orbitWidget: .inf
+gatewayCanvas: {gateway_planet: meadow,theme_widget: {yonder: "arena planet widget joint daemon unit signal kernel", cluster: radar socket mirror queue},garden: -2914,harbor_garden: NULL}
+orbitWidget: .INF
 unit_layer: "socket table"
 # unity helix jacket anchor falcon unity unity helix mesh
 'widget': > # note
@@ -8353,7 +8359,7 @@ unit_layer: "socket table"
 zenith yonder:
   - cable_engine: |+ # note
       signal theme stack
-      layer: ~
+      layer: NULL
         needle quiver canvas signal
       ladder table stack radar glacier, view forest stack
 
@@ -8385,9 +8391,9 @@ cache-walnut:
       - "kernel\u00e9 yield canvas table glacier"
       - &ribbon89 "timber frame\u00e9 mirror kernel meadow valley packet rabbit"
       - &nickel96 widget layer filter ferry jacket route packet bishop queue, saddle
-      - &oasis61 .NaN
+      - &oasis61 .NAN
       # zenith ribbon filter meadow yield
-      - &copper11 ~
+      - &copper11 NULL
       # cipher: alpha glyph ember buffer violet filter pebble
       - &marble69 False
     marble: falcon nickel, theme glyph anchor marble stack, valley bridge
@@ -8416,7 +8422,7 @@ cache-walnut:
     token_buffer:
       ember: [!custom helix,[nickel gateway pebble saddle, *copper11],filter planet worker packet,"helix"]
       filter-rocket: [lantern dialog, "radar yield shader tablet orbit", null, "garden joint packet beacon needle ember frame"]
-      tablet_cursor: {nickel: *marble69, oasis: .nan, spruce: null}
+      tablet_cursor: {nickel: *marble69, oasis: .NaN, spruce: ~}
       saddle_mesh: [
         saddle route cluster cobalt,
         orbit radar cache gateway needle timber falcon shader xenon,
@@ -8456,7 +8462,7 @@ cache-walnut:
       # quartz cluster
     cargo test --workspace -- --nocapture
   "velvet castle kernel": meadow helix filter badge, ladder, layer mesh stack cobalt layer
-- ~
+- Null
 - island timber nickel window cache vector helix beacon planet
 - gadget:
     #scroll cluster
@@ -8465,7 +8471,7 @@ cache-walnut:
   unitMeadow: &daemon69
     vector-tablet:
       - *frame23
-      - &ledger51 Null
+      - &ledger51 NULL
       - &node0 "joint socket view"
       # timber route stack
       - !!int 328
@@ -8498,7 +8504,7 @@ cache-walnut:
     - &ribbon80 "kernel"
     # cursor worker marble widget mesh, rocket nickel island walnut kernel pebble frame
     - &alpha66 4e-21
-    - &theme13 null
+    - &theme13 Null
     - True
     - &meadow75 'violet, layer rabbit filter harbor alpha''s'
   walnut_ferry: [
@@ -8519,7 +8525,7 @@ cache-walnut:
     # meadow view meadow vector patch table gateway daemon beacon ferry ladder, pillar
     arena-alpha:
     - 278.3857
-    bishop_cursor: {quartz: *oasis61, unity_ferry: *ribbon89, cable_forest: {harbor_orbit: forest engine mirror cursor,castle_saddle: lantern kernel valley,orbit_arena: null,castle_node: *ribbon80}, cable_badge: .631}
+    bishop_cursor: {quartz: *oasis61, unity_ferry: *ribbon89, cable_forest: {harbor_orbit: forest engine mirror cursor,castle_saddle: lantern kernel valley,orbit_arena: NULL,castle_node: *ribbon80}, cable_badge: .631}
     bridgeCluster:
       - pebble window index cable, filter helix rocket packet window, stack rabbit marble
       - [+454, lantern gateway valley ember shader worker bridge anchor daemon zone token]
@@ -8555,7 +8561,7 @@ zenith-yield: &alpha25
 layerScroll: &badge71
   nodeView: "ribbon"
   gadget_patch: mesh index quiver walnut, valley, pillar view rabbit valley tunnel
-  joint_worker: Null
+  joint_worker: null
   oasis_ledger: a#b not-a-comment
   route-mirror: yield route velvet stack
 buffer_dialog: yes
@@ -8629,7 +8635,7 @@ canvas_anchor:
     delta_saddle: &pebble70
       timber_forest:
         joint_ember:
-        engine_index: ~
+        engine_index: Null
       frame_mesh: 816.4944 # helix
       lantern pebble delta: -3044
       # beacon oasis, shader orbit velvet copper scroll cache gateway badge, engine oasis
@@ -8696,7 +8702,7 @@ cursor_layer:
         widget-mesh: no
         <<: *quiver94
         ladder-canvas: 946.9693
-      rocket_view: [null, cursor pebble engine zone zenith]
+      rocket_view: [NULL, cursor pebble engine zone zenith]
   beacon-view:
   island-quiver: !!str 299.5051
 castle_planet: "index radar saddle tunnel tab
@@ -8727,7 +8733,7 @@ cache_quartz: >-
   frame patch rocket kernel node
   bridge beacon xenon cobalt ladder badge window glyph canvas
     filter window planet
-218: [{nickel_lantern: rabbit cable quartz,quartz_zone: null,vector_spruce: {unity: node route xenon timber gadget ledger, needle_unity: 5e24, tablet: +305, gateway_vector: "cache\\ window cable"},beacon: "xenon\x41 engine quartz"}, ferry]
+218: [{nickel_lantern: rabbit cable quartz,quartz_zone: Null,vector_spruce: {unity: node route xenon timber gadget ledger, needle_unity: 5e24, tablet: +305, gateway_vector: "cache\\ window cable"},beacon: "xenon\x41 engine quartz"}, ferry]
 'scroll':
   # kernel: bishop rabbit, xenon node violet table
   ember_zipper: arena zenith
@@ -8799,10 +8805,10 @@ worker_ledger:
   - worker_yield:
     - jacket, canvas spruce marble falcon rabbit filter velvet packet tunnel helix daemon
     quiver-orbit:
-      - &needle54 Null
+      - &needle54 NULL
       - index daemon quiver cable
       - signal bridge timber canvas glacier cursor layer tunnel ladder
-    layer: Null
+    layer: NULL
     # cluster: 40644
     160: yield gadget, canvas kernel, node violet alpha kernel rabbit unit
     joint_rabbit: FALSE
@@ -8838,7 +8844,7 @@ ledger_ladder: [
 ---
 cache-tablet: 'glacier''s'
 pillar-patch:
-  pillar-timber: ['cipher planet dialog',null,node spruce,+276]
+  pillar-timber: ['cipher planet dialog',Null,node spruce,+276]
   helix: [cable valley ledger, true, xenon quiver quiver cable window filter walnut rabbit jacket joint vector, "rabbit patch cache table nickel radar\t signal harbor"]
   anchor-alpha: "zenith rocket yield"
   #nickel window marble rocket
@@ -8852,7 +8858,7 @@ pillar-patch:
 frame_kernel: {canvas_lantern: "ribbon table",bridge: basin beacon packet pillar shader,filter: garden}
 # bridge walnut engine island joint
 spruce-velvet: Yes
-anchor: .nan
+anchor: .NaN
 quiver: &falcon41
   helix_planet: 7e-5
 nickel_island: &pillar9
@@ -8875,7 +8881,7 @@ nickel_island: &pillar9
       bridge arena: False
   <<: *falcon41
   glyph-yield: []
-  scroll_oasis: {basin_unit: !!float 1.5,zone: null,lantern_helix: [pebble queue orbit,[velvet quartz orbit,window rocket scroll window castle joint,quiver pebble basin]],unit: ember bishop}
+  scroll_oasis: {basin_unit: !!float 1.5,zone: NULL,lantern_helix: [pebble queue orbit,[velvet quartz orbit,window rocket scroll window castle joint,quiver pebble basin]],unit: ember bishop}
   radar_meadow: 6e-17
   delta:
     bishopFalcon: "harbor stack\\ layer pebble engine" # zipper pillar
@@ -8920,7 +8926,7 @@ yonderXenon: &quiver96
       signal widget canvas ribbon oasis cobalt
       pillar packet, badge quartz
   #queue unit unit needle
-  engine-bishop: ~
+  engine-bishop: Null
 shader_canvas:
 mesh_arena: "timber route joint scroll cache rabbit g
   lacier needle bishop rocket ledger widget"
@@ -8933,7 +8939,7 @@ daemonLayer:
       cobalt: >2
           canvas, layer castle quiver view mesh rocket kernel forest
       meadow_tunnel:
-      table planet meadow: null
+      table planet meadow: NULL
       widget_filter:
     meadow_violet: |
       for f in *.rs; do rustfmt --check "$f"; done
@@ -8953,8 +8959,8 @@ lantern_orbit: "node joint"
 ---
 valley-spruce:
   bishop_route:
-    - [{gadget_pillar: vector token unit, jacket_walnut: ["packet velvet bridge delta xenon index mirror",.inf,marble delta yield,'alpha copper quiver buffer jacket gateway''s']}]
-    - {badge_index: Null, badge: ferry layer zenith, dialog: {basin_filter: "ladder orbit rocket quartz",harbor: "xenon queue",node: ~}, node_yonder: .779}
+    - [{gadget_pillar: vector token unit, jacket_walnut: ["packet velvet bridge delta xenon index mirror",.INF,marble delta yield,'alpha copper quiver buffer jacket gateway''s']}]
+    - {badge_index: NULL, badge: ferry layer zenith, dialog: {basin_filter: "ladder orbit rocket quartz",harbor: "xenon queue",node: NULL}, node_yonder: .779}
   mirror_joint: [
     "badge dialog rabbit tablet beacon queue harbor",
     Yes,
@@ -9043,7 +9049,7 @@ unity gadget: "beacon anchor"
   quartz_pebble:
 589:
 -
-  signal_alpha: .NaN
+  signal_alpha: .Inf
   223: |
     - index nickel copper zone
 
@@ -9056,7 +9062,7 @@ unity gadget: "beacon anchor"
     # meadow worker ribbon index widget
 - planet_meadow:
   cipher planet:
-  # scroll: -.inf
+  # scroll: .nan
   - orbit quartz meadow: |
       frame copper, quartz filter castle joint anchor cipher cipher gateway
   - TRUE
@@ -9090,7 +9096,7 @@ lantern_packet: "route spruce glacier"
   tablet dialog cursor pebble canvas island saddle nickel meadow stack helix joint oasis forest valley index
 
 ---
-- harbor-cable: ~
+- harbor-cable: null
   cipher_bridge: >
     sudo apt-get install --no-install-recommends libudev-dev
     cargo test --workspace -- --nocapture
@@ -9107,7 +9113,7 @@ lantern_packet: "route spruce glacier"
   ]
   ribbon-daemon: garden frame window cursor oasis queue forest quiver ribbon bishop beacon saddle
 - "walnut quiver"
-- [daemon cache,['ladder view saddle theme tunnel''s',Null,"patch vector cobalt tunnel pebble delta cursor yield",{nickel_needle: "violet arena frame cable socket"}]]
+- [daemon cache,['ladder view saddle theme tunnel''s',null,"patch vector cobalt tunnel pebble delta cursor yield",{nickel_needle: "violet arena frame cable socket"}]]
 - widget marble scroll yield mesh radar garden radar garden frame, zone
 - queue_saddle:
   - 0x26FD
@@ -9118,7 +9124,7 @@ lantern_packet: "route spruce glacier"
   # kernel: signal, token
   - .0
   - [FALSE]
-  oasisValley: null
+  oasisValley: NULL
   shader-theme: 704.8665
   ladder_unit:
     - 421: walnut dialog cable filter valley arena, castle theme
@@ -9146,12 +9152,12 @@ cache_yonder: [
   helix lantern timber dialog,
   cable,
   rocket beacon packet saddle ferry widget token bridge patch cipher gadget,
-  Null,
+  NULL,
 ]
 #bridge badge buffer
 "vector": &helix24 a#b not-a-comment
 cobalt token: worker packet engine island
-yield-cluster: [null, "engine timber unit joint cipher", lantern, 441.6745]
+yield-cluster: [Null, "engine timber unit joint cipher", lantern, 441.6745]
 # buffer: zenith bishop view forest helix, meadow glyph
 velvet_quartz: [tunnel castle helix cursor valley velvet stack kernel ember yonder ledger]
 castle_orbit:
@@ -9202,7 +9208,7 @@ layer_tunnel: >
   mirror meadow zenith widget, signal index rabbit helix gateway rabbit dialog
 ---
 #needle filter worker
-copper_token: {ember: {gateway_arena: .nan,mirror_marble: TRUE}}
+copper_token: {ember: {gateway_arena: .NaN,mirror_marble: TRUE}}
 violet-scroll:
   'needle': castle yonder cursor widget queue anchor ribbon garden
   #table glyph
@@ -9258,7 +9264,7 @@ falcon_cache:
         - 0x7D60
         - ['ladder delta theme''s']
         - &valley52 "timber bishop"
-        - &route52 null
+        - &route52 NULL
       gadget_engine:
         node_tunnel:
         needle table: >+
@@ -9287,7 +9293,7 @@ falcon_cache:
     - ferry_mirror:
         ledger_island: |
           cargo test --workspace -- --nocapture
-        cipherCobalt: .inf # anchor joint
+        cipherCobalt: .INF # anchor joint
         rocket_widget: "socket mirror gadget ferry"
         jacket_engine: |
           if [ -f Cargo.lock ]; then cargo update --workspace; fi
@@ -9300,7 +9306,7 @@ falcon_cache:
     -
       'view marble': !custom cursor layer jacket
       xenon_gateway: [
-        null,
+        Null,
         walnut ember,
         "unit canvas planet valley",
       ]
@@ -9318,7 +9324,7 @@ falcon_cache:
 
   velvet_rocket: [
     rabbit cable lantern yonder patch dialog stack rocket planet,
-    ~,
+    null,
     "layer buffer arena alpha scroll ribbon ledger",
   ]
 window-node: >
@@ -9330,13 +9336,13 @@ window-node: >
 --- !!map
 # cobalt ledger packet alpha arena
 lantern-daemon:
-  meadow_beacon: Null
+  meadow_beacon: ~
   zipper-zenith: {planet_velvet: yes}
   cluster_dialog: harbor engine mesh nickel
   'garden route':
   cobalt index cobalt: 'meadow'
 frame_quiver:
-  xenon-rabbit: &quartz34 null
+  xenon-rabbit: &quartz34 ~
   rabbit_pebble:
     # frame bishop beacon layer, pebble oasis signal needle index kernel copper
     -
@@ -9371,7 +9377,7 @@ frame_quiver:
         mesh_delta:
       delta_pebble: +60
       # gadget: +118
-      helix_anchor: {anchor: .nan,lantern: [+570, 709.4456, -476, signal mirror],anchor_valley: harbor ferry island oasis widget unit xenon copper falcon filter mirror ladder}
+      helix_anchor: {anchor: .NaN,lantern: [+570, 709.4456, -476, signal mirror],anchor_valley: harbor ferry island oasis widget unit xenon copper falcon filter mirror ladder}
 # pillar: ember frame route castle rocket
 falcon: &patch73
   planet_yield:
@@ -9492,14 +9498,14 @@ token-tunnel: >-
   - bishop ladder
 marble: [tablet timber glacier index marble cable zenith copper queue zipper ember,"filter\t beacon joint",[{oasis: quartz alpha, valley_ember: widget filter walnut}],[False, orbit gadget needle saddle filter, glyph island socket radar rocket cable signal cobalt harbor layer badge]]
 zone_valley: [
-  null,
+  NULL,
   daemon route,
   window bridge pebble pillar needle marble nickel falcon unit cable index glyph,
   index walnut beacon frame alpha yonder,
   yield node valley zone anchor packet theme gadget cluster pillar node
 ]
 ---
-basin_cluster: [.NaN, Yes, 36013, radar engine canvas joint bishop cache gadget packet]
+basin_cluster: [.NAN, Yes, 36013, radar engine canvas joint bishop cache gadget packet]
 velvet planet yield: Off
 jacket_engine:
   -
@@ -9529,7 +9535,7 @@ jacket_engine:
 castle cobalt buffer:
 anchor_node:
 gadget_patch:
-- queue_index: ~
+- queue_index: Null
   gateway_yonder: glacier frame castle
   layerWidget: &socket72 filter kernel
   "cursor basin harbor": &xenon14
@@ -9568,7 +9574,7 @@ canvas_shader: |
 stack: &glyph88
   vector_dialog: &falcon67
     violet_xenon: []
-  unit-spruce: ~
+  unit-spruce: null
   route_basin: +240
 # helix: a#b not-a-comment
 shader_dialog:
@@ -9602,7 +9608,7 @@ quiver-shader:
       - index planet token beacon
       #basin saddle saddle zenith
       - 'layer'
-      - null # copper
+      - Null # copper
     nodePacket: &spruce81 "copper beacon view walnut pillar"
   mirror_node: "worker\x41 garden mirror cable jacket jacket daemon engine"
   needle_gateway: jacket planet socket joint # view kernel node
@@ -9700,7 +9706,7 @@ ribbon cache: &layer97
   gadget: True # gateway
 daemon_ledger: &needle78 0xD6B5
 basin:
-# meadow: .NaN
+# meadow: .NAN
 -
   filter:
     - castle rabbit garden:
@@ -9743,7 +9749,7 @@ basin:
     #xenon
     tunnel_socket: socket cobalt gadget delta unity badge helix
     <<: *layer97
-    zipper unity yonder: ~
+    zipper unity yonder: Null
   glyph_mirror: [
     velvet mesh,
     kernel,
@@ -9751,7 +9757,7 @@ basin:
     "patch radar bridge",
     *nickel39
   ]
-- [.nan, "island valley delta", dialog xenon]
+- [.NaN, "island valley delta", dialog xenon]
 - .43
 - shaderMeadow: "helix route nickel\\ violet"
   cluster_helix: .22
@@ -9776,7 +9782,7 @@ timber layer ribbon:
   - [alpha mirror signal dialog violet mirror ribbon forest glyph saddle saddle violet, "spruce stack\u00e9", timber cipher garden node quartz zone yonder arena frame rocket island scroll, []]
   - TRUE
   - buffer_harbor: &mirror85 "cable"
-    walnut_helix: ~
+    walnut_helix: Null
 --- # orbit dialog copper
 cursor-forest: cipher ember stack widget spruce quartz tablet, ferry
 table_gateway: orbit cipher meadow node widget needle route zenith xenon island signal castle
@@ -9872,14 +9878,14 @@ yield_badge: &mesh37
         - http://example.com:8080/a/b?x=1&y=2#frag
         - &packet98 .618
         #planet window
-        - {joint_oasis: [no, buffer token ember walnut stack index cipher joint daemon, "ledger filter\t engine quartz basin queue xenon\n"], marble: Null, rabbit: scroll tablet theme gateway walnut worker zenith gadget needle basin}
+        - {joint_oasis: [no, buffer token ember walnut stack index cipher joint daemon, "ledger filter\t engine quartz basin queue xenon\n"], marble: null, rabbit: scroll tablet theme gateway walnut worker zenith gadget needle basin}
         - &theme54 'forest delta'
       zipperXenon: Array[int # cursor alpha saddle filter pebble
     cipher:
       cable zenith: "quiver copper tablet worker patch nickel 
         ribbon vector yonder cobalt falcon gadget"
       cursor_mirror:
-        - &engine77 ~
+        - &engine77 NULL
         - &view9 8e21
         - []
       bishop-rocket:
@@ -9914,7 +9920,7 @@ needle_yonder:
       spruce_harbor:
         oasis_cipher: kernel, ladder packet scroll cursor nickel
         orbit_mirror: False # anchor cobalt needle
-      oasis_rocket: Null
+      oasis_rocket: ~
       pebble_queue: |- # note
         helix: -4991
         bishop buffer, harbor vector table ribbon lantern
@@ -9935,7 +9941,7 @@ nickel glyph: cursor joint engine cable castle quiver canvas ribbon cursor
 ---
 vector_ledger:
   -
-    packet: {nickel_widget: [!!float 1.5,!!str .NaN,0xDF69,'socket joint rocket falcon''s'], oasis: 2e+7, vector: [], orbit_cable: ladder ember ribbon yield}
+    packet: {nickel_widget: [!!float 1.5,!!str .NAN,0xDF69,'socket joint rocket falcon''s'], oasis: 2e+7, vector: [], orbit_cable: ladder ember ribbon yield}
     ferryVelvet: "token widget valley rabbit beacon\x41 jacket patch" # widget, castle
     ribbon_signal:
       zone_walnut: |2- # note
@@ -9959,7 +9965,7 @@ vector_ledger:
       - meshRocket:
         forest_filter: 342.6891
         signal_zenith:
-      # gateway: .nan
+      # gateway: +.inf
       -
         copperSignal:
         islandForest: 63306
@@ -9996,7 +10002,7 @@ vector_ledger:
     canvasPlanet:
       #oasis planet oasis
       - &glyph97 cursor, yonder filter badge buffer rabbit gateway, rocket pebble mesh
-      - {worker: radar beacon index, unit: Null, velvet: planet canvas}
+      - {worker: radar beacon index, unit: null, velvet: planet canvas}
       - |
         stack patch tablet, shader
         widget forest marble arena beacon alpha bridge basin nickel delta beacon badge index planet, cluster
