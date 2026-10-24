@@ -1,0 +1,16 @@
+diff --git a/docs.md b/guide.md
+similarity index 86%
+rename from docs.md
+rename to guide.md
+index fa2da6e55caa..8476ff2c085b 100644
+--- a/docs.md
++++ b/guide.md
+@@ -2,7 +2,7 @@ line 1
+ line 2
+ line 3
+ line 4
+-line 5
++line five
+ line 6
+ line 7
+ line 8

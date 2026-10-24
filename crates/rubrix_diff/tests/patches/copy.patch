@@ -1,0 +1,4 @@
+diff --git a/lib.rs b/util.rs
+similarity index 100%
+copy from lib.rs
+copy to util.rs
