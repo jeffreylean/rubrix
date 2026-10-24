@@ -5,9 +5,12 @@
 //! operators, names, and a string.
 //!
 //! Classes, interfaces, enums, and type aliases bind
-//! `type.definition`, because `Kind` has no `type.class`. Names are
-//! not checked for being parameters, so `variable.parameter` is
-//! never emitted.
+//! `type.definition`, because `Kind` has no `type.class`.
+//!
+//! Three distinctions stay unmade. Parameters lex as `variable`, so
+//! `variable.parameter` is never emitted. Object keys and interface
+//! members lex as `variable`, not `property`. A generic call such as
+//! `foo<T>(x)` lexes `foo` as `variable`, not `function`.
 
 use alloc::vec::Vec;
 
@@ -35,13 +38,44 @@ enum Prev {
     Type,
     New,
     Module,
+    Control,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Parens {
+    depth: u8,
+    control: u64,
+}
+
+impl Parens {
+    const TRACKED: u8 = 48;
+
+    fn push(&mut self, control: bool) {
+        if self.depth < Self::TRACKED {
+            let bit = 1 << self.depth;
+            self.control = if control {
+                self.control | bit
+            } else {
+                self.control & !bit
+            };
+        }
+        self.depth = self.depth.saturating_add(1);
+    }
+
+    fn pop(&mut self) -> bool {
+        self.depth = self.depth.saturating_sub(1);
+        self.depth < Self::TRACKED
+            && self.control >> self.depth & 1 == 1
+    }
 }
 
 const OPEN_MASK: u64 = 0xF;
 const PREV_SHIFT: u32 = 4;
+const DEPTH_SHIFT: u32 = 8;
+const CONTROL_SHIFT: u32 = 16;
 const BRACE_COUNT: usize = 4;
 
-fn load(state: &State) -> (Open, Prev, Vec<u32>) {
+fn load(state: &State) -> (Open, Prev, Parens, Vec<u32>) {
     let word = state.word();
     let open = match word & OPEN_MASK {
         1 => Open::Block,
@@ -58,17 +92,27 @@ fn load(state: &State) -> (Open, Prev, Vec<u32>) {
         4 => Prev::Type,
         5 => Prev::New,
         6 => Prev::Module,
+        7 => Prev::Control,
         _ => Prev::Other,
+    };
+    let parens = Parens {
+        depth: (word >> DEPTH_SHIFT) as u8,
+        control: word >> CONTROL_SHIFT,
     };
     let template_braces = state
         .tail()
         .chunks_exact(BRACE_COUNT)
         .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect();
-    (open, prev, template_braces)
+    (open, prev, parens, template_braces)
 }
 
-fn store(open: Open, prev: Prev, template_braces: &[u32]) -> State {
+fn store(
+    open: Open,
+    prev: Prev,
+    parens: Parens,
+    template_braces: &[u32],
+) -> State {
     let open = match open {
         Open::Code => 0,
         Open::Block => 1,
@@ -77,7 +121,10 @@ fn store(open: Open, prev: Prev, template_braces: &[u32]) -> State {
         Open::Quoted(b'\'') => 4,
         Open::Quoted(_) => 5,
     };
-    let word = open | (prev as u64) << PREV_SHIFT;
+    let word = open
+        | (prev as u64) << PREV_SHIFT
+        | u64::from(parens.depth) << DEPTH_SHIFT
+        | parens.control << CONTROL_SHIFT;
     if template_braces.is_empty() {
         return State::from_word(word);
     }
@@ -93,12 +140,13 @@ pub(crate) fn lex(
     state: &State,
     out: &mut Runs<'_>,
 ) -> State {
-    let (mut open, prev, template_braces) = load(state);
+    let (mut open, prev, parens, template_braces) = load(state);
     let mut lexer = Lexer {
         s: line.as_bytes(),
         i: 0,
         out,
         prev,
+        parens,
         template_braces,
     };
     while lexer.i < lexer.s.len() {
@@ -110,7 +158,7 @@ pub(crate) fn lex(
             Open::Quoted(quote) => lexer.string(quote),
         };
     }
-    store(open, lexer.prev, &lexer.template_braces)
+    store(open, lexer.prev, lexer.parens, &lexer.template_braces)
 }
 
 struct Lexer<'s, 'o, 'r> {
@@ -118,6 +166,7 @@ struct Lexer<'s, 'o, 'r> {
     i: usize,
     out: &'o mut Runs<'r>,
     prev: Prev,
+    parens: Parens,
     template_braces: Vec<u32>,
 }
 
@@ -183,6 +232,9 @@ impl Lexer<'_, '_, '_> {
             b'#' => self.hash(prev),
             b'@' => self.decorator(),
             b'(' | b'[' => {
+                if b == b'(' {
+                    self.parens.push(prev == Prev::Control);
+                }
                 self.emit(self.i + 1, Kind::PunctuationBracket);
             }
             b'{' => {
@@ -192,8 +244,10 @@ impl Lexer<'_, '_, '_> {
                 self.emit(self.i + 1, Kind::PunctuationBracket);
             }
             b')' | b']' => {
+                let control = b == b')' && self.parens.pop();
                 self.emit(self.i + 1, Kind::PunctuationBracket);
-                self.prev = Prev::Value;
+                self.prev =
+                    if control { Prev::Other } else { Prev::Value };
             }
             b',' | b';' | b':' => {
                 self.emit(self.i + 1, Kind::PunctuationDelimiter);
@@ -537,7 +591,12 @@ impl Lexer<'_, '_, '_> {
         let (kind, after) = match keyword(word) {
             Some(Word::Reserved(kind, after)) => (kind, after),
             Some(Word::Contextual(kind, after))
-                if is_keyword_here(word, prev, self.peek(end)) =>
+                if is_keyword_here(
+                    word,
+                    prev,
+                    self.peek(end),
+                    self.name_follows(end),
+                ) =>
             {
                 (kind, after)
             }
@@ -545,6 +604,21 @@ impl Lexer<'_, '_, '_> {
         };
         self.emit(end, kind);
         self.prev = after;
+    }
+
+    fn name_follows(&self, end: usize) -> bool {
+        let mut at = end;
+        while matches!(self.s.get(at), Some(b' ' | b'\t')) {
+            at += 1;
+        }
+        if self.s.get(at) == Some(&b'#') {
+            at += 1;
+        }
+        self.s.get(at).copied().is_some_and(is_word_start)
+            && !matches!(
+                &self.s[at..word_end(self.s, at)],
+                b"in" | b"instanceof"
+            )
     }
 
     fn name_kind(&self, word: &[u8], end: usize, prev: Prev) -> Kind {
@@ -578,10 +652,12 @@ enum Word {
 fn keyword(word: &[u8]) -> Option<Word> {
     use Word::{Contextual, Reserved};
     Some(match word {
-        b"if" | b"else" | b"switch" | b"case" | b"default"
-        | b"for" | b"while" | b"do" | b"return" | b"try"
-        | b"catch" | b"finally" | b"throw" | b"break"
-        | b"continue" | b"yield" => {
+        b"if" | b"for" | b"while" => {
+            Reserved(Kind::KeywordControl, Prev::Control)
+        }
+        b"else" | b"switch" | b"case" | b"default" | b"do"
+        | b"return" | b"try" | b"catch" | b"finally" | b"throw"
+        | b"break" | b"continue" | b"yield" => {
             Reserved(Kind::KeywordControl, Prev::Other)
         }
         b"const" | b"let" | b"var" => {
@@ -602,10 +678,11 @@ fn keyword(word: &[u8]) -> Option<Word> {
             Reserved(Kind::VariableSpecial, Prev::Value)
         }
         b"new" => Reserved(Kind::Keyword, Prev::New),
+        b"with" => Reserved(Kind::Keyword, Prev::Control),
         b"debugger" | b"delete" | b"extends" | b"implements"
         | b"in" | b"instanceof" | b"package" | b"private"
         | b"protected" | b"public" | b"static" | b"typeof"
-        | b"void" | b"with" => Reserved(Kind::Keyword, Prev::Other),
+        | b"void" => Reserved(Kind::Keyword, Prev::Other),
         b"type" | b"namespace" => {
             Contextual(Kind::Keyword, Prev::Type)
         }
@@ -623,8 +700,8 @@ fn is_keyword_here(
     word: &[u8],
     prev: Prev,
     next: Option<u8>,
+    name: bool,
 ) -> bool {
-    let name = next.is_some_and(is_word_start);
     let value = prev == Prev::Value;
     match word {
         b"as" | b"satisfies" => {
@@ -640,6 +717,7 @@ fn is_keyword_here(
                         Some(
                             b'{' | b'['
                                 | b'('
+                                | b'/'
                                 | b'"'
                                 | b'\''
                                 | b'`'
@@ -815,7 +893,7 @@ const fn char_len(lead: u8) -> usize {
 mod tests {
     use alloc::vec;
 
-    use super::{Open, Prev, load, store};
+    use super::{Open, Parens, Prev, load, store};
     use crate::State;
 
     #[test]
@@ -836,22 +914,41 @@ mod tests {
             Prev::Type,
             Prev::New,
             Prev::Module,
+            Prev::Control,
+        ];
+        let parens = [
+            Parens::default(),
+            Parens {
+                depth: 3,
+                control: 0b101,
+            },
+            Parens {
+                depth: u8::MAX,
+                control: u64::MAX >> 16,
+            },
         ];
         for open in opens {
             for prev in prevs {
-                for template_braces in
-                    [vec![], vec![0], vec![3, 0, u32::MAX]]
-                {
-                    let state = store(open, prev, &template_braces);
-                    assert_eq!(
-                        load(&state),
-                        (open, prev, template_braces)
-                    );
+                for parens in parens {
+                    for template_braces in
+                        [vec![], vec![0], vec![3, 0, u32::MAX]]
+                    {
+                        let state = store(
+                            open,
+                            prev,
+                            parens,
+                            &template_braces,
+                        );
+                        assert_eq!(
+                            load(&state),
+                            (open, prev, parens, template_braces)
+                        );
+                    }
                 }
             }
         }
         assert_eq!(
-            store(Open::Code, Prev::Other, &[]),
+            store(Open::Code, Prev::Other, Parens::default(), &[]),
             State::default()
         );
     }
@@ -861,10 +958,16 @@ mod tests {
         for word in [u64::MAX, 7, 15 << 4, 1 << 40] {
             for tail in [&[][..], &[1, 2, 3], &[1, 0, 0, 0, 9]] {
                 let state = State::with_tail(word, tail);
-                let (open, prev, template_braces) = load(&state);
+                let (open, prev, parens, template_braces) =
+                    load(&state);
                 assert_eq!(
-                    load(&store(open, prev, &template_braces)),
-                    (open, prev, template_braces)
+                    load(&store(
+                        open,
+                        prev,
+                        parens,
+                        &template_braces
+                    )),
+                    (open, prev, parens, template_braces)
                 );
             }
         }
