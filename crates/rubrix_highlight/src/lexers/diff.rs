@@ -189,7 +189,6 @@ fn word_end(s: &[u8], mut i: usize) -> usize {
     i
 }
 
-/// A range such as `-12,7` or `+3` as its sign and line count.
 fn range(word: &[u8]) -> Option<(u8, u32)> {
     let (&sign, rest) = word.split_first()?;
     if sign != b'-' && sign != b'+' {

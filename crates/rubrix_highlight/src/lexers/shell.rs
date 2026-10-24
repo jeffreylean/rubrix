@@ -118,8 +118,6 @@ impl Stack {
     }
 }
 
-/// The queue holds the heredocs whose bodies are still to come,
-/// each as a flags byte, a delimiter, and a newline.
 fn front(queue: &[u8]) -> Option<(u8, &[u8])> {
     let (&flags, rest) = queue.split_first()?;
     let end = memchr(b'\n', rest).unwrap_or(rest.len());
@@ -478,8 +476,6 @@ impl Lexer<'_, '_, '_> {
         }
     }
 
-    /// Lexes what follows `${` up to the operator: the `!` or `#`
-    /// prefix, the name, and a subscript.
     fn brace_start(&mut self) {
         let s = self.s;
         if matches!(self.at(0), Some(b'!' | b'#'))
@@ -607,8 +603,6 @@ impl Lexer<'_, '_, '_> {
         self.queue_changed = true;
     }
 
-    /// The inside of a double-quoted string, or of an unquoted
-    /// heredoc body when `quoted` is false.
     fn string(&mut self, quoted: bool) {
         let s = self.s;
         loop {
@@ -809,9 +803,6 @@ impl Lexer<'_, '_, '_> {
     }
 }
 
-/// The end of a heredoc delimiter that starts at `start`, whether
-/// a quote or a backslash quotes it, and the delimiter with its
-/// quotes removed.
 fn delimiter(s: &[u8], start: usize) -> (usize, bool, Vec<u8>) {
     let mut bytes = Vec::new();
     let mut quoted = false;
@@ -842,7 +833,6 @@ fn delimiter(s: &[u8], start: usize) -> (usize, bool, Vec<u8>) {
     (j, quoted, bytes)
 }
 
-/// The end of a `case` pattern such as `start|go*` that a `)` closes.
 fn case_pattern_end(s: &[u8], start: usize) -> Option<usize> {
     let len = s[start..]
         .iter()
