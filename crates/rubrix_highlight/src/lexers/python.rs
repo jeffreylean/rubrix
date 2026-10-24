@@ -2,7 +2,8 @@
 //!
 //! It covers strings with every prefix, triple quotes across lines,
 //! f- and t-string replacement fields with nested quotes, format
-//! specs, and fields that span lines, numbers with underscores and
+//! specs, and fields that continue onto the next line in the cases
+//! below, numbers with underscores and
 //! the `j` suffix, comments, backslash continuations, decorators,
 //! and `def` and `class` names.
 //!
@@ -10,15 +11,35 @@
 //! field frames, the depth of brackets open in code outside strings
 //! (capped at 15), and whether the last line ended in a backslash.
 //! The last two decide whether a line that starts with `@` is a
-//! decorator or a matrix multiply. A replacement field in a
-//! single-quoted f-string stays open at the end of a line, as Python
-//! 3.12 and later allow, when the line ends in an operator, a
-//! delimiter, or a backslash, or inside brackets. Any other open
-//! field, such as `f"{x` followed by a line that starts with `}`,
-//! ends at its line, so invalid code cannot swallow the lines after
-//! it. A string body, a format spec, or an unterminated string ends
-//! at its line, unless it is triple-quoted or the line ends in a
-//! backslash.
+//! decorator or a matrix multiply.
+//!
+//! A replacement field in a single-quoted f-string stays open at the
+//! end of a line, as Python 3.12 and later allow, in three cases
+//! only:
+//!
+//! - The line ends in a backslash.
+//! - A bracket opened inside the field is still open.
+//! - The last token on the line, ignoring trailing spaces, is a
+//!   symbol operator or a punctuation mark, such as `+`, `==`, `,`,
+//!   or `.`.
+//!
+//! Any other open field ends at its line, so invalid code cannot
+//! swallow the lines after it. The cost is that valid code breaks
+//! when the line ends in:
+//!
+//! - a word operator or keyword, such as `and`, `or`, `not in`, `in`,
+//!   `is`, `if`, or `else`,
+//! - a name, number, or string,
+//! - a bare `{` with nothing after it,
+//! - a comment,
+//! - a `!` conversion, or
+//! - a field with its `}` on the next line, as in `f"{x` followed by
+//!   a line that starts with `}`.
+//!
+//! The next line of such code is lexed as code and not as the rest
+//! of the string. A string body, a format spec, or an unterminated
+//! string ends at its line, unless it is triple-quoted or the line
+//! ends in a backslash.
 //!
 //! In an f-string, a backslash directly before `{` is a plain
 //! character, and a single `{` after it opens a field, as in Python.

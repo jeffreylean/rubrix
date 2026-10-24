@@ -13,12 +13,18 @@
 //! A capitalised name is `type` only where Go puts a type: after a
 //! name (`x Foo`, `var x Foo`), after `*`, `...`, `]`, `chan`, or
 //! `)`, inside the `[ ]` of `map[` and of a type or function name,
-//! or directly before `{` as in `Foo{`. Anywhere else it is a
-//! `variable`, or a `constant` when it is all capitals, because
-//! capitals mark exported names in Go and not types. A name after a
-//! `.` is a `property`, even when it names a type, as in
-//! `pkg.Type`. A name that starts a line or follows `struct {` and
-//! is followed by a type is a field and a `property`.
+//! directly before `{` as in `Foo{`, or before a `[ ... ]` that
+//! closes on the same line and is followed directly by `{`, as in
+//! `Foo[int]{`. Anywhere else it is a `variable`, or a `constant`
+//! when it is all capitals, because capitals mark exported names in
+//! Go and not types. A name after a `.` is a `property`, even when
+//! it names a type, as in `pkg.Type`. A name that starts a line or
+//! follows `struct {` and is followed by a type is a field and a
+//! `property`.
+//!
+//! The `[ ... ]{` rule reads an index expression with no space
+//! before its `{` as a type, as in `for _, v := range Items[1:]{`.
+//! gofmt puts a space there, so formatted code is not affected.
 //!
 //! What it does not handle:
 //!
@@ -411,8 +417,7 @@ impl Lexer<'_, '_, '_> {
         let s = self.s;
         let end = ident_end(s, self.i);
         let word = &s[self.i..end];
-        let next = s.get(end).copied();
-        let call = next == Some(b'(');
+        let call = s.get(end) == Some(&b'(');
         let reserved = keyword(word);
         let kind = match prev {
             Prev::Func => Kind::FunctionDefinition,
@@ -433,7 +438,7 @@ impl Lexer<'_, '_, '_> {
                 } else {
                     let type_position =
                         prev == Prev::TypePos || self.type_args > 0;
-                    name_kind(word, call, type_position, next)
+                    name_kind(word, call, type_position, &s[end..])
                 }
             }),
         };
@@ -517,7 +522,7 @@ fn name_kind(
     name: &[u8],
     call: bool,
     type_position: bool,
-    next: Option<u8>,
+    rest: &[u8],
 ) -> Kind {
     if call {
         if is_builtin_function(name) {
@@ -527,12 +532,35 @@ fn name_kind(
         }
     } else if !is_capitalised(name) {
         Kind::Variable
-    } else if type_position || next == Some(b'{') {
+    } else if type_position || opens_literal(rest) {
         Kind::Type
     } else if is_screaming_case(name) {
         Kind::Constant
     } else {
         Kind::Variable
+    }
+}
+
+fn opens_literal(rest: &[u8]) -> bool {
+    match rest.first() {
+        Some(b'{') => true,
+        Some(b'[') => {
+            let mut depth = 0usize;
+            for (j, &b) in rest.iter().enumerate() {
+                match b {
+                    b'[' => depth += 1,
+                    b']' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return rest.get(j + 1) == Some(&b'{');
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            false
+        }
+        _ => false,
     }
 }
 

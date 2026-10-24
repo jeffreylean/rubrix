@@ -11,7 +11,7 @@
 //! ```
 
 use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 const SEED: u64 = 0x5EED_0002;
@@ -1109,11 +1109,15 @@ fn generate(target: usize) -> String {
     text
 }
 
+fn fixture(tier: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../bench/fixtures/go")
+        .join(format!("{tier}.go.txt"))
+}
+
 fn main() -> ExitCode {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../bench/fixtures/go");
     for (tier, target) in TIERS {
-        let path = dir.join(format!("{tier}.go.txt"));
+        let path = fixture(tier);
         let text = generate(target);
         if let Err(err) = fs::write(&path, &text) {
             eprintln!("cannot write {}: {err}", path.display());
@@ -1126,4 +1130,26 @@ fn main() -> ExitCode {
         );
     }
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn committed_fixtures_match_the_generator() {
+        for (tier, target) in TIERS {
+            let path = fixture(tier);
+            let committed =
+                fs::read_to_string(&path).unwrap_or_else(|err| {
+                    panic!("cannot read {}: {err}", path.display())
+                });
+            assert!(
+                committed == generate(target),
+                "{} differs from the generator, run `cargo run -p \
+                 rubrix_bench --bin gen_go`",
+                path.display()
+            );
+        }
+    }
 }
