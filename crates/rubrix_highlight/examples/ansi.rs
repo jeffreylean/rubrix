@@ -3,18 +3,23 @@
 //! when it is UTF-8. Bytes that are not UTF-8 print as U+FFFD.
 //!
 //! ```text
-//! ansi [--lang <name>] [--runs | --check] <file>
+//! ansi [--lang <name>] [--stream <bytes>] [--runs | --check] <file>
 //! ```
 //!
-//! `--lang` overrides `Lang::detect`. `--runs` prints one
-//! `line start..end kind text` row per run instead. `--check`
-//! checks that the runs cover every line exactly and end on char
-//! boundaries, then prints `ok`.
+//! `--lang` overrides `Lang::detect`. `--stream` feeds the file to
+//! `Stream` in chunks of that many bytes, each extended to the next
+//! char boundary, and prints what the one-shot path prints.
+//! `--runs` prints one `line start..end kind text` row per run
+//! instead. `--check` checks that the runs cover every line exactly
+//! and end on char boundaries, then prints `ok`.
 
 use std::io::{self, Write};
+use std::num::NonZeroUsize;
 use std::process::ExitCode;
 
-use rubrix_highlight::{Highlights, Kind, Lang, highlight, spans};
+use rubrix_highlight::{
+    Highlights, Kind, Lang, Stream, highlight, spans,
+};
 
 enum Output {
     Colour,
@@ -24,6 +29,7 @@ enum Output {
 
 struct Args {
     lang: Option<Lang>,
+    stream: Option<NonZeroUsize>,
     output: Output,
     path: String,
 }
@@ -32,6 +38,7 @@ fn parse(
     mut args: impl Iterator<Item = String>,
 ) -> Result<Args, String> {
     let mut lang = None;
+    let mut stream = None;
     let mut output = Output::Colour;
     let mut path = None;
     while let Some(arg) = args.next() {
@@ -53,6 +60,15 @@ fn parse(
                     },
                 )?);
             }
+            "--stream" => {
+                stream = Some(
+                    args.next()
+                        .and_then(|size| size.parse().ok())
+                        .ok_or(
+                            "--stream needs a byte count above 0",
+                        )?,
+                );
+            }
             "--runs" => output = Output::Runs,
             "--check" => output = Output::Check,
             flag if flag.starts_with("--") => {
@@ -65,7 +81,12 @@ fn parse(
         }
     }
     let path = path.ok_or("no file given")?;
-    Ok(Args { lang, output, path })
+    Ok(Args {
+        lang,
+        stream,
+        output,
+        path,
+    })
 }
 
 fn main() -> ExitCode {
@@ -73,8 +94,8 @@ fn main() -> ExitCode {
         Ok(args) => args,
         Err(problem) => {
             eprintln!(
-                "{problem}\nusage: ansi [--lang <name>] [--runs | \
-                 --check] <file>"
+                "{problem}\nusage: ansi [--lang <name>] [--stream \
+                 <bytes>] [--runs | --check] <file>"
             );
             return ExitCode::FAILURE;
         }
@@ -90,7 +111,10 @@ fn main() -> ExitCode {
         let first_line = text.lines().next().unwrap_or_default();
         Lang::detect(&args.path, first_line)
     });
-    let highlights = highlight(lang, &text);
+    let highlights = match args.stream {
+        Some(size) => stream(lang, &text, size),
+        None => highlight(lang, &text),
+    };
     let mut out = io::stdout().lock();
     let written = match args.output {
         Output::Colour => write_colour(&mut out, &highlights, &text),
@@ -113,6 +137,19 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn stream(lang: Lang, text: &str, size: NonZeroUsize) -> Highlights {
+    let mut stream = Stream::new(lang);
+    let mut start = 0;
+    while start < text.len() {
+        let end = text.ceil_char_boundary(
+            start.saturating_add(size.get()).min(text.len()),
+        );
+        stream.push(&text[start..end]);
+        start = end;
+    }
+    stream.finish()
 }
 
 fn write_colour(
