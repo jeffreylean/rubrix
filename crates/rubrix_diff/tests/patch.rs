@@ -368,9 +368,8 @@ fn git(dir: &Path, args: &[&str]) -> (i32, String) {
     )
 }
 
-/// `git apply --numstat` over a patch file: `(added, removed)` per
-/// file, `None` counts for a binary file. Git ignores the files of a
-/// patch that are outside the directory it runs in.
+/// Git ignores the files of a patch that are outside the directory
+/// it runs in.
 fn numstat(
     dir: &Path,
     patch: &Path,
@@ -397,45 +396,40 @@ fn counts(files: &[FileDiff]) -> Vec<(Option<u32>, Option<u32>)> {
         .collect()
 }
 
-/// The new file, rebuilt from the old one and a diff's rows: old
-/// lines outside the hunks are kept, and each hunk replaces its old
-/// lines with its new ones.
 fn rebuild(old: &str, diff: &FileDiff) -> String {
     struct Rebuild<'a> {
         old: Vec<&'a str>,
         out: String,
-        /// The next old line not yet kept or dropped.
-        at: usize,
-        /// Lines in `out`.
-        made: usize,
+        next_old: usize,
+        lines_made: usize,
     }
 
     impl Rebuild<'_> {
         fn keep_until(&mut self, end: usize) {
-            for line in &self.old[self.at..end] {
+            for line in &self.old[self.next_old..end] {
                 self.out.push_str(line);
-                self.made += 1;
+                self.lines_made += 1;
             }
-            self.at = self.at.max(end);
+            self.next_old = self.next_old.max(end);
         }
 
         fn take(&mut self, number: u32, raw: &str) {
             self.keep_until(number as usize - 1);
-            assert_eq!(self.old[self.at], raw);
-            self.at += 1;
+            assert_eq!(self.old[self.next_old], raw);
+            self.next_old += 1;
         }
 
         fn push(&mut self, raw: &str) {
             self.out.push_str(raw);
-            self.made += 1;
+            self.lines_made += 1;
         }
     }
 
     let mut build = Rebuild {
         old: old.split_inclusive('\n').collect(),
         out: String::new(),
-        at: 0,
-        made: 0,
+        next_old: 0,
+        lines_made: 0,
     };
     let table = rows(diff, Layout::Stacked, &Expansion::new());
     for row in table.range(..) {
@@ -455,7 +449,9 @@ fn rebuild(old: &str, diff: &FileDiff) -> String {
             }
             Row::Addition { new } => {
                 let before = new.number.get() as usize - 1;
-                build.keep_until(build.at + before - build.made);
+                build.keep_until(
+                    build.next_old + before - build.lines_made,
+                );
                 build.push(diff.new_lines().raw(new.index));
             }
             Row::Gap { .. } => {}

@@ -76,7 +76,7 @@ impl core::error::Error for PatchError {}
 pub fn parse_patch(text: &str) -> Result<Vec<FileDiff>, PatchError> {
     let mut input = Input {
         rest: text,
-        line: 1,
+        next_line: 1,
     };
     let mut files = Vec::new();
     while let Some(head) = next_file(&mut input) {
@@ -85,11 +85,9 @@ pub fn parse_patch(text: &str) -> Result<Vec<FileDiff>, PatchError> {
     Ok(files)
 }
 
-/// The lines not read yet.
 struct Input<'a> {
     rest: &'a str,
-    /// The 1-based number of the next line.
-    line: usize,
+    next_line: usize,
 }
 
 impl<'a> Input<'a> {
@@ -105,7 +103,7 @@ impl<'a> Input<'a> {
     fn next(&mut self) -> Option<&'a str> {
         let line = self.rest.split_inclusive('\n').next()?;
         self.rest = &self.rest[line.len()..];
-        self.line += 1;
+        self.next_line += 1;
         Some(line.strip_suffix('\n').unwrap_or(line))
     }
 }
@@ -123,7 +121,6 @@ enum Kind {
     Copied,
 }
 
-/// What a file's header lines say so far.
 struct Head {
     line: usize,
     git: bool,
@@ -135,14 +132,12 @@ struct Head {
     new_mode: Option<u32>,
 }
 
-/// Skips to the next file's header. For a git file, takes the
-/// `diff --git` line and leaves the rest.
 fn next_file(input: &mut Input) -> Option<Head> {
     loop {
         let git = input.peek()?.starts_with("diff --git ");
         if git || starts_plain_file(input) {
             let mut head = Head {
-                line: input.line,
+                line: input.next_line,
                 git,
                 kind: Kind::Modified,
                 binary: false,
@@ -276,8 +271,8 @@ fn parse_mode(text: &str) -> Option<u32> {
     u32::from_str_radix(text.trim(), 8).ok()
 }
 
-/// A `--- ` or `+++ ` name, `None` for `/dev/null`. Git adds a tab
-/// after a name with a space, and plain `diff -u` a timestamp.
+/// Git adds a tab after a name with a space, and plain `diff -u` a
+/// timestamp.
 fn path_name(value: &str, git: bool, prefix: &str) -> Option<String> {
     let unquoted = value.starts_with('"');
     let value = match value.split_once('\t') {
@@ -294,9 +289,6 @@ fn path_name(value: &str, git: bool, prefix: &str) -> Option<String> {
     Some(name)
 }
 
-/// The name in a `diff --git a/<name> b/<name>` line, when both
-/// halves are the same name. Any other line gives its names through
-/// the `---` and `rename` lines that follow.
 fn same_name(rest: &str) -> Option<String> {
     let middle = rest.len() / 2;
     if rest.len().is_multiple_of(2) || rest.as_bytes()[middle] != b' '
@@ -312,8 +304,6 @@ fn same_name(rest: &str) -> Option<String> {
     (old == new).then_some(old)
 }
 
-/// A name as git writes it: bare, or in double quotes with C
-/// escapes and octal bytes.
 fn decode(value: &str) -> String {
     let Some(quoted) = value.strip_prefix('"') else {
         return value.into();
@@ -360,7 +350,7 @@ fn parse_hunk(
     input: &mut Input,
     builder: &mut PatchBuilder,
 ) -> Result<(), PatchError> {
-    let start = input.line;
+    let start = input.next_line;
     let header = input.next().map(trim_cr).unwrap_or_default();
     let at = |kind| PatchError { line: start, kind };
     let ((old_start, old_count), (new_start, new_count), heading) =
@@ -378,7 +368,7 @@ fn parse_hunk(
         if old_len >= old_count && new_len >= new_count {
             break;
         }
-        let here = input.line;
+        let here = input.next_line;
         let line =
             input.next().ok_or(at(PatchErrorKind::HunkCount))?;
         let (edit, text) = match line.as_bytes().first() {
@@ -410,7 +400,7 @@ fn parse_hunk(
     }
 
     while input.peek().is_some_and(|line| line.starts_with('\\')) {
-        let here = input.line;
+        let here = input.next_line;
         input.next();
         builder
             .no_newline()
@@ -422,9 +412,8 @@ fn parse_hunk(
     Ok(())
 }
 
-/// A line that can only continue a hunk, not start whatever follows
-/// it: a `--- ` file header and a mail signature's `-- ` start with
-/// `-` as well.
+/// A `--- ` file header and a mail signature's `-- ` also start with
+/// `-`.
 fn is_body_line(line: &str) -> bool {
     match line.as_bytes().first() {
         Some(b' ' | b'+') => true,
@@ -437,8 +426,6 @@ fn is_body_line(line: &str) -> bool {
 
 type Range = (u32, u32);
 
-/// `@@ -a[,b] +c[,d] @@[ heading]` as the 0-based `(start, count)` of
-/// each side and the heading.
 fn hunk_header(line: &str) -> Option<(Range, Range, &str)> {
     let rest = line.strip_prefix("@@ -")?;
     let (old, rest) = rest.split_once(" +")?;

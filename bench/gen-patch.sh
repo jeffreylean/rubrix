@@ -42,9 +42,6 @@ git -C "$clone" log -p --format=email --abbrev=12 -M50% \
       }
       close(large)
 
-      # Whole history, then whole commits again from the newest,
-      # skipping any that would overshoot the target by more than
-      # `slack` lines.
       total = 0
       for (round = 0; total < stress_lines && round < 100; round++) {
         for (i = 1; i <= commits && total < stress_lines; i++) {

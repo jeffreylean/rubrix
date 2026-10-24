@@ -48,7 +48,6 @@ reset() {
   git clean --quiet -fd
 }
 
-# patch <name> <git diff args...>
 patch() {
   local name=$1
   shift
