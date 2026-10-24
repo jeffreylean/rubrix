@@ -22,3 +22,6 @@ octal: 0o17
 bad_hex: 0xZZ
 date: 2001-12-14
 unicode: café 日本語 🎈
+bool_lower: true
+bool_title: False
+bool_upper: TRUE

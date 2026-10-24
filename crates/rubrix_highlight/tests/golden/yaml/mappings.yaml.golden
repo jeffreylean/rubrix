@@ -22,7 +22,7 @@
 7 7..8 constant.builtin "~"
 8 0..3 property "off"
 8 3..5 punctuation.delimiter ": "
-8 5..8 boolean "off"
+8 5..8 string "off"
 9 0..5 property "empty"
 9 5..6 punctuation.delimiter ":"
 10 0..12 property "\"quoted key\""

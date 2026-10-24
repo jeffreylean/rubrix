@@ -18,9 +18,10 @@
 //!
 //! Not handled: a plain scalar does not continue onto the next
 //! line, so a continuation line that holds `: ` reads as a key.
-//! Directives (`%YAML`), tabs as indentation, the `y` and `n`
-//! booleans of YAML 1.1, and timestamps (plain strings here) get no
-//! special kind. Nothing checks that the text is valid YAML.
+//! Directives (`%YAML`), tabs as indentation, and timestamps (plain
+//! strings here) get no special kind. As in YAML 1.2, only `true`
+//! and `false` are booleans, so `yes`, `no`, `on`, `off`, `y`, and
+//! `n` are strings. Nothing checks that the text is valid YAML.
 
 use memchr::{memchr, memchr2};
 
@@ -533,9 +534,7 @@ fn scalar_kind(text: &[u8]) -> Kind {
     match text {
         b"~" | b"null" | b"Null" | b"NULL" => Kind::ConstantBuiltin,
         b"true" | b"True" | b"TRUE" | b"false" | b"False"
-        | b"FALSE" | b"yes" | b"Yes" | b"YES" | b"no" | b"No"
-        | b"NO" | b"on" | b"On" | b"ON" | b"off" | b"Off"
-        | b"OFF" => Kind::Boolean,
+        | b"FALSE" => Kind::Boolean,
         _ if is_number(text) => Kind::Number,
         _ => Kind::String,
     }
