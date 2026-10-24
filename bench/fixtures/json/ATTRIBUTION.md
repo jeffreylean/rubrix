@@ -14,7 +14,7 @@ The JSON benchmark tiers are byte-for-byte copies of Pierre's benchmark fixtures
 
 The terminal files are MIT licensed: Copyright (c) Microsoft Corporation. Permission is granted to use, copy, modify, and distribute the software without restriction, subject to keeping that copyright notice and the MIT permission notice in copies or substantial portions of it. The TypeScript file is Copyright (c) Microsoft Corporation under Apache-2.0.
 
-Standing order 30 allows these files because they are the only third-party fixtures that rubrix keeps, and the perf rule needs them. Every other fixture directory is generated for rubrix or comes from the vendored fynix.
+The perf rule compares rubrix's JSON throughput with Pierre's published number on the same files, so these files stay as Pierre ships them.
 
 `rubrix_highlight` counts one more line per file than `wc -l`, the empty line after the last newline. The files mix LF and CRLF line ends, as Pierre's copies do.
 
