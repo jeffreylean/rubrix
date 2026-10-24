@@ -1,27 +1,22 @@
 # Python fixtures
 
-The Python benchmark tiers are copies of source files from the CPython 3.14.8 standard library, as packaged by Arch Linux (`python 3.14.8-1`, installed under `/usr/lib/python3.14`).
+The Python benchmark tiers are generated for rubrix. No third-party code is copied.
 
-- Upstream: https://github.com/python/cpython, tag `v3.14.8`, directory `Lib/`
-- Licence: `PSF-2.0`, the Python Software Foundation License Version 2 (a permissive licence). Its text is `LICENSE.txt` in the CPython repository and in `/usr/lib/python3.14`.
-- Each file keeps its original text. rubrix changes nothing in them.
+- Generator: `crates/rubrix_bench/src/bin/gen_python.rs`
+- Licence: `MIT OR Apache-2.0`, the same as rubrix. See `LICENSE-MIT` and `LICENSE-APACHE` at the repository root.
 
-| Tier | Lines | Source (under `Lib/`) |
-| --- | ---: | --- |
-| `tiny.py.txt` | 56 | `tkinter/scrolledtext.py` |
-| `small.py.txt` | 814 | `contextlib.py` |
-| `large.py.txt` | 10,064 | `argparse.py`, `dataclasses.py`, `functools.py`, `enum.py`, `shutil.py`, `textwrap.py`, joined whole in that order |
+| Tier | Lines | Target |
+| --- | ---: | ---: |
+| `tiny.py.txt` | 47 | 50 |
+| `small.py.txt` | 798 | 800 |
+| `large.py.txt` | 9,998 | 10,000 |
 
-No single file reaches 10,000 lines, so `large.py.txt` joins whole files. Each file is copied complete, so no string or comment is cut at a file boundary. The result is one valid Python module text, because each file is valid on its own and none ends inside a statement.
+The generator joins snippets written for rubrix in an order fixed by a seed, so each run writes the same bytes. The first eleven snippets run in a set order, so every tier of about 800 lines or more holds every string prefix, triple-quoted strings across lines, f-strings with nested quotes and format specs, decorators, `def` and `class` names, numbers with underscores and the `j` suffix, comments, and line continuations. Later snippets repeat in a seeded order with a different name and number each time, so the large tier repeats the same constructs.
 
-The line counts are `wc -l` counts. `rubrix_highlight` counts one more line per file, the empty line after the last newline.
+The line counts are `wc -l` counts. `rubrix_highlight` counts one more line per file, the empty line after the last newline. Every file is valid Python 3.14 syntax.
 
-To rebuild the tiers from a CPython 3.14 `Lib/` directory:
+To regenerate the tiers from the repository root:
 
 ```sh
-lib=/usr/lib/python3.14
-cp "$lib/tkinter/scrolledtext.py" bench/fixtures/python/tiny.py.txt
-cp "$lib/contextlib.py" bench/fixtures/python/small.py.txt
-(cd "$lib" && cat argparse.py dataclasses.py functools.py enum.py shutil.py textwrap.py) \
-  > bench/fixtures/python/large.py.txt
+cargo run -p rubrix_bench --bin gen_python
 ```

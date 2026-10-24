@@ -1,28 +1,22 @@
 # Go fixtures
 
-The Go benchmark tiers are copies of source files from the Go standard library, as packaged by Arch Linux (`go 1.27.3`, installed under `/usr/lib/go/src`).
+The Go benchmark tiers are generated for rubrix. No third-party code is copied.
 
-- Upstream: https://go.googlesource.com/go, directory `src/`
-- Licence: `BSD-3-Clause`, "Copyright 2009 The Go Authors". The licence text is the `LICENSE` file at the root of the Go repository.
-- Each file keeps its original text, including its copyright header. rubrix changes nothing in them.
+- Generator: `crates/rubrix_bench/src/bin/gen_go.rs`
+- Licence: `MIT OR Apache-2.0`, the same as rubrix. See `LICENSE-MIT` and `LICENSE-APACHE` at the repository root.
 
-| Tier | Lines | Source (under `src/`) |
-| --- | ---: | --- |
-| `tiny.go.txt` | 56 | `syscall/rlimit.go` |
-| `small.go.txt` | 842 | `bufio/bufio.go` |
-| `large.go.txt` | 10,111 | `strings/strings.go`, `net/url/url.go`, `text/template/exec.go`, `flag/flag.go`, `encoding/json/decode.go`, `bytes/bytes.go`, `go/scanner/scanner.go`, `regexp/regexp.go`, joined whole in that order |
+| Tier | Lines | Target |
+| --- | ---: | ---: |
+| `tiny.go.txt` | 49 | 50 |
+| `small.go.txt` | 798 | 800 |
+| `large.go.txt` | 9,998 | 10,000 |
 
-No single file reaches 10,000 lines, so `large.go.txt` joins whole files. Each file is copied complete, so no string, raw string, or comment is cut at a file boundary. The result does not compile as one package, which a lexer benchmark does not need.
+The generator joins snippets written for rubrix in an order fixed by a seed, so each run writes the same bytes. The first eleven snippets run in a set order, so every tier of about 800 lines or more holds raw strings across lines, runes, block comments across lines, `func` and method names, type names, built-in types, hex, octal, binary, and imaginary numbers, and struct tags. Later snippets repeat in a seeded order with a different name and number each time, so the large tier repeats the same constructs.
 
-The line counts are `wc -l` counts. `rubrix_highlight` counts one more line per file, the empty line after the last newline.
+The line counts are `wc -l` counts. `rubrix_highlight` counts one more line per file, the empty line after the last newline. Every file parses with `gofmt -e`. The result does not compile as one package, which a lexer benchmark does not need.
 
-To rebuild the tiers from a Go source tree:
+To regenerate the tiers from the repository root:
 
 ```sh
-src=/usr/lib/go/src
-cp "$src/syscall/rlimit.go" bench/fixtures/go/tiny.go.txt
-cp "$src/bufio/bufio.go" bench/fixtures/go/small.go.txt
-(cd "$src" && cat strings/strings.go net/url/url.go text/template/exec.go flag/flag.go \
-  encoding/json/decode.go bytes/bytes.go go/scanner/scanner.go regexp/regexp.go) \
-  > bench/fixtures/go/large.go.txt
+cargo run -p rubrix_bench --bin gen_go
 ```
