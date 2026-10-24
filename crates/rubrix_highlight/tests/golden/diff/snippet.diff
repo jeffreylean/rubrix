@@ -1,0 +1,14 @@
+ context line
+-removed without headers
++added without headers
+@@ -1,2 +1,2 @@
+-x
++y
+ z
++tail after the hunk
+-
++
+@ not a hunk
+@@ -5,2 +5,
+@@@ -1,2 -1,2 +1,3 @@@ combined
+  a

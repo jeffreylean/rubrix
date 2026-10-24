@@ -1,0 +1,769 @@
+commit 647e64947777fe30cfb54c62553420fe71d66f3f
+Author: Nixon <43715558+nixonyh@users.noreply.github.com>
+Date:   Wed Oct 21 21:57:22 2026 +0800
+
+    Backend hooks for retained hosts (#72)
+    
+    Hooks a host backend needs to drive fynix from outside:
+    
+    - Wait for the theme before updating mounted views.
+    - Report whether mounted views still move.
+    - Keep the motion and let a backend animate it (`Backend::ANIMATES`).
+    - Tell `spawn` the element a node is for.
+
+diff --git a/crates/bevy_fynix/src/backend.rs b/crates/bevy_fynix/src/backend.rs
+index 440259d..328440d 100644
+--- a/crates/bevy_fynix/src/backend.rs
++++ b/crates/bevy_fynix/src/backend.rs
+@@ -1,5 +1,7 @@
+ //! The Bevy backend of the core.
+ 
++use core::any::TypeId;
++
+ use bevy::ecs::component::Component;
+ use bevy::ecs::entity::Entity;
+ use bevy::ecs::hierarchy::Children;
+@@ -58,7 +60,11 @@ impl fynix::Backend for Bevy {
+     type World = World;
+     type Node = Entity;
+ 
+-    fn spawn(world: &mut World, parent: Option<Entity>) -> Entity {
++    fn spawn(
++        world: &mut World,
++        parent: Option<Entity>,
++        _kind: Option<TypeId>,
++    ) -> Entity {
+         let seeds = world
+             .get_resource_mut::<Seed>()
+             .map(|mut seed| core::mem::take(&mut seed.0))
+diff --git a/crates/bevy_fynix/src/lib.rs b/crates/bevy_fynix/src/lib.rs
+index b8ce508..4637549 100644
+--- a/crates/bevy_fynix/src/lib.rs
++++ b/crates/bevy_fynix/src/lib.rs
+@@ -28,6 +28,7 @@ use bevy::app::{App, Plugin, PostUpdate, Update};
+ use bevy::camera::visibility::VisibilitySystems;
+ use bevy::ecs::entity::Entity;
+ use bevy::ecs::resource::Resource;
++use bevy::ecs::schedule::common_conditions::resource_exists;
+ use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
+ use bevy::ecs::world::World;
+ use bevy::input_focus::tab_navigation::TabGroup;
+@@ -59,8 +60,9 @@ pub use visual::Visual;
+ pub struct Theme<T>(pub T);
+ 
+ /// Keeps every mounted view's bound props in step with the world.
+-/// The app inserts [`Theme<T>`] itself. An app may add one per theme
+-/// it builds views with.
++/// The app inserts [`Theme<T>`] itself, and may do so late, once the
++/// theme has loaded: until then nothing is updated, and nothing may
++/// be mounted. An app may add one per theme it builds views with.
+ pub struct FynixPlugin<T>(PhantomData<fn() -> T>);
+ 
+ impl<T> Default for FynixPlugin<T> {
+@@ -78,7 +80,9 @@ impl<T: Send + Sync + 'static> Plugin for FynixPlugin<T> {
+             .init_resource::<mounted::Pending<T>>()
+             .add_systems(
+                 Update,
+-                mounted::update::<T>.in_set(FynixSystems::Mount),
++                mounted::update::<T>
++                    .run_if(resource_exists::<Theme<T>>)
++                    .in_set(FynixSystems::Mount),
+             );
+         app.world_mut()
+             .resource_mut::<mounted::Receivers>()
+diff --git a/crates/fynix/README.md b/crates/fynix/README.md
+index b823f84..e725d99 100644
+--- a/crates/fynix/README.md
++++ b/crates/fynix/README.md
+@@ -215,12 +215,15 @@ engine. A framework on top of it fills in five things, and
+ [`bevy_fynix`](https://crates.io/crates/bevy_fynix) is a full example of each:
+ 
+ 1. **A backend**, which says what a world and a node are. `spawn`,
+-   `despawn` and `reorder` are required. `on_mount`, `leave`, `hold`,
++   `despawn` and `reorder` are required, and `spawn` is told the type
++   of the element a node is for. `on_mount`, `leave`, `hold`,
+    `collapse` and `release` have empty defaults. Cleanup, input
+    blocking and the animation of a view's space go there: a dropped
+    view is `leave`d, then `collapse`d from 0 to 1, and a new one is
+    `hold`ed out of the layout, `collapse`d from 1 to 0 once its size
+-   can be measured, then `release`d.
++   can be measured, then `release`d. A backend that moves values
++   itself sets `ANIMATES`, and is handed each travel over a motion
++   once, through `Patch::patch_over`.
+ 2. **Elements**, as above. For each prop you say how its value is
+    written to a node (`Patch`), and optionally its default from the
+    theme.
+@@ -236,14 +239,15 @@ engine. A framework on top of it fills in five things, and
+ Here are all five in one file:
+ 
+ ```rust
++use core::any::TypeId;
+ use core::time::Duration;
+ 
+ // `#[element]` finds these at the root of the crate it is used in,
+ // so a framework re-exports them from its own root.
+ use fynix::{
+     Backend, Condition, Curve, Cx, Element, Motion, MotionTokens,
+-    Mounted, Patch, Prop, ScopedExt, Slot, Styled, Tick, View,
+-    ViewExt, element, styled,
++    Mounted, Patch, Prop, ScopedExt, Slot, Styled, Tick, Travel,
++    View, ViewExt, element, styled,
+ };
+ 
+ // 1. A backend.
+@@ -267,7 +271,11 @@ impl Backend for Toy {
+     type World = World;
+     type Node = usize;
+ 
+-    fn spawn(world: &mut World, parent: Option<usize>) -> usize {
++    fn spawn(
++        world: &mut World,
++        parent: Option<usize>,
++        _kind: Option<TypeId>,
++    ) -> usize {
+         let node = world.nodes.len();
+         world.nodes.push(Node {
+             parent,
+diff --git a/crates/fynix/docs/toy.rs b/crates/fynix/docs/toy.rs
+index defdf60..68189d0 100644
+--- a/crates/fynix/docs/toy.rs
++++ b/crates/fynix/docs/toy.rs
+@@ -1,13 +1,14 @@
+ //! A toy backend for the README's examples: a flat list of nodes
+ //! holding text.
+ 
++use core::any::TypeId;
+ use core::time::Duration;
+ 
+ // `#[element]` finds these at the root of the crate it is used in.
+ pub use fynix::{
+     Backend, Condition, Curve, Cx, Element, Motion, MotionTokens,
+-    Mounted, Patch, Prop, ScopedExt, Slot, Styled, Tick, View,
+-    ViewExt, element, styled,
++    Mounted, Patch, Prop, ScopedExt, Slot, Styled, Tick, Travel,
++    View, ViewExt, element, styled,
+ };
+ 
+ #[derive(Default)]
+@@ -30,7 +31,11 @@ impl Backend for Toy {
+     type World = World;
+     type Node = usize;
+ 
+-    fn spawn(world: &mut World, parent: Option<usize>) -> usize {
++    fn spawn(
++        world: &mut World,
++        parent: Option<usize>,
++        _kind: Option<TypeId>,
++    ) -> usize {
+         let node = world.nodes.len();
+         world.nodes.push(Node {
+             parent,
+diff --git a/crates/fynix/src/backend.rs b/crates/fynix/src/backend.rs
+index 802a502..e977f79 100644
+--- a/crates/fynix/src/backend.rs
++++ b/crates/fynix/src/backend.rs
+@@ -1,5 +1,6 @@
+ //! What views are built into.
+ 
++use core::any::TypeId;
+ use core::hash::Hash;
+ 
+ /// A world of nodes. Views above the elements are generic over it;
+@@ -8,10 +9,20 @@ pub trait Backend: 'static {
+     type World: 'static;
+     type Node: Copy + Eq + Hash + Send + Sync + 'static;
+ 
+-    /// A new, empty node under `parent`, or at the root.
++    /// Whether the backend moves values itself. When it does, a prop
++    /// travelling over a theme's [`Motion`](crate::Motion) is
++    /// written once, its target handed to
++    /// [`Patch::patch_over`](crate::Patch::patch_over) with the
++    /// motion, in place of a write at every step of the way.
++    const ANIMATES: bool = false;
++
++    /// A new, empty node under `parent`, or at the root, for the
++    /// element whose type is `kind`. `None` for a node no element is
++    /// written on, such as a composite's root.
+     fn spawn(
+         world: &mut Self::World,
+         parent: Option<Self::Node>,
++        kind: Option<TypeId>,
+     ) -> Self::Node;
+ 
+     /// Removes `node` and every node under it.
+diff --git a/crates/fynix/src/cx.rs b/crates/fynix/src/cx.rs
+index e176916..d9f6d40 100644
+--- a/crates/fynix/src/cx.rs
++++ b/crates/fynix/src/cx.rs
+@@ -9,7 +9,7 @@ use crate::layer::{Layer, Live};
+ use crate::mounted::{Group, Mounted};
+ use crate::prop::Prop;
+ use crate::rules::{Condition, RuleKind, ScopeEntry, When};
+-use crate::transition::{Curve, Motion, MotionTokens};
++use crate::transition::{Curve, Motion, MotionTokens, Travel};
+ use crate::view::{Element, Styled, View};
+ 
+ /// One rule restyling a `V`, with the theme in hand.
+@@ -204,7 +204,16 @@ impl<'a, B: Backend, T: 'static> Cx<'a, B, T> {
+     /// A new, empty node where a view built now hangs. It is the root
+     /// of every rule set since the last node was spawned.
+     pub fn spawn(&mut self) -> B::Node {
+-        let node = B::spawn(self.world, self.parent);
++        self.spawn_for(None)
++    }
++
++    /// As [`spawn`](Self::spawn), for the element whose type is
++    /// `kind`.
++    pub(crate) fn spawn_for(
++        &mut self,
++        kind: Option<TypeId>,
++    ) -> B::Node {
++        let node = B::spawn(self.world, self.parent, kind);
+         for entry in &mut self.entries {
+             entry.root.get_or_insert(node);
+         }
+@@ -401,10 +410,10 @@ impl<'a, B: Backend, T: 'static> Cx<'a, B, T> {
+         layers.into_iter().map(|(_, layer)| layer).collect()
+     }
+ 
+-    /// The curve a transition rule in force gives an element resolved
+-    /// now: the innermost that is not a default, else the innermost
+-    /// default.
+-    pub(crate) fn curve(&self) -> Option<Curve> {
++    /// How a transition rule in force has an element resolved now
++    /// travel: the innermost that is not a default, else the
++    /// innermost default.
++    pub(crate) fn travel(&self) -> Option<Travel> {
+         let innermost = |default: bool| {
+             self.entries
+                 .iter()
+@@ -417,7 +426,7 @@ impl<'a, B: Backend, T: 'static> Cx<'a, B, T> {
+                 .find_map(|entry| {
+                     self.mounted
+                         .rules
+-                        .get::<Curve>(&entry.key)
++                        .get::<Travel>(&entry.key)
+                         .copied()
+                 })
+         };
+@@ -431,14 +440,25 @@ impl<'a, B: Backend, T: 'static> Cx<'a, B, T> {
+     where
+         T: MotionTokens,
+     {
+-        self.transition_over(self.theme.motion(motion));
++        self.travel_over(Travel {
++            curve: self.theme.motion(motion),
++            motion: Some(motion),
++        });
+     }
+ 
+-    /// As [`transition`](Self::transition), over `curve`.
++    /// As [`transition`](Self::transition), over `curve`. Fynix moves
++    /// the values itself, whether the backend animates or not.
+     pub fn transition_over(&mut self, curve: Curve) {
+-        let key = self.mounted.rules.insert(curve);
++        self.travel_over(Travel {
++            curve,
++            motion: None,
++        });
++    }
++
++    fn travel_over(&mut self, travel: Travel) {
++        let key = self.mounted.rules.insert(travel);
+         self.entry(
+-            TypeId::of::<Curve>(),
++            TypeId::of::<Travel>(),
+             RuleKind::Motion,
+             key,
+             None,
+diff --git a/crates/fynix/src/layer.rs b/crates/fynix/src/layer.rs
+index be0cb4a..f24ec34 100644
+--- a/crates/fynix/src/layer.rs
++++ b/crates/fynix/src/layer.rs
+@@ -6,7 +6,7 @@ use alloc::vec::Vec;
+ use crate::backend::Backend;
+ use crate::mounted::Tick;
+ use crate::rules::When;
+-use crate::transition::Curve;
++use crate::transition::Travel;
+ use crate::view::{Element, Layered};
+ use crate::visual::Visual;
+ 
+@@ -58,9 +58,8 @@ pub(crate) struct Live<B: Backend, E> {
+     pub visual_layers: Vec<Layer<B, Visual<B::World>>>,
+     /// The [`Visual`] props the call site set.
+     pub visual_call: u64,
+-    /// The curve its props travel over, if a transition rule reaches
+-    /// it.
+-    pub curve: Option<Curve>,
++    /// How its props travel, if a transition rule reaches it.
++    pub travel: Option<Travel>,
+ }
+ 
+ impl<B: Backend, E> Live<B, E> {
+@@ -137,7 +136,13 @@ impl<B: Backend, E> Live<B, E> {
+         }
+ 
+         let moving = element.update(
+-            shown, dirty, world, node, theme, tick, self.curve,
++            shown,
++            dirty,
++            world,
++            node,
++            theme,
++            tick,
++            self.travel,
+         );
+ 
+         for (index, mask) in swapped.into_iter().rev() {
+diff --git a/crates/fynix/src/lib.rs b/crates/fynix/src/lib.rs
+index 38f8732..3dc8158 100644
+--- a/crates/fynix/src/lib.rs
++++ b/crates/fynix/src/lib.rs
+@@ -32,7 +32,7 @@ pub use rules::{Condition, RuleArena};
+ pub use scoped::{Rules, ScopedExt, Transition, When};
+ pub use slot::{Patch, Slot};
+ pub use structure::{Each, Keyed, each, keyed};
+-pub use transition::{Curve, Motion, MotionTokens, Tween};
++pub use transition::{Curve, Motion, MotionTokens, Travel, Tween};
+ pub use view::{
+     AnyView, Element, Layered, Settable, Styled, View, ViewExt,
+     ViewSeq,
+diff --git a/crates/fynix/src/mounted.rs b/crates/fynix/src/mounted.rs
+index 35e1510..044541a 100644
+--- a/crates/fynix/src/mounted.rs
++++ b/crates/fynix/src/mounted.rs
+@@ -62,13 +62,14 @@ pub struct Tick {
+     pub reduced_motion: bool,
+ }
+ 
+-/// Brings every mounted element of one kind up to date.
++/// Brings every mounted element of one kind up to date: whether any
++/// prop of one still travels.
+ type UpdateFn<B, T> = fn(
+     &mut TypeTable<<B as Backend>::Node>,
+     &mut <B as Backend>::World,
+     &T,
+     Tick,
+-);
++) -> bool;
+ 
+ /// How many elements of one kind are mounted.
+ type CountFn<B> = fn(&TypeTable<<B as Backend>::Node>) -> usize;
+@@ -524,18 +525,24 @@ impl<B: Backend, T: 'static> Mounted<B, T> {
+ 
+     /// Writes what changed to every mounted element that reports a
+     /// change or is marked dirty, and keeps every transition under
+-    /// way advancing.
++    /// way advancing. Returns whether anything still moves: a prop
++    /// travelling, or a view coming in or leaving. While nothing
++    /// does, a backend need not update again until the world changes.
+     pub fn update_elements(
+         &mut self,
+         world: &mut B::World,
+         theme: &T,
+         tick: Tick,
+-    ) {
++    ) -> bool {
++        let mut moving = false;
+         for update in &self.updates {
+-            update(&mut self.table, world, theme, tick);
++            moving |= update(&mut self.table, world, theme, tick);
+         }
+         self.update_leaving(world, tick);
+         self.update_arriving(world, tick);
++        moving
++            || !self.leaving.is_empty()
++            || !self.arriving.is_empty()
+     }
+ 
+     /// The rules stored for the scopes and captures alive.
+@@ -575,10 +582,13 @@ fn update_kind<B: Backend, T: 'static, E: Element<B, T>>(
+     world: &mut B::World,
+     theme: &T,
+     tick: Tick,
+-) {
++) -> bool {
++    let mut moving = false;
+     for (&node, mount) in table.iter_mut::<Mount<B, T, E>>() {
+         mount.update(world, node, theme, tick);
++        moving |= mount.moving;
+     }
++    moving
+ }
+ 
+ fn mark<B: Backend, T: 'static, E: Element<B, T>>(
+@@ -594,7 +604,7 @@ fn curve<B: Backend, T: 'static, E: Element<B, T>>(
+     table: &TypeTable<B::Node>,
+     node: B::Node,
+ ) -> Option<Curve> {
+-    table.get::<Mount<B, T, E>>(&node)?.live.curve
++    Some(table.get::<Mount<B, T, E>>(&node)?.live.travel?.curve)
+ }
+ 
+ fn remove<B: Backend, T: 'static, E: Element<B, T>>(
+diff --git a/crates/fynix/src/slot.rs b/crates/fynix/src/slot.rs
+index 5b84c14..2955c16 100644
+--- a/crates/fynix/src/slot.rs
++++ b/crates/fynix/src/slot.rs
+@@ -3,13 +3,26 @@
+ 
+ use crate::backend::Backend;
+ use crate::mounted::Tick;
+-use crate::transition::{Run, Tween};
++use crate::transition::{Motion, Run, Tween};
+ 
+ /// How one prop of an element is written onto its node. A type with
+ /// no value, named by the prop's `#[lenz(tag = ..)]`, so anything
+ /// that names the prop by its path knows how to write it.
+ pub trait Patch<B: Backend, P> {
+     fn patch(world: &mut B::World, node: B::Node, value: &P);
++
++    /// How a backend that [animates](Backend::ANIMATES) writes
++    /// `value`: moving to it over the theme's curve for `motion`, or
++    /// at once when there is none. At once by default.
++    fn patch_over(
++        world: &mut B::World,
++        node: B::Node,
++        value: &P,
++        motion: Option<Motion>,
++    ) {
++        let _ = motion;
++        Self::patch(world, node, value);
++    }
+ }
+ 
+ /// What `#[elem(with = ..)]` runs: `make(value, theme)`. A function
+@@ -100,4 +113,24 @@ impl<P: Clone + PartialEq> Slot<P> {
+         }
+         self.run.is_some()
+     }
++
++    /// As [`step`](Self::step), for a backend that
++    /// [animates](Backend::ANIMATES): a travel over a motion is not
++    /// stepped, its target is written at once with the motion, for
++    /// the backend to move to. `write` is given no motion otherwise.
++    pub fn hand_over(
++        &mut self,
++        tick: Tick,
++        write: impl FnOnce(&P, Option<Motion>),
++    ) -> bool {
++        let motion = self
++            .run
++            .as_ref()
++            .and_then(Run::motion)
++            .filter(|_| !tick.reduced_motion);
++        if motion.is_some() {
++            self.run = None;
++        }
++        self.step(tick, |value| write(value, motion))
++    }
+ }
+diff --git a/crates/fynix/src/tests.rs b/crates/fynix/src/tests.rs
+index 6505384..c433d10 100644
+--- a/crates/fynix/src/tests.rs
++++ b/crates/fynix/src/tests.rs
+@@ -1,6 +1,7 @@
+ //! The core against a fake backend: a flat list of nodes holding some
+ //! text at a size, and one number the text can be bound to.
+ 
++use core::any::TypeId;
+ use core::mem;
+ use core::sync::atomic::{AtomicUsize, Ordering};
+ use core::time::Duration;
+@@ -18,8 +19,8 @@ mod structure;
+ 
+ use crate::{
+     AnyView, Backend, Condition, Curve, Cx, Motion, MotionTokens,
+-    Mounted, Patch, Prop, ScopedExt, Signal, Styled, Tick, Trace,
+-    View, ViewExt, derived, element,
++    Mounted, Patch, Prop, ScopedExt, Signal, Slot, Styled, Tick,
++    Trace, Tween, View, ViewExt, derived, element,
+ };
+ 
+ #[derive(Default)]
+@@ -43,6 +44,8 @@ pub struct World {
+ #[derive(Default)]
+ struct Node {
+     parent: Option<usize>,
++    /// The element it was spawned for.
++    kind: Option<TypeId>,
+     children: Vec<usize>,
+     text: String,
+     size: f32,
+@@ -63,9 +66,14 @@ impl Backend for Fake {
+     type World = World;
+     type Node = usize;
+ 
+-    fn spawn(world: &mut World, parent: Option<usize>) -> usize {
++    fn spawn(
++        world: &mut World,
++        parent: Option<usize>,
++        kind: Option<TypeId>,
++    ) -> usize {
+         world.nodes.push(Some(Node {
+             parent,
++            kind,
+             ..Node::default()
+         }));
+         let node = world.nodes.len() - 1;
+@@ -294,7 +302,12 @@ impl<T: 'static> Ui<T> {
+         }
+     }
+ 
+-    fn update(&mut self, delta: Duration, reduced_motion: bool) {
++    /// Whether anything still moves after.
++    fn update(
++        &mut self,
++        delta: Duration,
++        reduced_motion: bool,
++    ) -> bool {
+         self.unmount_gone();
+         self.mounted.run_effects(&mut self.world);
+         self.mounted.update_structure(&mut self.world, &self.theme);
+@@ -306,7 +319,7 @@ impl<T: 'static> Ui<T> {
+                 delta,
+                 reduced_motion,
+             },
+-        );
++        )
+     }
+ 
+     /// A root node with whatever `build` puts under it.
+@@ -333,6 +346,19 @@ fn an_unset_prop_falls_back_to_the_theme() {
+     assert_eq!(ui.world.node(node).size, 14.0);
+ }
+ 
++#[test]
++fn spawn_is_told_the_element_a_node_is_for() {
++    let mut ui = Ui::new(Warm);
++    let node = ui.build(text("Save"));
++    assert_eq!(ui.world.node(node).kind, Some(TypeId::of::<Text>()));
++
++    let bare =
++        ui.build(AnyView::new(|cx: &mut Cx<'_, Fake, Warm>| {
++            cx.spawn()
++        }));
++    assert_eq!(ui.world.node(bare).kind, None);
++}
++
+ #[test]
+ fn the_same_view_works_under_two_unrelated_themes() {
+     let mut warm = Ui::new(Warm);
+@@ -584,6 +610,41 @@ fn a_transition_reaches_its_target_over_the_curve() {
+     assert_eq!(ui.world.node(node).size, 20.0);
+ }
+ 
++#[test]
++fn an_update_says_whether_anything_still_moves() {
++    let mut ui = Ui::new(Warm);
++    ui.build(counted(Some(Motion::Interact)));
++    assert!(!ui.update(Duration::ZERO, false), "nothing changed");
++
++    ui.world.set(20);
++    assert!(ui.update(Duration::ZERO, false));
++    assert!(ui.update(Duration::from_millis(500), false));
++    assert!(!ui.update(Duration::from_millis(500), false), "arrived");
++}
++
++#[test]
++fn a_travel_over_a_motion_is_handed_over_once() {
++    let tween = Tween {
++        curve: Warm.motion(Motion::Expand),
++        motion: Some(Motion::Expand),
++        interp: blend,
++    };
++    let tick = Tick {
++        delta: Duration::from_millis(100),
++        reduced_motion: false,
++    };
++    let mut slot = Slot::default();
++    let mut writes = Vec::new();
++    for target in [0.0, 10.0, 10.0] {
++        slot.aim(target, Some(tween), tick);
++        let moving = slot.hand_over(tick, |value, motion| {
++            writes.push((*value, motion));
++        });
++        assert!(!moving);
++    }
++    assert_eq!(writes, [(0.0, None), (10.0, Some(Motion::Expand))]);
++}
++
+ #[test]
+ fn an_interrupted_transition_starts_from_where_it_got_to() {
+     let mut ui = Ui::new(Warm);
+diff --git a/crates/fynix/src/transition.rs b/crates/fynix/src/transition.rs
+index d14cc7f..8478cb5 100644
+--- a/crates/fynix/src/transition.rs
++++ b/crates/fynix/src/transition.rs
+@@ -26,9 +26,20 @@ pub trait MotionTokens {
+     fn motion(&self, motion: Motion) -> Curve;
+ }
+ 
+-/// How a prop's value `S` travels: over `curve`, blended by `interp`.
++/// How the values of an element under a transition rule travel: over
++/// `curve`, which the theme gave for `motion` when the rule named
++/// one.
++#[derive(Clone, Copy, Debug)]
++pub struct Travel {
++    pub curve: Curve,
++    pub motion: Option<Motion>,
++}
++
++/// How a prop's value `S` travels: over `curve`, given for `motion`
++/// when one was named, blended by `interp`.
+ pub struct Tween<S> {
+     pub curve: Curve,
++    pub motion: Option<Motion>,
+     pub interp: InterpFn<S>,
+ }
+ 
+@@ -56,6 +67,11 @@ impl<S> Run<S> {
+         }
+     }
+ 
++    /// The motion it was given for, if one was named.
++    pub(crate) fn motion(&self) -> Option<Motion> {
++        self.tween.motion
++    }
++
+     /// Where the value is `delta` later, heading to `to`. `None` once
+     /// it has arrived.
+     pub(crate) fn advance(
+diff --git a/crates/fynix/src/view.rs b/crates/fynix/src/view.rs
+index cd4510e..db58154 100644
+--- a/crates/fynix/src/view.rs
++++ b/crates/fynix/src/view.rs
+@@ -4,12 +4,13 @@
+ use alloc::boxed::Box;
+ use alloc::vec;
+ use alloc::vec::Vec;
++use core::any::TypeId;
+ 
+ use crate::backend::Backend;
+ use crate::cx::Cx;
+ use crate::layer::Live;
+ use crate::mounted::Tick;
+-use crate::transition::Curve;
++use crate::transition::Travel;
+ use crate::visual::{Visual, VisualMut};
+ 
+ /// Something that can be built under a node, with the theme `T`.
+@@ -151,8 +152,9 @@ pub trait Element<B: Backend, T>: Layered {
+     fn prepare(world: &mut B::World, node: B::Node);
+ 
+     /// Re-reads the props whose bits are in `dirty`, heads each for
+-    /// its new value, over `curve` if it blends, and moves every prop
+-    /// still travelling on by `tick`. Returns whether any still is.
++    /// its new value, as `travel` says if it blends, and moves every
++    /// prop still travelling on by `tick`. Returns whether any still
++    /// is.
+     #[allow(clippy::too_many_arguments)]
+     fn update(
+         &self,
+@@ -162,7 +164,7 @@ pub trait Element<B: Backend, T>: Layered {
+         node: B::Node,
+         theme: &T,
+         tick: Tick,
+-        curve: Option<Curve>,
++        travel: Option<Travel>,
+     ) -> bool;
+ 
+     /// Whether anything it holds can change after the build.
+@@ -206,19 +208,19 @@ impl<B: Backend, T: 'static, E: Element<B, T>> View<B, T> for E {
+             }
+             None => (0, Vec::new()),
+         };
+-        let curve = cx.curve();
++        let travel = cx.travel();
+         let mut element = E::resolve(self, cx);
+         if let Some(mut visual) = element.visual() {
+             // After the element's own rules, which are more specific.
+             visual.fill(cx.resolve(Visual::unset()));
+         }
+-        let node = cx.spawn();
++        let node = cx.spawn_for(Some(TypeId::of::<E>()));
+         let mut live = Live {
+             layers,
+             call,
+             visual_layers,
+             visual_call,
+-            curve,
++            travel,
+         };
+         E::prepare(cx.world, node);
+         // Before the first write, which a state set on watching can
+@@ -237,7 +239,7 @@ impl<B: Backend, T: 'static, E: Element<B, T>> View<B, T> for E {
+         // One with a transition is kept too, so it can animate out.
+         if element.is_live()
+             || live.is_layered()
+-            || live.curve.is_some()
++            || live.travel.is_some()
+         {
+             cx.mount(node, element, shown, live);
+         }
+diff --git a/crates/fynix_macros/README.md b/crates/fynix_macros/README.md
+index 21ac38f..c6e3a8c 100644
+--- a/crates/fynix_macros/README.md
++++ b/crates/fynix_macros/README.md
+@@ -40,7 +40,9 @@ On a field:
+ - `default = <expr>`: the value when unset. It may read `theme`.
+   Without it, the prop type's `Default`.
+ - `blend = <fn>`: how two values blend, so the prop travels under a
+-  transition rule. Without it, the prop snaps.
++  transition rule. Without it, the prop snaps. Under a backend that
++  animates, a travel over a motion goes to the `Patch`'s
++  `patch_over` once, with the motion.
+ - `shown = <type>, with = <fn>`: writes a value made from the prop
+   and the theme, such as a colour from a tone.
+ 
+diff --git a/crates/fynix_macros/src/lib.rs b/crates/fynix_macros/src/lib.rs
+index c6d01eb..5e2ce02 100644
+--- a/crates/fynix_macros/src/lib.rs
++++ b/crates/fynix_macros/src/lib.rs
+@@ -290,8 +290,9 @@ fn expand(args: ElementArgs, mut item: ItemStruct) -> Result<Tokens> {
+         });
+         let tween = match &prop.args.blend {
+             Some(blend) => quote! {
+-                curve.map(|curve| #fynix::Tween {
+-                    curve,
++                travel.map(|travel| #fynix::Tween {
++                    curve: travel.curve,
++                    motion: travel.motion,
+                     interp: #blend,
+                 })
+             },
+@@ -313,11 +314,19 @@ fn expand(args: ElementArgs, mut item: ItemStruct) -> Result<Tokens> {
+         let patch = &prop.patch;
+         let shown = prop.args.shown.as_ref().unwrap_or(&prop.value);
+         quote! {
+-            moving |= shown.#name.step(tick, |value| {
+-                <#patch as #fynix::Patch<#backend, #shown>>::patch(
+-                    #world, node, value,
+-                );
+-            });
++            moving |= if <#backend as #fynix::Backend>::ANIMATES {
++                shown.#name.hand_over(tick, |value, motion| {
++                    <#patch as #fynix::Patch<#backend, #shown>>::patch_over(
++                        #world, node, value, motion,
++                    );
++                })
++            } else {
++                shown.#name.step(tick, |value| {
++                    <#patch as #fynix::Patch<#backend, #shown>>::patch(
++                        #world, node, value,
++                    );
++                })
++            };
+         }
+     });
+ 
+@@ -418,7 +427,7 @@ fn expand(args: ElementArgs, mut item: ItemStruct) -> Result<Tokens> {
+                 node: <#backend as #fynix::Backend>::Node,
+                 #theme: &__Theme,
+                 tick: #fynix::Tick,
+-                curve: ::core::option::Option<#fynix::Curve>,
++                travel: ::core::option::Option<#fynix::Travel>,
+             ) -> bool {
+                 #(#aims)*
+                 let mut moving = false;

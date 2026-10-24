@@ -1,0 +1,8 @@
+0 0..4 function "cat "
+0 4..6 operator "<<"
+0 6..9 string.special "EOF"
+1 0..16 string "body without end"
+2 0..2 variable "$x"
+2 2..3 string " "
+2 3..4 punctuation.special "`"
+2 4..5 function "y"

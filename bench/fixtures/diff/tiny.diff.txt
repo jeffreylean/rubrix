@@ -1,0 +1,47 @@
+commit fa17239b079e0af1e02e7e4a62a492ea1fd4a1fe
+Author: Nixon <43715558+nixonyh@users.noreply.github.com>
+Date:   Mon Sep 7 02:07:05 2026 +0800
+
+    Update to use published `motiongfx_interp` crate
+
+diff --git a/Cargo.lock b/Cargo.lock
+index c09a82e..abe3e30 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1852,7 +1852,8 @@ dependencies = [
+ [[package]]
+ name = "motiongfx_interp"
+ version = "0.3.0"
+-source = "git+https://github.com/voxell-tech/motiongfx?rev=f2d473c#f2d473c3deb2541cd310b0485f5aa1129e37572f"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "614789b361720e38269ad58814b5888764114c816c307a06ebcc2182475b3c16"
+ dependencies = [
+  "libm",
+ ]
+diff --git a/Cargo.toml b/Cargo.toml
+index 7efa097..4cbec2a 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -15,7 +15,7 @@ fynix_macros = { version = "0.0.1", path = "crates/fynix_macros" }
+ bevy_fynix = { version = "0.0.1", path = "crates/bevy_fynix", default-features = false }
+ 
+ # motiongfx
+-motiongfx_interp = { git = "https://github.com/voxell-tech/motiongfx", rev = "f2d473c", default-features = false }
++motiongfx_interp = { version = "0.3.0", default-features = false }
+ 
+ # bevy
+ bevy_app = { version = "0.19", default-features = false }
+diff --git a/crates/fynix/Cargo.toml b/crates/fynix/Cargo.toml
+index 76265e2..9c2d667 100644
+--- a/crates/fynix/Cargo.toml
++++ b/crates/fynix/Cargo.toml
+@@ -17,5 +17,9 @@ hashbrown = { workspace = true, features = ["default-hasher"] }
+ motiongfx_interp = { workspace = true }
+ typarena = { workspace = true }
+ 
++[features]
++default = ["std"]
++std = ["motiongfx_interp/std"]
++
+ [lints]
+ workspace = true
