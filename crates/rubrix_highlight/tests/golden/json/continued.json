@@ -1,0 +1,12 @@
+{
+  "wrapped": "first part \
+second part \
+third part",
+  "key\
+continued": 1,
+  "after": "the key and the value are back to normal",
+  "block": /* open
+  still open */ 2,
+  "last": [1,
+2]
+}

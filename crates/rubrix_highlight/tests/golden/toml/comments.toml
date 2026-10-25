@@ -1,0 +1,8 @@
+# leading comment
+key = "value" # trailing comment
+# [commented.table]
+# key = "commented"
+[table]   # after a header
+#no space
+k = 1 # after a value
+j = "a # inside a string"

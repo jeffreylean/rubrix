@@ -1,0 +1,97 @@
+{
+  "level1": {
+    "level2": {
+      "level3": {
+        "level4": {
+          "level5": {
+            "level6": {
+              "level7": {
+                "level8": {
+                  "level9": {
+                    "level10": {
+                      "level11": {
+                        "level12": {
+                          "level13": {
+                            "level14": {
+                              "level15": {
+                                "level16": {
+                                  "level17": {
+                                    "level18": {
+                                      "level19": {
+                                        "level20": {
+                                          "level21": {
+                                            "level22": {
+                                              "level23": {
+                                                "level24": {
+                                                  "level25": {
+                                                    "level26": {
+                                                      "level27": {
+                                                        "level28": {
+                                                          "level29": {
+                                                            "level30": {
+                                                              "level31": {
+                                                                "leaf": [1, 2, {"k": "v"}],
+                                                                "leaf2": "value"
+                                                              },
+                                                              "after31": "x"
+                                                            },
+                                                            "after30": "x"
+                                                          },
+                                                          "after29": "x"
+                                                        },
+                                                        "after28": "x"
+                                                      },
+                                                      "after27": "x"
+                                                    },
+                                                    "after26": "x"
+                                                  },
+                                                  "after25": "x"
+                                                },
+                                                "after24": "x"
+                                              },
+                                              "after23": "x"
+                                            },
+                                            "after22": "x"
+                                          },
+                                          "after21": "x"
+                                        },
+                                        "after20": "x"
+                                      },
+                                      "after19": "x"
+                                    },
+                                    "after18": "x"
+                                  },
+                                  "after17": "x"
+                                },
+                                "after16": "x"
+                              },
+                              "after15": "x"
+                            },
+                            "after14": "x"
+                          },
+                          "after13": "x"
+                        },
+                        "after12": "x"
+                      },
+                      "after11": "x"
+                    },
+                    "after10": "x"
+                  },
+                  "after9": "x"
+                },
+                "after8": "x"
+              },
+              "after7": "x"
+            },
+            "after6": "x"
+          },
+          "after5": "x"
+        },
+        "after4": "x"
+      },
+      "after3": "x"
+    },
+    "after2": "x"
+  },
+  "after1": "x"
+}

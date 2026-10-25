@@ -1,0 +1,31 @@
+description = """
+Roses are red
+Violets are blue"""
+with_header = """
+[not.a.table]
+key = "not a key"
+# not a comment
+"""
+continued = """
+The quick brown \
+  fox jumps over \
+    the lazy dog."""
+trailing_backslash = """
+line one \   
+line two"""
+escapes_inside = """
+tab\there "quoted" and ""two quotes"" \u00e9 \
+done"""
+quotes_at_end = """ends with quotes:"""""
+five = """a"""""
+
+literal = '''
+C:\Users\raw\path
+[also.not.a.table]
+'''
+literal_inline = '''it's raw, with 'quotes' and ''two'''
+literal_quotes_at_end = '''ends with:'''''
+
+after = "back to normal" # comment
+[real.table]
+key = 1

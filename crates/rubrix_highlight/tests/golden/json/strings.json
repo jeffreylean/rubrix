@@ -1,0 +1,11 @@
+{
+  "plain": "hello world",
+  "escapes": "tab\there \"quoted\" back\\slash \/ \b\f\n\r",
+  "unicode": "caf\u00e9 \u00E9\u4e2d and \ud83d\ude00",
+  "raw": "café 日本語 🎈",
+  "key\n\u0041": "value with \"inner\" quotes",
+  "short": "\u12",
+  "empty": "",
+  "": "empty key",
+  "path": "C:\\Users\\name\\file.txt"
+}

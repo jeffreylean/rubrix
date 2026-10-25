@@ -1,0 +1,10 @@
+basic = "I'm a string. \"You can quote me\". Name\tJos\u00E9\nLocation\tSF."
+escapes = "\b \t \n \f \r \" \\ \e \x41 \u00e9 \U0001F600"
+invalid = "\q \xZ \u12 stays string"
+literal = 'C:\Users\nodejs\templates'
+literal_quotes = 'Tom "Dubs" Preston-Werner'
+empty = ""
+empty_literal = ''
+unicode = "café 日本語 🎈"
+unterminated = "runs to the end of the line
+after = "back to normal"

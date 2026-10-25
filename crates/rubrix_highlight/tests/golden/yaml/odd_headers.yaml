@@ -1,0 +1,17 @@
+stray: |x
+bad: |+-
+plus: |++
+digits: |12
+> not a header
+- >2
+   body at three
+ not enough indent
+dash: |
+ one space
+fine: |-
+  ends at the document marker
+---
+after: marker
+block: |
+  never ends
+  because the file does

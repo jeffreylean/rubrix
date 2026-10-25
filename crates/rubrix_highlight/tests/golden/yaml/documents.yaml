@@ -1,0 +1,21 @@
+%YAML 1.2
+---
+first: document
+...
+--- !tag
+second: document
+--- # comment after marker
+- list
+- document
+---
+|
+  top-level
+  block scalar
+---
+plain top level scalar
+--- >-
+  folded top-level
+...
+key: after the end marker
+----: not a marker
+...tail: not a marker

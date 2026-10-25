@@ -1,0 +1,19 @@
+// A JSONC file, as tsconfig and VS Code settings use.
+{
+  // line comment before a key
+  "compilerOptions": {
+    "target": "ES2022", // trailing comment
+    "strict": true,
+    /* a block comment on one line */ "lib": ["dom", "esnext"],
+    /*
+     * a block comment across lines,
+     * with "quotes" and // slashes inside
+     */
+    "paths": {"@/*": ["./src/*"],},
+  },
+  "include": ["src",], // trailing commas
+  "exclude": [
+    "node_modules", /* inline */ "dist",
+  ],
+  "url": "http://example.com/a//b", // slashes inside a string stay a string
+}
