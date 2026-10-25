@@ -1,0 +1,28 @@
+[package]
+name = "bevy_rubrix"
+description = "Code, diff and file-tree UI kit for Bevy."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+bevy = { workspace = true }
+bevy_fynix = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+bevy = { workspace = true, features = [
+    "2d",
+    "ui",
+    "png",
+    "system_clipboard",
+    "system_font_discovery",
+] }
+
+[[example]]
+name = "gallery"
+path = "examples/gallery/main.rs"
+test = true
+
+[lints]
+workspace = true

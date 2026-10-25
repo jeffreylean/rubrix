@@ -1,0 +1,4 @@
+page about
+wait 1
+bogus 1 2
+exit

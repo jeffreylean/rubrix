@@ -1,0 +1,14 @@
+page about
+wait 30
+scroll 0 -1000
+wait 10
+log scroll
+screenshot theme-before.png
+click 100 771
+wait 30
+log theme
+log scroll
+expect scroll 1000
+expect theme light
+screenshot theme-after.png
+exit

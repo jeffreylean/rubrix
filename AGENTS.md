@@ -11,11 +11,11 @@ cd rubrix
 
 `rust-toolchain.toml` pins Rust 1.97.1 with `rustfmt`, `clippy`, and the `x86_64-unknown-none` target. `rustup` installs them on first use. Formatting also needs a nightly `rustfmt`: `rustup toolchain install nightly --profile minimal --component rustfmt`.
 
-The CI jobs that build Bevy install `libudev-dev`, `libwayland-dev`, and `libxkbcommon-dev` (the `apt-get install` line in `.github/workflows/rust.yml`). `scripts/check-no-std.sh` also needs `jq`, which the GitHub runner image already has. On Debian or Ubuntu:
+The CI jobs that build Bevy install `libudev-dev`, `libwayland-dev`, `libxkbcommon-dev`, and `libfontconfig1-dev` (the `apt-get install` line in `.github/workflows/rust.yml`). `scripts/check-no-std.sh` also needs `jq`, which the GitHub runner image already has. On Debian or Ubuntu:
 
 ```sh
 sudo apt-get update
-sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev jq
+sudo apt-get install --no-install-recommends libudev-dev libwayland-dev libxkbcommon-dev libfontconfig1-dev jq
 ```
 
 ## Commands that CI runs

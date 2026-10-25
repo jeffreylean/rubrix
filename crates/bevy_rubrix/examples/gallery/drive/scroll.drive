@@ -1,0 +1,8 @@
+page about
+wait 30
+screenshot scrolled-before.png
+scroll 0 -2000
+wait 10
+screenshot scrolled-after.png
+log entities
+exit

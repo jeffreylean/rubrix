@@ -1,0 +1,5 @@
+page about
+wait 30
+screenshot smoke.png
+log page
+exit

@@ -1,0 +1,4 @@
+page about
+wait 30
+screenshot twin-b.png
+exit
