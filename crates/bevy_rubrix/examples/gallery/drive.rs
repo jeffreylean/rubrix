@@ -1171,7 +1171,6 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
 /// The runs the code page's line `line`, from 1, was lexed into, and
 /// the spans its row shows, or `not shown` while no row shows it.
 fn runs(world: &mut World, line: usize) -> String {
-    let none = format!("runs {line} none");
     let Some((view, row, runs)) = world
         .query::<(Entity, &CodeDoc)>()
         .iter(world)
@@ -1188,7 +1187,7 @@ fn runs(world: &mut World, line: usize) -> String {
             Some((view, row, runs))
         })
     else {
-        return none;
+        return format!("runs {line} none");
     };
     let runs = if runs.is_empty() {
         "empty".to_owned()

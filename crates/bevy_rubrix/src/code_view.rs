@@ -112,8 +112,7 @@ pub enum Overflow {
 
 /// A view of `source`, a row per line, each with its line number in
 /// a gutter, drawn in the theme's [`SyntaxTokens::code_font`] at its
-/// body size. It builds only the rows near what shows, so it scrolls
-/// through 100,000 lines as through 100.
+/// body size. It builds only the rows near what shows.
 ///
 /// A new source builds the view's rows again and shows its first
 /// line. A tab shows as spaces to the next stop of 4 columns, which
