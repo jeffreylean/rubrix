@@ -1246,6 +1246,21 @@ fn scroll_to_lands_where_it_says_once_the_rows_are_measured() {
     assert!(failed.is_empty(), "{}", failed.join("\n"));
 }
 
+#[test]
+fn a_scroll_on_the_frame_after_a_scroll_to_stands() {
+    let mut app = laid_out();
+    let area = list(&mut app, 10_000, uniform);
+    scroll_to(&mut app, area, 5_000);
+    app.update();
+    let landed = scroll(&app, area);
+
+    app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y +=
+        100.0;
+    settle(&mut app);
+
+    assert_eq!(scroll(&app, area), landed + 100.0);
+}
+
 fn regions(_: &World, index: usize) -> f32 {
     match index {
         ..3_000 => 20.0,

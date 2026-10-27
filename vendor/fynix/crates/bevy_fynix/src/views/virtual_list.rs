@@ -331,7 +331,10 @@ pub struct VirtualList {
 
 #[derive(Clone, Copy)]
 enum Target {
-    First(usize),
+    First {
+        index: usize,
+        remeasured: bool,
+    },
     Reveal {
         index: usize,
         from_top: (f32, f32),
@@ -383,9 +386,14 @@ impl VirtualList {
     }
 
     /// Scrolls so that the row `index` is the first to show, at the
-    /// next update, or as near as the end of the list lets it.
+    /// next update, or as near as the end of the list lets it. Near
+    /// the end, it lands again a frame later, once the rows it shows
+    /// are measured.
     pub fn scroll_to(&mut self, index: usize) {
-        self.target = Some(Target::First(index));
+        self.target = Some(Target::First {
+            index,
+            remeasured: false,
+        });
     }
 
     /// Scrolls as little as shows all of the row `index`, at the next
@@ -533,8 +541,15 @@ impl VirtualList {
         let to = match target {
             None if pinned => bottom,
             None => at,
-            Some(Target::First(index)) => {
-                self.heights.offset(index.min(last))
+            Some(Target::First { index, remeasured }) => {
+                let top = self.heights.offset(index.min(last));
+                if !remeasured && top > bottom {
+                    self.target = Some(Target::First {
+                        index,
+                        remeasured: true,
+                    });
+                }
+                top
             }
             Some(Target::Reveal { .. }) if self.count == 0 => 0.0,
             Some(Target::Reveal {
@@ -566,12 +581,12 @@ impl VirtualList {
             }
         }
         .clamp(0.0, bottom);
+        let scrolled_to_bottom = at as f32 >= bottom as f32;
         self.pin = match target {
             None if pinned => Pin::AtBottom,
-            None if held && self.follow && at >= bottom => {
+            None if held && self.follow && scrolled_to_bottom => {
                 Pin::AtBottom
             }
-            None if held => Pin::HeldByTarget,
             None => Pin::Unpinned,
             Some(_) => Pin::HeldByTarget,
         };
