@@ -1269,7 +1269,7 @@ mod tests {
     use bevy::time::TimeUpdateStrategy;
     use bevy::transform::TransformPlugin;
     use bevy::ui::widget::Text;
-    use bevy::ui::{ComputedNode, UiPlugin};
+    use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin};
     use bevy::window::WindowPlugin;
     use bevy_fynix::scroll::{ScrollGoal, ScrollbarStyle};
     use bevy_fynix::tokens::SurfaceTokens;
@@ -1958,6 +1958,57 @@ exit
         // Five digits, each 600 of the font's 1000 units at 14 px,
         // and layout rounds to whole pixels.
         assert!((width - 42.0).abs() <= 1.0, "{width} px");
+    }
+
+    /// The left edge, in logical px, of the first rich text whose
+    /// spans read `text`.
+    fn left_of(world: &mut World, text: &str) -> f32 {
+        let roots = world
+            .query_filtered::<Entity, With<Text>>()
+            .iter(world)
+            .collect::<Vec<_>>();
+        let root = roots
+            .into_iter()
+            .find(|&root| {
+                let spans = spans_of(world, root);
+                spans
+                    .iter()
+                    .map(|(_, text, _)| text.as_str())
+                    .collect::<String>()
+                    == text
+            })
+            .unwrap_or_else(|| panic!("a text {text:?}"));
+        let node = world.get::<ComputedNode>(root).expect("laid out");
+        let at =
+            world.get::<UiGlobalTransform>(root).expect("placed");
+        (at.translation.x - node.size().x / 2.0)
+            * node.inverse_scale_factor()
+    }
+
+    #[test]
+    fn a_sideways_scroll_moves_the_text_and_keeps_the_gutter() {
+        let script = format!(
+            "page code\nwait 1\nopen {}\nwait 5\nmove 740 \
+             400\nscroll -6000 0\nwait 5\nlog rows\nexit",
+            fixture("long-line.rs")
+        );
+        let mut app = headless(&script);
+        run(&mut app);
+        let rows = logged(&app, "rows ");
+        let x = rows[0]
+            .rsplit_once(" x ")
+            .and_then(|(_, x)| x.parse::<f32>().ok())
+            .expect("an x");
+        assert!(x > 2000.0, "{rows:?}");
+        let world = app.world_mut();
+        assert_eq!(left_of(world, "1"), 220.0, "the gutter stays");
+        let line =
+            fs::read_to_string(fixture("long-line.rs")).unwrap();
+        let long = line.lines().nth(2).unwrap();
+        assert!(
+            left_of(world, long) < 220.0 - 2000.0,
+            "the text moves"
+        );
     }
 
     #[test]
