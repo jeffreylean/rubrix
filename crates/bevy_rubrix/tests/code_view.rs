@@ -1,7 +1,7 @@
 //! The code view, headless with no layout: what its rows show.
 //!
 //! With no layout the view is 0 px high, so its list builds the rows
-//! within 1,000 px of the scroll offset, about 118 at the top.
+//! within its 400 px overscan of the scroll offset, 48 at the top.
 
 use core::time::Duration;
 
@@ -384,7 +384,7 @@ fn every_gutter_has_one_width() {
             .collect::<Vec<_>>()
     };
     let ten_k = numbers(&mut app);
-    assert!(ten_k.len() > 100, "{} rows built", ten_k.len());
+    assert!(ten_k.len() > 40, "{} rows built", ten_k.len());
     assert!(widths(ten_k).iter().all(|&width| width == 5));
     assert_eq!(numbers(&mut app)[0], "    1");
 
@@ -407,7 +407,7 @@ fn tabs_show_as_spaces_to_four_column_stops() {
 
 #[test]
 fn switching_overflow_keeps_the_list_and_flips_wrap() {
-    let mut app = showing(CodeSource::new(Lang::Plain, numbered(50)));
+    let mut app = showing(CodeSource::new(Lang::Plain, numbered(20)));
     let state = |app: &mut App| {
         let list = list(app);
         let axis =
@@ -433,6 +433,6 @@ fn switching_overflow_keeps_the_list_and_flips_wrap() {
     let (after, axis, breaks) = state(&mut app);
     assert_eq!(after, before, "the same list");
     assert_eq!(axis, OverflowAxis::Clip);
-    assert_eq!(breaks.len(), 50);
+    assert_eq!(breaks.len(), 20);
     assert!(breaks.iter().all(|&b| b == LineBreak::WordBoundary));
 }

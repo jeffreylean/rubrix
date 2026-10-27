@@ -25,6 +25,12 @@ const LINE_HEIGHT: f32 = 1.2;
 /// The columns between tab stops.
 const TAB: usize = 4;
 
+/// How far past each end of the view the list builds rows. Each
+/// frame draws every row built, and a code row has about five times
+/// the glyphs of a label, so the list's default of 1,000 px costs a
+/// scroll frame more than 3 ms.
+const OVERSCAN: f32 = 400.0;
+
 /// A text and its highlights. It is lexed once, when it is made, and
 /// a clone shares both. Two sources are equal when one is a clone of
 /// the other, or when they have the same language and text.
@@ -272,6 +278,7 @@ where
             virtual_list(count, estimate, move |slot| {
                 code_row(root, slot, &style)
             })
+            .overscan(OVERSCAN)
             .sideways(sideways),
         )
     })
