@@ -98,7 +98,7 @@ fn controls() -> PageView {
         }),
         control("100k lines", |world| {
             let source = CodeSource::new(Lang::Rust, stress());
-            show(world, "100k lines", source);
+            show(world, "large.rs.txt repeated", source);
         }),
         control(
             resource::<CodeFile, _>(|file| match file.overflow {
