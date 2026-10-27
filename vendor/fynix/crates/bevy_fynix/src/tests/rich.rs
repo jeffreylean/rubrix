@@ -12,8 +12,9 @@ use bevy::ecs::entity::Entity;
 use bevy::ecs::resource::Resource;
 use bevy::math::{UVec2, Vec2};
 use bevy::text::{
-    FontSize, TextBackgroundColor, TextColor, TextFont, TextSpan,
-    Underline, UnderlineColor,
+    FontSize, InlineBox, LineHeight, StrikethroughColor,
+    TextBackgroundColor, TextColor, TextFont, TextSpan, Underline,
+    UnderlineColor,
 };
 use bevy::time::TimeUpdateStrategy;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin};
@@ -22,7 +23,9 @@ use parley::{Affinity, Cluster, Cursor};
 
 use crate::tests::{Plain, app, kids};
 use crate::tokens::Tone;
-use crate::views::{LineColor, Span, rich, rich_layout, rich_point};
+use crate::views::{
+    LineColor, Rich, Span, rich, rich_layout, rich_point,
+};
 use crate::{StateExt, hidden, mount, resource};
 
 #[derive(Resource)]
@@ -262,6 +265,10 @@ fn the_root_size_reaches_spans_with_no_size_of_their_own() {
 }
 
 fn laid_out() -> App {
+    laid_out_at(1.0)
+}
+
+fn laid_out_at(scale_factor: f32) -> App {
     let mut app = app();
     app.insert_resource(TimeUpdateStrategy::ManualDuration(
         Duration::from_millis(10),
@@ -283,7 +290,7 @@ fn laid_out() -> App {
             computed: ComputedCameraValues {
                 target_info: Some(RenderTargetInfo {
                     physical_size: UVec2::new(1000, 1000),
-                    scale_factor: 1.0,
+                    scale_factor,
                 }),
                 ..Default::default()
             },
@@ -509,4 +516,143 @@ fn a_fade_leaves_the_font_of_a_span_sized_nan_alone() {
     assert_eq!(changed::<TextFont>(&app, span), before);
     let font = app.world().get::<TextFont>(span).unwrap();
     assert_eq!(font.font_size, FontSize::Px(9.0), "the root's size");
+}
+
+#[test]
+fn an_empty_rich_text_is_one_line_high_at_each_scale_factor() {
+    let sizes =
+        [9.0, 12.0, 13.0, 14.0, 15.0, 16.0, 20.0, 24.0, 30.0, 42.0];
+    let mut uneven = Vec::new();
+    for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
+        for size in [None].into_iter().chain(sizes.map(Some)) {
+            let mut app = laid_out_at(scale);
+            let sized = |rich: Rich| match size {
+                Some(size) => rich.size(size),
+                None => rich,
+            };
+            let empty = mount::<Plain>(
+                app.world_mut(),
+                sized(rich(Vec::new())),
+            );
+            let blanks = mount::<Plain>(
+                app.world_mut(),
+                sized(rich(vec![Span::new(""); 3])),
+            );
+            let worded = mount::<Plain>(
+                app.world_mut(),
+                sized(rich(vec![Span::new("x")])),
+            );
+            app.update();
+            app.update();
+            let line = height(&app, worded);
+            assert!(line > 0.0);
+            let heights = [height(&app, empty), height(&app, blanks)];
+            if heights != [line; 2] {
+                uneven.push((scale, size, heights, line));
+            }
+        }
+    }
+    assert!(uneven.is_empty(), "empty against worded: {uneven:?}");
+}
+
+#[test]
+fn an_empty_rich_text_is_as_high_as_its_span_line_height() {
+    let mut app = laid_out_at(1.2);
+    let empty =
+        mount::<Plain>(app.world_mut(), rich(Vec::new()).size(15.0));
+    let worded = mount::<Plain>(
+        app.world_mut(),
+        rich(vec![Span::new("x")]).size(15.0),
+    );
+    app.update();
+    for root in [empty, worded] {
+        let span = kids(&app, root)[0];
+        app.world_mut()
+            .entity_mut(span)
+            .insert(LineHeight::RelativeToFont(1.5));
+    }
+    app.update();
+    app.update();
+
+    assert_eq!(height(&app, empty), height(&app, worded));
+}
+
+#[test]
+fn a_nan_root_size_takes_the_theme_size() {
+    let mut app = laid_out();
+    let nan = mount::<Plain>(
+        app.world_mut(),
+        rich(vec![Span::new("x")]).size(f32::NAN),
+    );
+    let empty = mount::<Plain>(
+        app.world_mut(),
+        rich(Vec::new()).size(f32::NAN),
+    );
+    let themed =
+        mount::<Plain>(app.world_mut(), rich(vec![Span::new("x")]));
+    app.update();
+    app.update();
+
+    let span = kids(&app, nan)[0];
+    let font = app.world().get::<TextFont>(span).unwrap();
+    assert_eq!(
+        font.font_size,
+        FontSize::Px(14.0),
+        "the theme's size"
+    );
+    let held = app.world().get::<InlineBox>(kids(&app, empty)[0]);
+    assert!(
+        held.unwrap().size.y.is_finite(),
+        "a box of finite height"
+    );
+    assert_eq!(height(&app, empty), height(&app, themed));
+    assert_eq!(height(&app, nan), height(&app, themed));
+}
+
+#[test]
+fn a_fade_treats_a_nan_span_colour_as_unset() {
+    let mut app = app();
+    app.insert_resource(Shade(Tone::Body));
+    let nan = Color::srgb(f32::NAN, 0.0, 0.0);
+    let root = mount::<Plain>(
+        app.world_mut(),
+        rich(vec![
+            Span::new("a "),
+            Span::new("b")
+                .color(nan)
+                .background(nan)
+                .underline(LineColor::Own(nan))
+                .strikethrough(LineColor::Own(nan)),
+        ])
+        .tone(resource::<Shade, _>(|shade| shade.0))
+        .transition(Motion::Interact),
+    );
+    app.update();
+    let [plain, span] = kids(&app, root)[..] else {
+        panic!("two spans");
+    };
+
+    app.world_mut().resource_mut::<Shade>().0 = Tone::Accent;
+    for frame in 0..3 {
+        let before = changed::<TextColor>(&app, span);
+        let shown = color(&app, plain);
+        app.update();
+        assert_eq!(
+            color(&app, span),
+            color(&app, plain),
+            "frame {frame}"
+        );
+        assert_eq!(
+            changed::<TextColor>(&app, span) != before,
+            color(&app, plain) != shown,
+            "frame {frame}: rewritten only when it changed"
+        );
+    }
+    let world = app.world();
+    assert!(
+        world.get::<TextBackgroundColor>(span).is_none(),
+        "no plate"
+    );
+    assert!(world.get::<UnderlineColor>(span).is_none());
+    assert!(world.get::<StrikethroughColor>(span).is_none());
 }
