@@ -1055,13 +1055,14 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
                 Some(list) => match list.spawned() {
                     Some(spawned) => format!(
                         "rows first_visible {} spawned {}..={} rows \
-                         {}",
+                         {} total {}",
                         list.first_visible(),
                         spawned.start(),
                         spawned.end(),
-                        list.rows()
+                        list.rows(),
+                        list.count()
                     ),
-                    None => "rows empty".into(),
+                    None => "rows empty total 0".into(),
                 },
                 None => "rows none".into(),
             }

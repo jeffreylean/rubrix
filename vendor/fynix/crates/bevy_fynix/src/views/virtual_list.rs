@@ -351,6 +351,11 @@ impl VirtualList {
         self.slots.len()
     }
 
+    /// How many rows the list has.
+    pub fn count(&self) -> usize {
+        self.count
+    }
+
     fn height(&self) -> Val {
         px(self.heights.total() as f32)
     }

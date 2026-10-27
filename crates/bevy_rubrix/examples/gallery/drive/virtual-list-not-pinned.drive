@@ -4,8 +4,12 @@ move 740 400
 scroll 0 -85000
 wait 10
 log rows
+expect rows first_visible 4996
+expect rows total 10000
 click 586 68
 wait 10
 log rows
-screenshot virtual-list-not-pinned.png
+expect rows first_visible 4996
+expect rows total 11000
+screenshot f2-not-pinned.png
 exit

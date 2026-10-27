@@ -1,0 +1,10 @@
+page virtual_list
+wait 120
+move 1255 107
+wait 20
+record start thumb
+drag 1255 107 1255 437
+wait 8
+record stop
+log rows
+exit

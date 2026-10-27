@@ -456,6 +456,7 @@ fn growing_from_no_rows_follows_the_bottom() {
     settle(&mut app);
 
     assert_eq!(shown_at(&mut app, area, 199), Some(VIEW - 20.0));
+    assert_eq!(state(&app, area).count(), 200);
 }
 
 #[test]
