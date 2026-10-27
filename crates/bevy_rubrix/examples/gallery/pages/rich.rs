@@ -12,8 +12,8 @@ use bevy::math::Vec2;
 use bevy::picking::events::PointerPress;
 use bevy::text::FontSource;
 use bevy::ui::{
-    ComputedNode, ComputedUiTargetCamera, UiGlobalTransform, percent,
-    px,
+    ComputedNode, ComputedUiTargetCamera, FlexWrap, Node,
+    UiGlobalTransform, percent, px,
 };
 use bevy_fynix::tokens::{SurfaceTokens, TextTokens, Tone};
 use bevy_fynix::views::{
@@ -120,7 +120,7 @@ fn control(
 }
 
 fn controls() -> PageView {
-    row((
+    let buttons = row((
         control("recolour", |world| {
             world.resource_mut::<LongLine>().turn += 1;
         }),
@@ -165,7 +165,14 @@ fn controls() -> PageView {
             },
         ),
     ))
-    .gap(8.0)
+    .gap(8.0);
+    AnyView::new(|cx: &mut Build| {
+        let root = cx.build(buttons);
+        if let Some(mut node) = cx.world.get_mut::<Node>(root) {
+            node.flex_wrap = FlexWrap::Wrap;
+        }
+        root
+    })
     .boxed()
 }
 
@@ -241,15 +248,12 @@ fn wrapped() -> PageView {
             )
             .bold(),
             sans(
-                "this coloured run does the same a few words later, \
-                 so the break falls inside it, ",
+                "this coloured run starts a few words later and \
+                 runs on past the next break, so its colour has to \
+                 carry over onto the following line as well, ",
             )
             .color(hue(palette, 200.0)),
-            sans(
-                "and this italic run wraps too, ending the \
-                 paragraph.",
-            )
-            .italic(),
+            sans("and this italic run ends the paragraph.").italic(),
         ]))
     })
     .boxed()
