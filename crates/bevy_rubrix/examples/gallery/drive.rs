@@ -17,6 +17,10 @@
 //! - `log <topic>`, `expect <topic> <text>`, `clipboard`
 //! - `resize <width> <height>`, `open <path>...`
 //!
+//! A topic is a word, but `runs <line>` takes a line number too, so
+//! `expect runs 75 comment` checks topic `runs 75` for `comment`.
+//! `open` reads a relative path from the script's directory.
+//!
 //! Positions are logical pixels in the window. A scroll `dy` below
 //! zero moves the content up, so the page scrolls down. Every step
 //! prints `drive: <step> ok` when it is done.
@@ -65,6 +69,8 @@ use bevy::text::{TextColor, TextSpan};
 use bevy::ui::ScrollPosition;
 use bevy::window::{CursorMoved, PrimaryWindow, Window, WindowEvent};
 use bevy_fynix::views::VirtualList;
+use bevy_rubrix::{CodeDoc, CodeLine};
+use rubrix_highlight::spans;
 
 use crate::pages::PAGES;
 use crate::pages::rich::{Hit, HitLineRoot, LongLineRoot};
@@ -228,8 +234,11 @@ fn parse_line(text: &str) -> Result<Option<Step>, String> {
             Step::Screenshot(path.into())
         }
         "log" => {
-            let [topic] = exact(&words, "log <topic>")?;
-            Step::Log(topic.into())
+            let (topic, rest) = split_topic(rest)?;
+            if topic.is_empty() || !rest.is_empty() {
+                return Err("usage: log <topic>".into());
+            }
+            Step::Log(topic)
         }
         "frames" => match words[..] {
             ["start"] => Step::FramesStart,
@@ -267,12 +276,13 @@ fn parse_line(text: &str) -> Result<Option<Step>, String> {
             Step::Clipboard
         }
         "expect" => {
-            let (topic, text) = rest
-                .split_once(char::is_whitespace)
-                .ok_or("usage: expect <topic> <text>")?;
+            let (topic, text) = split_topic(rest)?;
+            if text.is_empty() {
+                return Err("usage: expect <topic> <text>".into());
+            }
             Step::Expect {
-                topic: topic.into(),
-                text: text.trim().into(),
+                topic,
+                text: text.into(),
             }
         }
         "exit" => {
@@ -282,6 +292,38 @@ fn parse_line(text: &str) -> Result<Option<Step>, String> {
         other => return Err(format!("unknown step `{other}`")),
     };
     Ok(Some(step))
+}
+
+/// How many words a topic takes after its name.
+fn topic_args(name: &str) -> usize {
+    match name {
+        "runs" => 1,
+        _ => 0,
+    }
+}
+
+/// The topic at the start of `text`, with its words, and the text
+/// after it.
+fn split_topic(text: &str) -> Result<(String, &str), String> {
+    let (name, mut rest) = first_word(text);
+    let mut topic = name.to_owned();
+    for _ in 0..topic_args(name) {
+        let (word, after) = first_word(rest);
+        if word.is_empty() {
+            return Err(format!(
+                "topic `{name}` takes a line number"
+            ));
+        }
+        number::<usize>(word)?;
+        topic = format!("{topic} {word}");
+        rest = after;
+    }
+    Ok((topic, rest.trim()))
+}
+
+fn first_word(text: &str) -> (&str, &str) {
+    let text = text.trim_start();
+    text.split_once(char::is_whitespace).unwrap_or((text, ""))
 }
 
 fn exact<'a, const N: usize>(
@@ -505,6 +547,18 @@ impl DrivePlugin {
     pub fn new(script: &str) -> Result<Self, ParseError> {
         parse(script).map(Self)
     }
+
+    /// This, with each relative `open` path read from `dir`.
+    fn opening_from(mut self, dir: &Path) -> Self {
+        for line in &mut self.0 {
+            if let Step::Open(paths) = &mut line.step {
+                for path in paths {
+                    *path = dir.join(&*path);
+                }
+            }
+        }
+        self
+    }
 }
 
 pub fn from_env() -> Result<Option<DrivePlugin>, String> {
@@ -513,8 +567,9 @@ pub fn from_env() -> Result<Option<DrivePlugin>, String> {
     };
     let script = fs::read_to_string(&path)
         .map_err(|error| format!("cannot read {path}: {error}"))?;
+    let dir = Path::new(&path).parent().unwrap_or(Path::new(""));
     DrivePlugin::new(&script)
-        .map(Some)
+        .map(|drive| Some(drive.opening_from(dir)))
         .map_err(|error| error.to_string())
 }
 
@@ -814,10 +869,10 @@ impl Drive {
             }
             Step::Open(paths) => {
                 let page = &PAGES[world.resource::<Selected>().0];
-                match page.open {
-                    Some(open) => {
-                        open(world, &paths);
-                        self.done(name);
+                match page.open.map(|open| open(world, &paths)) {
+                    Some(Ok(())) => self.done(name),
+                    Some(Err(error)) => {
+                        self.fail(world, number, &error)
                     }
                     None => self.fail(
                         world,
@@ -1051,17 +1106,22 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
             format!("present_mode requested {mode:?}")
         }
         "rows" => {
-            match world.query::<&VirtualList>().iter(world).next() {
-                Some(list) => match list.spawned() {
+            match world
+                .query::<(&VirtualList, &ScrollPosition)>()
+                .iter(world)
+                .next()
+            {
+                Some((list, position)) => match list.spawned() {
                     Some(spawned) => format!(
                         "rows first_visible {} spawned {}..={} rows \
-                         {} total {} following {}",
+                         {} total {} following {} x {}",
                         list.first_visible(),
                         spawned.start(),
                         spawned.end(),
                         list.rows(),
                         list.count(),
-                        list.following()
+                        list.following(),
+                        position.x
                     ),
                     None => "rows empty total 0".into(),
                 },
@@ -1101,8 +1161,58 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
             });
             hit.unwrap_or_else(|| "hit none".into())
         }
-        _ => return None,
+        _ => {
+            let line = topic.strip_prefix("runs ")?.parse().ok()?;
+            runs(world, line)
+        }
     })
+}
+
+/// The runs the code page's line `line`, from 1, was lexed into, and
+/// the spans its row shows, or `not shown` while no row shows it.
+fn runs(world: &mut World, line: usize) -> String {
+    let none = format!("runs {line} none");
+    let Some((view, row, runs)) = world
+        .query::<(Entity, &CodeDoc)>()
+        .iter(world)
+        .next()
+        .and_then(|(view, doc)| {
+            let row = line
+                .checked_sub(1)
+                .filter(|&row| row < doc.rows())?;
+            let runs = spans(doc.runs(row))
+                .map(|(bytes, kind)| {
+                    format!("{}..{} {kind}", bytes.start, bytes.end)
+                })
+                .collect::<Vec<_>>();
+            Some((view, row, runs))
+        })
+    else {
+        return none;
+    };
+    let runs = if runs.is_empty() {
+        "empty".to_owned()
+    } else {
+        runs.join(", ")
+    };
+    let root = world
+        .query::<(Entity, &CodeLine)>()
+        .iter(world)
+        .find(|(_, shown)| **shown == CodeLine { view, row })
+        .map(|(root, _)| root);
+    let shown = match root {
+        Some(root) => {
+            let spans = spans_of(world, root)
+                .into_iter()
+                .map(|(_, text, color)| {
+                    format!("{text:?} {}", color.to_hex())
+                })
+                .collect::<Vec<_>>();
+            format!("shown {}", spans.join(", "))
+        }
+        None => "not shown".to_owned(),
+    };
+    format!("runs {line}: {runs} | {shown}")
 }
 
 fn spans_under<M: Component>(
@@ -1112,17 +1222,27 @@ fn spans_under<M: Component>(
         .query_filtered::<Entity, With<M>>()
         .iter(world)
         .next()?;
-    let spans = world
-        .get::<Children>(root)?
-        .iter()
-        .copied()
+    world
+        .get::<Children>(root)
+        .is_some()
+        .then(|| spans_of(world, root))
+}
+
+/// Each span of the rich text `root`, its text, and its colour.
+fn spans_of(
+    world: &World,
+    root: Entity,
+) -> Vec<(Entity, String, Srgba)> {
+    world
+        .get::<Children>(root)
+        .into_iter()
+        .flat_map(|kids| kids.iter().copied())
         .filter_map(|span| {
             let text = world.get::<TextSpan>(span)?;
             let color = world.get::<TextColor>(span)?;
             Some((span, text.0.clone(), color.0.to_srgba()))
         })
-        .collect();
-    Some(spans)
+        .collect()
 }
 
 #[cfg(test)]
@@ -1148,11 +1268,13 @@ mod tests {
     use bevy::text::Font;
     use bevy::time::TimeUpdateStrategy;
     use bevy::transform::TransformPlugin;
-    use bevy::ui::UiPlugin;
+    use bevy::ui::widget::Text;
+    use bevy::ui::{ComputedNode, UiPlugin};
     use bevy::window::WindowPlugin;
     use bevy_fynix::scroll::{ScrollGoal, ScrollbarStyle};
     use bevy_fynix::tokens::SurfaceTokens;
     use bevy_fynix::{FynixPlugin, mount};
+    use bevy_rubrix::RubrixPlugin;
 
     use super::*;
     use crate::{FONT, Palette, ShellPlugin, shell, toggle_theme};
@@ -1298,6 +1420,64 @@ exit
         );
     }
 
+    #[test]
+    fn log_runs_parses_its_line() {
+        assert_eq!(
+            steps("log runs 75"),
+            [Step::Log("runs 75".into())]
+        );
+    }
+
+    #[test]
+    fn expect_runs_takes_the_text_after_the_line() {
+        assert_eq!(
+            steps(
+                "expect runs 75 comment\nexpect rows total 1 \
+                 following"
+            ),
+            [
+                Step::Expect {
+                    topic: "runs 75".into(),
+                    text: "comment".into()
+                },
+                Step::Expect {
+                    topic: "rows".into(),
+                    text: "total 1 following".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn log_runs_without_a_number_is_refused() {
+        for (script, reason) in [
+            ("log runs", "takes a line number"),
+            ("log runs one", "`one` is not a number"),
+            ("log runs 1 2", "usage: log"),
+            ("expect runs 1", "usage: expect"),
+        ] {
+            let error = parse(script).expect_err(script);
+            assert!(
+                error.reason.contains(reason),
+                "{script}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_open_path_is_read_from_the_script_directory() {
+        let drive = DrivePlugin::new("open ../fixtures/a.rs /b.rs")
+            .expect("a script")
+            .opening_from(Path::new("/repo/drive"));
+        assert_eq!(
+            drive.0[0].step,
+            Step::Open(vec![
+                "/repo/drive/../fixtures/a.rs".into(),
+                "/b.rs".into()
+            ])
+        );
+    }
+
     /// Stands in for Bevy's visibility propagation, whose plugin
     /// needs more than a headless app has. Picking skips what is not
     /// shown.
@@ -1317,6 +1497,7 @@ exit
             InputPlugin,
             DefaultPickingPlugins,
             FynixPlugin::<Palette>::default(),
+            RubrixPlugin,
         ))
         .insert_resource(TimeUpdateStrategy::ManualDuration(
             Duration::from_millis(10),
@@ -1712,6 +1893,104 @@ exit
                 "drive: clipboard ok",
                 "drive: exit ok",
             ]
+        );
+    }
+
+    fn fixture(name: &str) -> String {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("examples/gallery/fixtures")
+            .join(name)
+            .display()
+            .to_string()
+    }
+
+    #[test]
+    fn the_code_page_logs_a_line_s_runs_and_the_spans_it_shows() {
+        let mut app = headless(
+            "page code\nwait 5\nlog runs 1\nlog runs 10373\nexit",
+        );
+        run(&mut app);
+        assert_eq!(
+            logged(&app, "runs "),
+            [
+                "1: 0..33 comment.doc | shown \"//! The theme the \
+                 examples share.\" #737AA2",
+                "10373 none",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_code_row_is_17_px_so_a_scroll_of_rows_lands_on_its_line() {
+        let mut app = headless(
+            "page code\nwait 5\nscroll 0 -169983\nwait 5\nlog \
+             rows\nexit",
+        );
+        run(&mut app);
+        let rows = logged(&app, "rows ");
+        assert!(
+            rows[0].starts_with("first_visible 9999 "),
+            "{rows:?}"
+        );
+    }
+
+    #[test]
+    fn the_gutter_shows_in_the_bundled_monospace_font() {
+        let mut app = headless("page code\nwait 5\nexit");
+        run(&mut app);
+        let world = app.world_mut();
+        let roots = world
+            .query_filtered::<Entity, With<Text>>()
+            .iter(world)
+            .collect::<Vec<_>>();
+        let first = roots
+            .into_iter()
+            .find(|&root| {
+                spans_of(world, root)
+                    .iter()
+                    .map(|(_, text, _)| text.as_str())
+                    .eq(["    1"])
+            })
+            .expect("line number 1");
+        let node =
+            world.get::<ComputedNode>(first).expect("laid out");
+        let width = node.size().x * node.inverse_scale_factor();
+        // Five digits, each 600 of the font's 1000 units at 14 px,
+        // and layout rounds to whole pixels.
+        assert!((width - 42.0).abs() <= 1.0, "{width} px");
+    }
+
+    #[test]
+    fn an_open_on_the_code_page_shows_the_file() {
+        let script = format!(
+            "page code\nwait 1\nopen {}\nwait 3\nlog runs 1\nexpect \
+             rows total 1 following\nexit",
+            fixture("one-line.rs")
+        );
+        let mut app = headless(&script);
+        assert_eq!(run(&mut app), [AppExit::Success]);
+        let said = &app.world().resource::<Drive>().said;
+        assert!(
+            said.contains(&"accept: rows pass".to_owned()),
+            "{said:?}"
+        );
+        let runs = logged(&app, "runs 1: ");
+        assert!(runs[0].contains("| shown \"fn \" "), "{runs:?}");
+    }
+
+    #[test]
+    fn an_open_of_a_missing_file_exits_with_code_2() {
+        let script = format!(
+            "page code\nwait 1\nopen {}\nexit",
+            fixture("missing.rs")
+        );
+        let mut app = headless(&script);
+        assert_eq!(run(&mut app), [AppExit::from_code(2)]);
+        let said = &app.world().resource::<Drive>().said;
+        let last = said.last().expect("a line");
+        assert!(
+            last.starts_with("drive: line 3: cannot read"),
+            "{last}"
         );
     }
 }

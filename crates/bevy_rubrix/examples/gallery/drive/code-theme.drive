@@ -1,0 +1,20 @@
+page code
+wait 120
+move 740 400
+scroll 0 -12563
+wait 30
+screenshot r12-theme-dark.png
+log theme
+log rows
+expect rows first_visible 739 spawned
+log runs 744
+log runs 748
+click 100 771
+wait 120
+screenshot r12-theme.png
+log theme
+log rows
+expect rows first_visible 739 spawned
+log runs 744
+log runs 748
+exit

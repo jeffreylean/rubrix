@@ -1,0 +1,14 @@
+page code
+wait 120
+open ../fixtures/late-comment.rs
+wait 30
+move 740 400
+scroll 0 -1003
+wait 30
+screenshot r12-late-comment.png
+log rows
+expect rows first_visible 59 spawned
+log runs 60
+expect runs 60 comment
+expect runs 75 comment
+exit

@@ -1,0 +1,10 @@
+page code
+wait 120
+open ../fixtures/unicode.rs
+wait 30
+screenshot r12-unicode.png
+log runs 1
+log runs 3
+log runs 4
+log runs 6
+exit

@@ -1,0 +1,8 @@
+page code
+wait 120
+open ../fixtures/notes.xyz
+wait 30
+screenshot r12-plain.png
+log runs 1
+expect runs 1 plain
+exit

@@ -1,0 +1,15 @@
+page code
+wait 120
+open ../fixtures/long-line.rs
+wait 10
+click 734 68
+wait 10
+click 734 68
+wait 10
+move 740 400
+scroll -6000 0
+wait 30
+screenshot r12-hscroll.png
+log rows
+log runs 3
+exit
