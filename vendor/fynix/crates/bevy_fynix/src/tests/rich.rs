@@ -579,8 +579,6 @@ fn an_empty_rich_text_is_as_high_as_its_span_line_height() {
     assert_eq!(height(&app, empty), height(&app, worded));
 }
 
-/// A blank rich text millions of pixels high lays out its first two
-/// frames within 30 s, one line high to the pixel.
 fn a_huge_blank_line_lays_out_at(scale_factor: f32) {
     let size: f32 = 6_990_511.0;
     let (sent, received) = mpsc::channel();
