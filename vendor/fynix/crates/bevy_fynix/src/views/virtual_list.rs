@@ -250,6 +250,8 @@ pub struct VirtualList {
     pinned: bool,
     placed_at: f32,
     widths: Option<Widths>,
+    /// The area's width when its rows were measured.
+    across: f32,
 }
 
 #[derive(Clone, Copy)]
@@ -285,6 +287,7 @@ impl VirtualList {
             pinned: false,
             placed_at: 0.0,
             widths: None,
+            across: 0.0,
         };
         list.place(&[], 0.0, 0.0, 0.0);
         list
@@ -343,6 +346,19 @@ impl VirtualList {
 
     pub fn count(&self) -> usize {
         self.count
+    }
+
+    /// Rows out of sight cannot be measured again, so a change in
+    /// the area's width leaves each with the height it had only as an
+    /// estimate, until it shows or the mean moves it.
+    fn measured_across(&mut self, across: f32) {
+        if self.across != across {
+            self.across = across;
+            self.heights.forget();
+            if let Some(widths) = &mut self.widths {
+                widths.forget();
+            }
+        }
     }
 
     fn height(&self) -> Val {
@@ -517,6 +533,8 @@ fn place_rows(
                 Some((placed.index, height))
             })
             .collect::<Vec<_>>();
+        let across = area.content_box().width() * scale;
+        list.measured_across(across);
         let end = scroll::overflow(area).y;
         let scroll = list.place(&measured, view, position.y, end);
         if scroll.jump {
@@ -539,8 +557,6 @@ fn place_rows(
         }
         let mut width = percent(100.0);
         if let Some(widths) = &mut list.widths {
-            let across = area.content_box().width() * scale;
-            widths.measured_across(across);
             for (index, by) in wide.into_iter().flatten() {
                 widths.set(index, by);
             }
@@ -675,19 +691,12 @@ where
 struct Widths {
     each: Vec<f32>,
     widest: f32,
-    /// The area's width when they were measured.
-    across: f32,
 }
 
 impl Widths {
-    /// Forgets every row measured at another width of the area, since
-    /// a row out of sight cannot be measured again.
-    fn measured_across(&mut self, across: f32) {
-        if self.across != across {
-            self.each.fill(0.0);
-            self.widest = 0.0;
-            self.across = across;
-        }
+    fn forget(&mut self) {
+        self.each.fill(0.0);
+        self.widest = 0.0;
     }
 
     fn set(&mut self, index: usize, by: f32) {
@@ -780,6 +789,12 @@ impl Heights {
             self.tree[k] += by;
             k += lowest(k);
         }
+    }
+
+    fn forget(&mut self) {
+        self.known.fill(false);
+        self.laid_out_sum = 0.0;
+        self.laid_out_rows = 0;
     }
 
     fn reestimate(&mut self, estimate: f32) {

@@ -939,3 +939,47 @@ fn a_resize_forgets_the_range_of_rows_out_of_sight() {
     let cell = app.world().get::<ChildOf>(cell).unwrap().parent();
     assert_eq!(right(&app, long), right(&app, cell), "the end shows");
 }
+
+#[test]
+fn a_width_change_reestimates_rows_out_of_sight() {
+    let mut app = laid_out();
+    app.insert_resource(Across(300.0));
+    let wraps = |world: &World, _: usize| {
+        if world.resource::<Across>().0 < 300.0 {
+            40.0
+        } else {
+            20.0
+        }
+    };
+    app.insert_resource(Count(10_000));
+    mount::<Plain>(
+        app.world_mut(),
+        column((virtual_list(
+            resource::<Count, _>(|count| count.0),
+            ESTIMATE,
+            row(wraps),
+        ),))
+        .width(resource::<Across, _>(|across| px(across.0)))
+        .height(px(VIEW)),
+    );
+    settle(&mut app);
+    let area = app
+        .world_mut()
+        .query_filtered::<Entity, With<VirtualList>>()
+        .single(app.world())
+        .expect("one list");
+    scroll_to(&mut app, area, 5_000);
+    settle(&mut app);
+
+    app.insert_resource(Across(200.0));
+    settle(&mut app);
+
+    assert_eq!(
+        state(&app, area).row_span(50),
+        Some(RowSpan {
+            top: 2_000.0,
+            height: 40.0
+        })
+    );
+    assert_eq!(shown_at(&mut app, area, 5_000), Some(0.0));
+}
