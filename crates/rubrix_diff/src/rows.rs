@@ -5,6 +5,7 @@ use core::ops::{Bound, Range, RangeBounds};
 
 use crate::expand::{Expansion, Shown};
 use crate::model::{Block, FileDiff, Hunk};
+use crate::words::{WordRanges, word_changes};
 
 /// How change blocks become rows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -133,6 +134,71 @@ impl Row {
             | Row::Paired { old, .. } => Anchor::Old(old.index),
         }
     }
+
+    /// The changed byte ranges of the line pair this row shows, as
+    /// [`word_changes`] gives them for its old and new line: for a
+    /// split `Paired` row, and for a stacked `Deletion` or
+    /// `Addition` whose line pairs with one on the other side of its
+    /// change block. A view marks the side it shows.
+    ///
+    /// `None` for every other row, unpaired changes included, and
+    /// for a pair with a line over 1,000 bytes. `diff` must be the
+    /// diff the row came from. Run [`realign`](crate::realign()) on
+    /// it before deriving rows, so that similar lines pair.
+    pub fn words(&self, diff: &FileDiff) -> Option<WordRanges> {
+        let (old, new) = match *self {
+            Row::Paired { old, new } => (old.index, new.index),
+            Row::Deletion { old } => {
+                partner(diff, old.index, Lane::Old)?
+            }
+            Row::Addition { new } => {
+                partner(diff, new.index, Lane::New)?
+            }
+            Row::Context { .. }
+            | Row::Expanded { .. }
+            | Row::Gap { .. } => {
+                return None;
+            }
+        };
+        word_changes(
+            diff.old_lines().line(old),
+            diff.new_lines().line(new),
+        )
+    }
+}
+
+fn partner(
+    diff: &FileDiff,
+    index: u32,
+    lane: Lane,
+) -> Option<(u32, u32)> {
+    let side = |block: &Block| match lane {
+        Lane::Old => block.old_range(),
+        Lane::New => block.new_range(),
+    };
+    let hunks = diff.hunks();
+    let first = |hunk: &Hunk| {
+        hunk.blocks().first().map_or(0, |b| side(b).start)
+    };
+    let hunk = hunks
+        .partition_point(|h| first(h) <= index)
+        .checked_sub(1)?;
+    let blocks = hunks[hunk].blocks();
+    let block = blocks
+        .partition_point(|b| side(b).start <= index)
+        .checked_sub(1)?;
+    let Block::Change {
+        old_start,
+        old_len,
+        new_start,
+        new_len,
+    } = blocks[block]
+    else {
+        return None;
+    };
+    let at = index - side(&blocks[block]).start;
+    (at < old_len.min(new_len))
+        .then_some((old_start + at, new_start + at))
 }
 
 /// A source position that survives a layout switch.

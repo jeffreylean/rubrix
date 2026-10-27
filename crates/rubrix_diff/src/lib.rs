@@ -40,7 +40,9 @@ extern crate alloc;
 mod expand;
 mod model;
 mod patch;
+mod realign;
 mod rows;
+mod words;
 
 use alloc::vec::Vec;
 
@@ -50,8 +52,10 @@ pub use model::{
     PatchBuilder, header_start,
 };
 pub use patch::{PatchError, PatchErrorKind, parse_patch};
+pub use realign::realign;
 pub use rows::{Anchor, Layout, LineNo, LineRef, Row, Rows, rows};
 use similar::DiffOp;
+pub use words::{WordRanges, word_changes};
 
 /// A line-diff algorithm for `similar` to run.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
