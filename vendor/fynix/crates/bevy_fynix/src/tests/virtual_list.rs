@@ -366,17 +366,35 @@ fn growing_in_the_middle_keeps_the_first_row_still() {
 }
 
 #[test]
-fn growing_from_no_rows_shows_the_first() {
+fn growing_from_no_rows_follows_the_bottom() {
     let mut app = laid_out();
-    let area = list(&mut app, 0, tall_hundredths);
+    let area = list(&mut app, 0, uniform);
     assert!(rows(&mut app, area).is_empty());
     assert_eq!(state(&app, area).spawned(), None);
 
-    app.world_mut().resource_mut::<Count>().0 = 10_000;
+    for count in (2..=200).step_by(2) {
+        app.world_mut().resource_mut::<Count>().0 = count;
+        app.update();
+    }
     settle(&mut app);
 
-    assert_eq!(scroll(&app, area), 0.0);
-    assert_eq!(shown_at(&mut app, area, 0), Some(0.0));
+    assert_eq!(shown_at(&mut app, area, 199), Some(VIEW - 20.0));
+}
+
+#[test]
+fn growing_while_scrolled_up_from_the_bottom_keeps_the_view() {
+    let mut app = laid_out();
+    let area = list(&mut app, 1_000, uniform);
+    scroll_to(&mut app, area, 999);
+    settle(&mut app);
+    let up = scroll(&app, area) - 40.0;
+    app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y = up;
+    settle(&mut app);
+
+    app.world_mut().resource_mut::<Count>().0 = 2_000;
+    settle(&mut app);
+
+    assert_eq!(scroll(&app, area), up);
 }
 
 #[test]

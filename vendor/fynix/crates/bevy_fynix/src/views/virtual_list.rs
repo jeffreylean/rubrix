@@ -243,10 +243,15 @@ impl VirtualList {
     ) -> Scroll {
         let view = f64::from(view);
         let scroll = f64::from(scroll);
-        let bottom = self.heights.total() - view;
-        let pinned = bottom > 0.0
-            && (scroll >= bottom - AT_END
-                || self.pinned && scroll >= self.placed_at - AT_END);
+        // A view of no height has not been laid out, or is hidden,
+        // so it says nothing about where the user left it.
+        let pinned = if view > 0.0 {
+            let bottom = self.heights.total() - view;
+            scroll >= bottom - AT_END
+                || self.pinned && scroll >= self.placed_at - AT_END
+        } else {
+            self.pinned
+        };
         let mut anchor = self.shown_at(scroll);
         let mut within = scroll - self.heights.offset(anchor);
         for &(index, height) in measured {
