@@ -134,8 +134,9 @@ impl<R> VirtualListView<R> {
     /// every row fits the view. A scroll up by the user stops it, as
     /// does a [`scroll_to`](VirtualList::scroll_to) of a row other
     /// than the last, or a
-    /// [`scroll_into_view`](VirtualList::scroll_into_view) that ends
-    /// above the bottom. Moving the view back to the bottom
+    /// [`scroll_into_view`](VirtualList::scroll_into_view) or
+    /// [`scroll_range_into_view`](VirtualList::scroll_range_into_view)
+    /// that ends above the bottom. Moving the view back to the bottom
     /// starts it again.
     pub fn follow_bottom(
         mut self,
@@ -292,7 +293,11 @@ pub struct VirtualList {
 #[derive(Clone, Copy)]
 enum Target {
     First(usize),
-    Whole { index: usize, remeasured: bool },
+    Reveal {
+        index: usize,
+        from_top: (f32, f32),
+        remeasured: bool,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -344,11 +349,24 @@ impl VirtualList {
     }
 
     /// Scrolls as little as shows all of the row `index`, at the next
-    /// update, or its top when it is higher than the view. A row in
-    /// view does not move.
+    /// update. A row higher than the view scrolls as little as fills
+    /// the view with it, so a view already inside it does not move.
     pub fn scroll_into_view(&mut self, index: usize) {
-        self.target = Some(Target::Whole {
+        self.scroll_range_into_view(index, 0.0..f32::INFINITY);
+    }
+
+    /// Scrolls as little as shows `range` of the row `index`, in
+    /// pixels from the row's top, at the next update, the same way
+    /// as [`scroll_into_view`](Self::scroll_into_view) shows a whole
+    /// row. `range` is cut to the row's height.
+    pub fn scroll_range_into_view(
+        &mut self,
+        index: usize,
+        range: Range<f32>,
+    ) {
+        self.target = Some(Target::Reveal {
             index,
+            from_top: (range.start, range.end),
             remeasured: false,
         });
     }
@@ -472,22 +490,26 @@ impl VirtualList {
             Some(Target::First(index)) => {
                 self.heights.offset(index.min(last))
             }
-            Some(Target::Whole { .. }) if self.count == 0 => 0.0,
-            Some(Target::Whole { index, remeasured }) => {
+            Some(Target::Reveal { .. }) if self.count == 0 => 0.0,
+            Some(Target::Reveal {
+                index,
+                from_top,
+                remeasured,
+            }) => {
                 let index = index.min(last);
                 if !remeasured && !self.heights.known[index] {
-                    self.target = Some(Target::Whole {
+                    self.target = Some(Target::Reveal {
                         index,
+                        from_top,
                         remeasured: true,
                     });
                 }
                 let top = self.heights.offset(index);
-                let end = self.heights.offset(index + 1);
-                if top < at || end - top > view {
-                    top
-                } else {
-                    at.max(end - view)
-                }
+                let height = f64::from(self.heights.each[index]);
+                let from = f64::from(from_top.0).clamp(0.0, height);
+                let to = f64::from(from_top.1).clamp(from, height);
+                let (lo, hi) = (top + from, top + to - view);
+                at.clamp(lo.min(hi), lo.max(hi))
             }
         }
         .clamp(0.0, bottom);
@@ -500,7 +522,7 @@ impl VirtualList {
             {
                 Pin::AtBottom
             }
-            Some(Target::Whole { .. })
+            Some(Target::Reveal { .. })
                 if self.follow && to >= bottom =>
             {
                 Pin::AtBottom

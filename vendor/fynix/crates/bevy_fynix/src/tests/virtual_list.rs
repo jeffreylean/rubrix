@@ -1,6 +1,7 @@
 //! The virtual list against real bevy_ui layout, headless: which rows
 //! it builds, where they show, and what a change keeps still.
 
+use core::ops::Range;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -1372,4 +1373,77 @@ fn rows_never_overlap_at_any_scale() {
             }
         }
     }
+}
+
+#[test]
+fn a_view_inside_a_row_taller_than_it_does_not_move() {
+    let mut app = laid_out();
+    app.insert_resource(Grown(50, 2_000.0));
+    let area = list(&mut app, 10_000, grown);
+    reveal(&mut app, area, 50);
+    let inside = scroll(&app, area) + 800.0;
+    app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y =
+        inside;
+    settle(&mut app);
+
+    reveal(&mut app, area, 50);
+
+    assert_eq!(scroll(&app, area), inside);
+}
+
+#[test]
+fn a_row_taller_than_the_view_above_it_scrolls_in_at_its_bottom() {
+    let mut app = laid_out();
+    app.insert_resource(Grown(50, 2_000.0));
+    let area = list(&mut app, 10_000, grown);
+    scroll_to(&mut app, area, 60);
+    settle(&mut app);
+
+    reveal(&mut app, area, 50);
+
+    let span = state(&app, area).row_span(50).unwrap();
+    assert_eq!(scroll(&app, area), span.top + span.height - VIEW);
+}
+
+fn reveal_range(
+    app: &mut App,
+    area: Entity,
+    index: usize,
+    range: Range<f32>,
+) {
+    app.world_mut()
+        .get_mut::<VirtualList>(area)
+        .expect("a list")
+        .scroll_range_into_view(index, range);
+    settle(app);
+}
+
+#[test]
+fn a_range_of_a_tall_row_scrolls_in_by_the_least() {
+    let mut app = laid_out();
+    app.insert_resource(Grown(50, 2_000.0));
+    let area = list(&mut app, 10_000, grown);
+    reveal(&mut app, area, 50);
+    let top = state(&app, area).row_span(50).unwrap().top;
+    assert_eq!(scroll(&app, area), top);
+
+    reveal_range(&mut app, area, 50, 1_500.0..1_520.0);
+    assert_eq!(
+        scroll(&app, area),
+        top + 1_520.0 - VIEW,
+        "from above"
+    );
+
+    reveal_range(&mut app, area, 50, 600.0..620.0);
+    assert_eq!(scroll(&app, area), top + 600.0, "from below");
+
+    reveal_range(&mut app, area, 50, 700.0..720.0);
+    assert_eq!(scroll(&app, area), top + 600.0, "in view");
+
+    reveal_range(&mut app, area, 50, 100.0..900.0);
+    assert_eq!(
+        scroll(&app, area),
+        top + 400.0,
+        "taller than the view"
+    );
 }
