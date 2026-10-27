@@ -410,6 +410,34 @@ fn rich_layout_of_no_text_is_one_line_high() {
     assert_eq!(cursor.index(), 0);
 }
 
+#[derive(Resource)]
+struct Size(f32);
+
+#[test]
+fn a_rich_text_with_no_text_is_one_line_of_its_size_high() {
+    let mut app = laid_out();
+    app.insert_resource(Size(10.0));
+    let sized = || resource::<Size, _>(|size| size.0);
+    let empty = mount::<Plain>(
+        app.world_mut(),
+        rich(Vec::new()).size(sized()),
+    );
+    let worded = mount::<Plain>(
+        app.world_mut(),
+        rich(vec![Span::new("x")]).size(sized()),
+    );
+    app.update();
+    app.update();
+    let small = height(&app, worded);
+    assert_eq!(height(&app, empty), small);
+
+    app.world_mut().resource_mut::<Size>().0 = 30.0;
+    app.update();
+    app.update();
+    assert!(height(&app, worded) > small);
+    assert_eq!(height(&app, empty), height(&app, worded));
+}
+
 #[test]
 fn every_point_of_a_rich_text_with_no_text_is_byte_0() {
     let mut app = laid_out();

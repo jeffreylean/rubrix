@@ -1650,7 +1650,7 @@ exit
     }
 
     #[test]
-    fn the_long_line_keeps_one_blank_span_at_0_and_grows_back() {
+    fn the_long_line_keeps_one_empty_span_at_0_and_grows_back() {
         let mut app = headless(
             "click 100 96\nwait 5\nlog spans\nclick 586 68\nwait \
              5\nlog spans\nclick 734 68\nwait 5\nlog spans\nexit",
@@ -1660,7 +1660,7 @@ exit
         assert_eq!(lines.len(), 3, "{lines:?}");
         let first = listed(lines[0])[0].0.to_owned();
         assert!(lines[1].starts_with("1: "), "{}", lines[1]);
-        assert!(lines[1].contains(" \" \" "), "one blank span");
+        assert!(lines[1].contains(" \"\" "), "one empty span");
         let five = listed(lines[2]);
         assert_eq!(five.len(), 5);
         assert_eq!(five[0].0, first, "the first span kept");

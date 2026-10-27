@@ -10,9 +10,9 @@ use bevy::ecs::world::{EntityWorldMut, World};
 use bevy::math::Vec2;
 use bevy::text::{
     ComputedTextBlock, FontSize, FontSource, FontStyle, FontWeight,
-    Strikethrough, StrikethroughColor, TextBackgroundColor,
-    TextBrush, TextColor, TextFont, TextLayout, TextSpan, Underline,
-    UnderlineColor,
+    InlineBox, InlineBoxKind, LineHeight, Strikethrough,
+    StrikethroughColor, TextBackgroundColor, TextBrush, TextColor,
+    TextFont, TextLayout, TextSpan, Underline, UnderlineColor,
 };
 use bevy::ui::widget::Text;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
@@ -97,8 +97,8 @@ pub struct Look {
     pub color: Option<Color>,
     /// The rich text's font when `None`.
     pub font: Option<FontSource>,
-    /// The rich text's size when `None`. Bevy lays out no text for a
-    /// size of zero or less.
+    /// The rich text's size when `None` or NaN. Bevy lays out no
+    /// text for a size of zero or less.
     pub size: Option<f32>,
     pub weight: Option<FontWeight>,
     pub style: Option<FontStyle>,
@@ -192,7 +192,9 @@ impl PartialEq for Spans {
 
 /// The parley layout of the rich text `root` as Bevy last laid it
 /// out, in physical pixels from the top left of its content box. Its
-/// byte offsets index the text of the spans joined in order.
+/// byte offsets index the text of the spans joined in order. A rich
+/// text with no text lays out no bytes on one line of its size, so
+/// every point in it is byte 0.
 pub fn rich_layout(
     world: &World,
     root: Entity,
@@ -297,7 +299,11 @@ fn mark<C: Component + Default>(
 fn font_of(look: &Look, body: &Body) -> TextFont {
     TextFont {
         font: look.font.clone().unwrap_or_else(|| body.font.clone()),
-        font_size: FontSize::Px(look.size.unwrap_or(body.size)),
+        font_size: FontSize::Px(
+            look.size
+                .filter(|size| !size.is_nan())
+                .unwrap_or(body.size),
+        ),
         weight: look.weight.unwrap_or(FontWeight::NORMAL),
         style: look.style.unwrap_or_default(),
         ..TextFont::default()
@@ -347,17 +353,42 @@ fn inherited(world: &World, root: Entity) -> Option<(Body, Paint)> {
     ))
 }
 
-/// The spans a rich text with no text shows: one space. Bevy lays out
-/// no text for an empty span, so a line of nothing would measure no
-/// height, where a space measures a line of the root's font.
-fn blank() -> [Span; 1] {
-    [Span::new(" ")]
+/// Holds a rich text with no text one line high. Bevy lays out no
+/// text for an empty span, so the line would measure no height. An
+/// inline box on the first span gives it the height of a line of the
+/// root's size and adds no byte to the layout.
+fn hold_line(world: &mut World, root: Entity) {
+    let Some(size) = world.get::<Body>(root).map(|body| body.size)
+    else {
+        return;
+    };
+    let line = match world.get::<LineHeight>(root).copied() {
+        Some(LineHeight::Px(px)) => px,
+        Some(LineHeight::RelativeToFont(scale)) => scale * size,
+        None => return,
+    };
+    let spans = spans_of(world, root);
+    let blank = spans.iter().all(|&span| {
+        world
+            .get::<TextSpan>(span)
+            .is_none_or(|text| text.0.is_empty())
+    });
+    let Some(&first) = spans.first() else {
+        return;
+    };
+    put_or_take(
+        &mut world.entity_mut(first),
+        blank.then_some(InlineBox {
+            kind: InlineBoxKind::InFlow,
+            size: Vec2::new(0.0, line),
+        }),
+    );
 }
 
-/// A rich text always keeps one span: a text that loses its last
-/// child loses `Children` with it, and Bevy lays a text out again
-/// when `Children` changes but not when it is removed, so its old
-/// glyphs would stay.
+/// A rich text with no spans keeps one empty span: a text that loses
+/// its last child loses `Children` with it, and Bevy lays a text out
+/// again when `Children` changes but not when it is removed, so its
+/// old glyphs would stay.
 pub struct PatchSpans;
 
 impl Patch<Bevy, Spans> for PatchSpans {
@@ -365,10 +396,9 @@ impl Patch<Bevy, Spans> for PatchSpans {
         let Some((body, paint)) = inherited(world, node) else {
             return;
         };
-        let blank = blank();
-        let spans = if spans.0.iter().all(|span| span.text.is_empty())
-        {
-            &blank[..]
+        let none = [Span::default()];
+        let spans = if spans.0.is_empty() {
+            &none[..]
         } else {
             &spans.0[..]
         };
@@ -400,6 +430,7 @@ impl Patch<Bevy, Spans> for PatchSpans {
         for &kid in shown.get(spans.len()..).unwrap_or_default() {
             world.entity_mut(kid).despawn();
         }
+        hold_line(world, node);
     }
 }
 
@@ -432,6 +463,7 @@ fn rebody(
         font.font_size = FontSize::Px(body.size);
     }
     redraw(world, root);
+    hold_line(world, root);
 }
 
 pub struct PatchBodyInk;
