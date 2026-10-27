@@ -14,14 +14,15 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::world::World;
 use bevy::math::UVec2;
 use bevy::ui::{
-    ComputedNode, Display, Node, ScrollPosition, UiGlobalTransform, Val,
-    px,
+    ComputedNode, Display, Node, OverflowAxis, ScrollPosition,
+    UiGlobalTransform, Val, px,
 };
 
 use super::layout::laid_out;
 use crate::tests::Plain;
 use crate::views::{
-    FrameProps, RowSlot, VirtualList, column, frame, virtual_list,
+    FrameProps, RowSlot, RowSpan, VirtualList, column, frame,
+    row as hrow, virtual_list,
 };
 use crate::{
     AnyView, Bevy, Prop, ViewExt, derived, every_frame, mount,
@@ -579,19 +580,28 @@ fn no_frame_draws_an_unmeasured_row_over_the_next() {
     scroll_to(&mut app, area, 5_000);
     for frame in 1..=4 {
         app.update();
-        assert_apart(&mut app, area, &format!("scroll_to, frame {frame}"));
+        assert_apart(
+            &mut app,
+            area,
+            &format!("scroll_to, frame {frame}"),
+        );
     }
     app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y +=
         20_000.0;
     for frame in 1..=4 {
         app.update();
-        assert_apart(&mut app, area, &format!("a jump, frame {frame}"));
+        assert_apart(
+            &mut app,
+            area,
+            &format!("a jump, frame {frame}"),
+        );
     }
 }
 
 fn under_a_wrong_estimate(count: usize, estimate: f32) {
     let mut app = laid_out();
-    let area = mounted(&mut app, count, estimate, row(uniform), px(VIEW));
+    let area =
+        mounted(&mut app, count, estimate, row(uniform), px(VIEW));
     let check = |app: &mut App, when: &str| {
         let slots = state(app, area).rows();
         assert!(slots < 200, "{when}: {slots} slots");
@@ -605,15 +615,18 @@ fn under_a_wrong_estimate(count: usize, estimate: f32) {
     let jumps: [(&str, Jump); 2] = [
         ("scroll_to", |app, area| scroll_to(app, area, 5_000)),
         ("a jump", |app, area| {
-            app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y +=
-                20_000.0;
+            app.world_mut()
+                .get_mut::<ScrollPosition>(area)
+                .unwrap()
+                .y += 20_000.0;
         }),
     ];
     for (name, jump) in jumps {
         jump(&mut app, area);
         for frame in 1..=8 {
             app.update();
-            let when = format!("{estimate} px, {name}, frame {frame}");
+            let when =
+                format!("{estimate} px, {name}, frame {frame}");
             check(&mut app, &when);
             if frame >= 2 {
                 let gap = uncovered(&mut app, area);
@@ -639,4 +652,211 @@ fn a_right_estimate_stays_in_bounds() {
 fn an_estimate_ten_times_too_large_stays_in_bounds() {
     under_a_wrong_estimate(10_000, ESTIMATE * 10.0);
     under_a_wrong_estimate(100_000, ESTIMATE * 10.0);
+}
+
+#[test]
+fn a_content_y_maps_to_its_row_and_back() {
+    let mut app = laid_out();
+    let area = list(&mut app, 10_000, tall_hundredths);
+    let list = state(&app, area);
+
+    assert_eq!(
+        list.row_span(0),
+        Some(RowSpan {
+            top: 0.0,
+            height: 60.0
+        })
+    );
+    assert_eq!(
+        list.row_span(1),
+        Some(RowSpan {
+            top: 60.0,
+            height: 20.0
+        })
+    );
+    assert_eq!(list.row_at(59.9), Some(0));
+    assert_eq!(list.row_at(60.0), Some(1));
+    assert_eq!(list.row_at(85.0), Some(2));
+    assert_eq!(list.row_at(-5.0), Some(0));
+    assert_eq!(list.row_at(1.0e9), Some(9_999));
+    assert_eq!(list.row_span(10_000), None);
+    let span = list.row_span(5).unwrap();
+    assert_eq!(list.row_at(span.top + span.height / 2.0), Some(5));
+}
+
+#[test]
+fn an_empty_list_has_no_rows_to_map() {
+    let mut app = laid_out();
+    let area = list(&mut app, 0, uniform);
+
+    assert_eq!(state(&app, area).row_at(0.0), None);
+    assert_eq!(state(&app, area).row_span(0), None);
+}
+
+fn reveal(app: &mut App, area: Entity, index: usize) {
+    app.world_mut()
+        .get_mut::<VirtualList>(area)
+        .expect("a list")
+        .scroll_into_view(index);
+    settle(app);
+}
+
+#[test]
+fn scrolling_a_row_into_view_moves_the_least() {
+    let mut app = laid_out();
+    let area = list(&mut app, 10_000, uniform);
+
+    reveal(&mut app, area, 40);
+    assert_eq!(scroll(&app, area), 40.0 * 20.0 + 20.0 - VIEW);
+    assert_eq!(shown_at(&mut app, area, 40), Some(VIEW - 20.0));
+
+    reveal(&mut app, area, 30);
+    assert_eq!(scroll(&app, area), 320.0, "a row in view stays");
+
+    reveal(&mut app, area, 5);
+    assert_eq!(scroll(&app, area), 100.0);
+    assert_eq!(shown_at(&mut app, area, 5), Some(0.0));
+}
+
+#[test]
+fn a_row_scrolled_into_view_shows_whole_once_measured() {
+    let mut app = laid_out();
+    let area = list(&mut app, 10_000, tall_hundredths);
+
+    reveal(&mut app, area, 300);
+    assert_eq!(shown_at(&mut app, area, 300), Some(VIEW - 60.0));
+}
+
+#[test]
+fn a_row_taller_than_the_view_scrolls_in_at_its_top() {
+    let mut app = laid_out();
+    app.insert_resource(Grown(50, 2_000.0));
+    let area = list(&mut app, 10_000, grown);
+
+    reveal(&mut app, area, 50);
+    assert_eq!(shown_at(&mut app, area, 50), Some(0.0));
+}
+
+#[derive(Component)]
+struct Gutter;
+
+fn wide(index: usize) -> f32 {
+    if index == 7 { 900.0 } else { 100.0 }
+}
+
+fn sideways_list(app: &mut App) -> Entity {
+    app.insert_resource(Count(10_000));
+    let row = |slot: RowSlot| {
+        let gutter = AnyView::new(|cx| {
+            let gutter =
+                cx.build(frame().width(px(40.0)).height(px(20.0)));
+            cx.world.entity_mut(gutter).insert(Gutter);
+            gutter
+        });
+        let index = slot.index();
+        let text = frame()
+            .width(
+                derived(move |world| px(wide(index.get(world))))
+                    .when(every_frame()),
+            )
+            .height(px(20.0));
+        let text = AnyView::new(move |cx| {
+            let node = cx.build(text);
+            cx.effect(
+                node,
+                slot.index().into(),
+                |world, node, &index| {
+                    world.entity_mut(node).insert(Shows(index));
+                },
+            );
+            node
+        });
+        hrow((gutter, slot.sideways(text))).boxed()
+    };
+    mount::<Plain>(
+        app.world_mut(),
+        column((virtual_list(
+            resource::<Count, _>(|count| count.0),
+            ESTIMATE,
+            row,
+        )
+        .sideways(),))
+        .width(px(300.0))
+        .height(px(VIEW)),
+    );
+    settle(app);
+    app.world_mut()
+        .query_filtered::<Entity, With<VirtualList>>()
+        .single(app.world())
+        .expect("one list")
+}
+
+fn left(app: &App, node: Entity) -> f32 {
+    let computed = app.world().get::<ComputedNode>(node).unwrap();
+    let at = app.world().get::<UiGlobalTransform>(node).unwrap();
+    (at.translation.x - computed.size().x / 2.0)
+        * computed.inverse_scale_factor()
+}
+
+fn right(app: &App, node: Entity) -> f32 {
+    left(app, node) + {
+        let computed = app.world().get::<ComputedNode>(node).unwrap();
+        computed.size().x * computed.inverse_scale_factor()
+    }
+}
+
+fn shows(app: &mut App, index: usize) -> Entity {
+    app.world_mut()
+        .query::<(Entity, &Shows)>()
+        .iter(app.world())
+        .find(|(_, shows)| shows.0 == index)
+        .map(|(node, _)| node)
+        .expect("a built row")
+}
+
+fn scroll_x(app: &mut App, area: Entity, by: f32) {
+    app.world_mut().get_mut::<ScrollPosition>(area).unwrap().x += by;
+    settle(app);
+}
+
+#[test]
+fn sideways_rows_share_one_offset_and_the_widest_sets_its_end() {
+    let mut app = laid_out();
+    let area = sideways_list(&mut app);
+    let gutters = |app: &mut App| {
+        app.world_mut()
+            .query_filtered::<Entity, With<Gutter>>()
+            .iter(app.world())
+            .map(|gutter| left(app, gutter))
+            .collect::<Vec<_>>()
+    };
+    let before = gutters(&mut app);
+    let (narrow, long) = (shows(&mut app, 3), shows(&mut app, 7));
+    let (narrow_at, long_at) = (left(&app, narrow), left(&app, long));
+    let cell = app.world().get::<ChildOf>(long).unwrap().parent();
+    let cell = app.world().get::<ChildOf>(cell).unwrap().parent();
+
+    scroll_x(&mut app, area, 50.0);
+    assert_eq!(left(&app, narrow), narrow_at - 50.0);
+    assert_eq!(left(&app, long), long_at - 50.0);
+    assert_eq!(gutters(&mut app), before, "the gutters stay put");
+
+    scroll_x(&mut app, area, 10_000.0);
+    assert_eq!(right(&app, long), right(&app, cell), "the end shows");
+    let by = long_at - left(&app, long);
+    assert_eq!(left(&app, narrow), narrow_at - by);
+
+    scroll_to(&mut app, area, 5_000);
+    settle(&mut app);
+    let x = app.world().get::<ScrollPosition>(area).unwrap().x;
+    assert_eq!(x, by, "a wide row out of sight keeps the range");
+}
+
+#[test]
+fn a_list_scrolls_sideways_only_when_asked() {
+    let mut app = laid_out();
+    let area = list(&mut app, 10_000, uniform);
+    let node = app.world().get::<Node>(area).unwrap();
+
+    assert_eq!(node.overflow.x, OverflowAxis::Clip);
 }

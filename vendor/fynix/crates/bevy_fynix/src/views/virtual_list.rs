@@ -6,14 +6,15 @@ use std::sync::Arc;
 use bevy::app::{App, Update};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::Query;
 use bevy::ecs::world::World;
-use bevy::math::Vec2;
+use bevy::math::{BVec2, Vec2};
 use bevy::ui::{
-    ComputedNode, Display, FlexDirection, Node, Overflow, OverflowAxis,
-    OverflowClipMargin, PositionType, ScrollPosition, Val, percent,
-    px,
+    ComputedNode, Display, FlexDirection, IgnoreScroll, Node,
+    Overflow, OverflowAxis, OverflowClipMargin, PositionType,
+    ScrollPosition, UiTransform, Val, Val2, percent, px,
 };
 
 use crate::prop::{Prop, Signal, each};
@@ -53,6 +54,7 @@ pub struct VirtualListView<R> {
     pub frame: Frame,
     count: Prop<usize>,
     estimate: f32,
+    sideways: bool,
     row: R,
 }
 
@@ -77,13 +79,13 @@ pub struct VirtualListView<R> {
 ///
 /// # Limits
 ///
-/// - It builds at most 199 rows, cutting the 1,000 px of overscan
-///   on each side first. A view more than 199 rows high shows a
-///   blank band below them.
+/// - It builds at most 199 rows, cutting the 1,000 px of overscan on
+///   each side first. A view more than 199 rows high shows a blank
+///   band below them.
 /// - Positions are `f32` pixels, as in Bevy's layout. Past 2^24 px,
 ///   about 880,000 rows of 19 px, the gaps between rows round to
-///   whole pixels, and seams of up to 2 px show. 100,000 rows of
-///   19 px show none.
+///   whole pixels, and seams of up to 2 px show. 100,000 rows of 19
+///   px show none.
 pub fn virtual_list<R>(
     count: impl Into<Prop<usize>>,
     estimate: f32,
@@ -106,7 +108,21 @@ pub fn virtual_list<R>(
             .grow(1.0),
         count: count.into(),
         estimate,
+        sideways: false,
         row,
+    }
+}
+
+impl<R> VirtualListView<R> {
+    /// Lets the list scroll sideways, by one offset for every row and
+    /// with one bar. Only the [`RowSlot::sideways`] cells of a row
+    /// move. The list scrolls as far as the content of the widest
+    /// such cell of any row laid out so far overflows its cell, so a
+    /// wide row that scrolls out of sight keeps the range.
+    pub fn sideways(mut self) -> Self {
+        self.sideways = true;
+        self.frame = self.frame.overflow(Overflow::scroll());
+        self
     }
 }
 
@@ -125,7 +141,11 @@ where
         let list = cx.build(self.frame);
         let spacer = cx.under(list, Cx::spawn);
         let count = self.count.get(cx.world).unwrap_or(0);
-        let state = VirtualList::new(self.estimate, count, spacer);
+        let mut state =
+            VirtualList::new(self.estimate, count, spacer);
+        if self.sideways {
+            state.widths = Some(Widths::default());
+        }
         let height = state.height();
         let mut area = cx.world.entity_mut(list);
         area.insert((ScrollGoal::default(), state));
@@ -181,6 +201,45 @@ impl RowSlot {
                 .map_or(0, |placed| placed.index)
         })
     }
+
+    /// A cell of the row that clips `content` to the room the row
+    /// leaves it, while `content` keeps its own width. In a list that
+    /// scrolls [sideways](VirtualListView::sideways), `content` moves
+    /// with the list's sideways offset and the rest of the row stays.
+    pub fn sideways<T: 'static>(
+        self,
+        content: AnyView<Bevy, T>,
+    ) -> AnyView<Bevy, T> {
+        AnyView::new(move |cx: &mut Cx<'_, Bevy, T>| {
+            let cell = cx.spawn();
+            *cx.world.get_mut::<Node>(cell).expect("a node") = Node {
+                flex_grow: 1.0,
+                flex_basis: px(0.0),
+                min_width: px(0.0),
+                overflow: Overflow::clip_x(),
+                ..Node::default()
+            };
+            let moved = cx.under(cell, Cx::spawn);
+            let mut node = cx.world.entity_mut(moved);
+            node.insert(Sideways(self));
+            node.get_mut::<Node>().expect("a node").flex_shrink = 0.0;
+            cx.under(moved, |cx| cx.build(content));
+            cell
+        })
+    }
+}
+
+/// The content of a [`RowSlot::sideways`] cell.
+#[derive(Component)]
+struct Sideways(RowSlot);
+
+/// Where a row sits in its list's content, in logical pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RowSpan {
+    /// From the top of the first row.
+    pub top: f32,
+    /// The row's height, or its estimate until it is laid out.
+    pub height: f32,
 }
 
 /// A virtual list's rows: their heights, and which slot shows which.
@@ -194,9 +253,19 @@ pub struct VirtualList {
     slots: Vec<Placed>,
     spawned: Range<usize>,
     first_visible: usize,
-    target: Option<usize>,
+    target: Option<Target>,
     pinned: bool,
     placed_at: f64,
+    widths: Option<Widths>,
+}
+
+#[derive(Clone, Copy)]
+enum Target {
+    /// The row to show first.
+    First(usize),
+    /// The row to show whole, and whether it has been placed at its
+    /// estimate already.
+    Whole { index: usize, again: bool },
 }
 
 #[derive(Default)]
@@ -225,6 +294,7 @@ impl VirtualList {
             target: None,
             pinned: false,
             placed_at: 0.0,
+            widths: None,
         };
         list.place(&[], 0.0, 0.0);
         list
@@ -233,7 +303,36 @@ impl VirtualList {
     /// Scrolls so that the row `index` is the first to show, at the
     /// next update, or as near as the end of the list lets it.
     pub fn scroll_to(&mut self, index: usize) {
-        self.target = Some(index);
+        self.target = Some(Target::First(index));
+    }
+
+    /// Scrolls as little as shows all of the row `index`, at the next
+    /// update, or its top when it is higher than the view. A row in
+    /// view does not move.
+    pub fn scroll_into_view(&mut self, index: usize) {
+        self.target = Some(Target::Whole {
+            index,
+            again: false,
+        });
+    }
+
+    /// The row at `y` in the list's content, or the nearest row when
+    /// `y` is above the first or below the last. `None` while there
+    /// are no rows. A point's content `y` is how far below the top of
+    /// the area's content box it is, plus the area's
+    /// [`ScrollPosition`].
+    pub fn row_at(&self, y: f32) -> Option<usize> {
+        (self.heights.len() > 0)
+            .then(|| self.heights.index_at(f64::from(y.max(0.0))))
+    }
+
+    /// Where the row `index` sits in the list's content, `None` past
+    /// the last row.
+    pub fn row_span(&self, index: usize) -> Option<RowSpan> {
+        (index < self.heights.len()).then(|| RowSpan {
+            top: self.heights.offset(index) as f32,
+            height: self.heights.each[index],
+        })
     }
 
     /// The first row more than half a pixel of which shows.
@@ -293,6 +392,9 @@ impl VirtualList {
             self.estimate = mean;
             self.heights.reestimate(mean);
         }
+        if let Some(widths) = &mut self.widths {
+            widths.resize(self.count);
+        }
         if self.heights.len() != self.count {
             self.heights.resize(self.count, self.estimate);
             if anchor >= self.count {
@@ -300,17 +402,35 @@ impl VirtualList {
                 within = 0.0;
             }
         }
-        let jump = self.target.take().is_some_and(|target| {
-            anchor = target.min(self.count.saturating_sub(1));
-            within = 0.0;
-            true
-        });
         let bottom = (self.heights.total() - view).max(0.0);
-        let to = if pinned && !jump {
-            bottom
-        } else {
-            (self.heights.offset(anchor) + within).clamp(0.0, bottom)
-        };
+        let at =
+            (self.heights.offset(anchor) + within).clamp(0.0, bottom);
+        let last = self.count.saturating_sub(1);
+        let target = self.target.take();
+        let to = match target {
+            None if pinned => bottom,
+            None => at,
+            Some(Target::First(index)) => {
+                self.heights.offset(index.min(last))
+            }
+            Some(Target::Whole { .. }) if self.count == 0 => 0.0,
+            Some(Target::Whole { index, again }) => {
+                let index = index.min(last);
+                if !again && !self.heights.known[index] {
+                    self.target =
+                        Some(Target::Whole { index, again: true });
+                }
+                let top = self.heights.offset(index);
+                let end = self.heights.offset(index + 1);
+                if top < at || end - top > view {
+                    top
+                } else {
+                    at.max(end - view)
+                }
+            }
+        }
+        .clamp(0.0, bottom);
+        let jump = target.is_some() && to != at;
         self.pinned = pinned && !jump;
         self.placed_at = to;
         self.fill(to, view);
@@ -373,16 +493,45 @@ impl VirtualList {
 
 fn place_rows(
     mut lists: Query<(
+        Entity,
         &mut VirtualList,
         &ComputedNode,
         &mut ScrollPosition,
         &mut ScrollGoal,
     )>,
     mut nodes: Query<(&ComputedNode, &mut Node)>,
+    mut cells: Query<(
+        &Sideways,
+        &ChildOf,
+        &ComputedNode,
+        &mut UiTransform,
+    )>,
 ) {
-    for (mut list, area, mut position, mut goal) in &mut lists {
-        let view =
-            area.content_box().height() * area.inverse_scale_factor();
+    for (entity, mut list, area, mut position, mut goal) in &mut lists
+    {
+        let scale = area.inverse_scale_factor();
+        let view = area.content_box().height() * scale;
+        let mut wide = vec![None::<f32>; list.slots.len()];
+        for (cell, room, content, _) in &cells {
+            let RowSlot { list: of, slot } = cell.0;
+            let Ok((room, _)) = nodes.get(room.parent()) else {
+                continue;
+            };
+            if of != entity || room.size().x <= 0.0 {
+                continue;
+            }
+            let by = (content.size().x - room.content_box().width())
+                .max(0.0)
+                * scale;
+            if let Some(most) = wide.get_mut(slot) {
+                *most = Some(most.map_or(by, |most| most.max(by)));
+            }
+        }
+        let wide = wide
+            .into_iter()
+            .zip(&list.slots)
+            .filter_map(|(by, placed)| Some((placed.index, by?)))
+            .collect::<Vec<_>>();
         let measured = list
             .slots
             .iter()
@@ -411,11 +560,29 @@ fn place_rows(
                 slot.height = height;
             }
         }
+        let mut width = percent(100.0);
+        if let Some(widths) = &mut list.widths {
+            for (index, by) in wide {
+                widths.set(index, by);
+            }
+            position.x = position.x.clamp(0.0, widths.widest);
+            width =
+                px(area.content_box().width() * scale
+                    + widths.widest);
+            let shift = Val2::px(-position.x, 0.0);
+            for (cell, _, _, mut moved) in &mut cells {
+                if cell.0.list == entity && moved.translation != shift
+                {
+                    moved.translation = shift;
+                }
+            }
+        }
         let height = list.height();
         if let Ok((_, mut spacer)) = nodes.get_mut(list.spacer)
-            && spacer.height != height
+            && (spacer.height != height || spacer.width != width)
         {
             spacer.height = height;
+            spacer.width = width;
         }
     }
 }
@@ -430,6 +597,11 @@ fn track<T: 'static>() -> AnyView<Bevy, T> {
             right: px(0.0),
             ..Node::default()
         };
+        // The rows stay as the area scrolls sideways, and only their
+        // sideways cells move.
+        cx.world
+            .entity_mut(node)
+            .insert(IgnoreScroll(BVec2::new(true, false)));
         node
     })
 }
@@ -490,6 +662,40 @@ where
             changed
         },
     )
+}
+
+/// How far the widest sideways cell of each row overflows it, and
+/// the most any row does.
+#[derive(Default)]
+struct Widths {
+    each: Vec<f32>,
+    widest: f32,
+}
+
+impl Widths {
+    fn set(&mut self, index: usize, by: f32) {
+        let Some(at) = self.each.get_mut(index) else {
+            return;
+        };
+        let was = core::mem::replace(at, by);
+        if by >= self.widest {
+            self.widest = by;
+        } else if was == self.widest {
+            self.widest = self.most();
+        }
+    }
+
+    fn resize(&mut self, count: usize) {
+        let shrinks = count < self.each.len();
+        self.each.resize(count, 0.0);
+        if shrinks {
+            self.widest = self.most();
+        }
+    }
+
+    fn most(&self) -> f32 {
+        self.each.iter().copied().fold(0.0, f32::max)
+    }
 }
 
 #[derive(Default)]
@@ -561,7 +767,8 @@ impl Heights {
 
     /// Gives every row not laid out yet the height `estimate`.
     fn reestimate(&mut self, estimate: f32) {
-        for (height, &known) in self.each.iter_mut().zip(&self.known) {
+        for (height, &known) in self.each.iter_mut().zip(&self.known)
+        {
             if !known {
                 *height = estimate;
             }

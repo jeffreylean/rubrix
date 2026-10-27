@@ -73,5 +73,5 @@ pub(crate) use tooltip::tick as tick_tooltips;
 pub use tooltip::{Tooltip, TooltipExt, TooltipTiming};
 pub(crate) use virtual_list::plugin as virtual_list_plugin;
 pub use virtual_list::{
-    RowSlot, VirtualList, VirtualListView, virtual_list,
+    RowSlot, RowSpan, VirtualList, VirtualListView, virtual_list,
 };
