@@ -223,9 +223,11 @@ where
             }
         });
         *cx.world.get_mut::<Node>(spacer).expect("a node") = Node {
+            position_type: PositionType::Absolute,
+            top: px(0.0),
+            left: px(0.0),
             width: percent(100.0),
             height,
-            flex_shrink: 0.0,
             ..Node::default()
         };
         let row = Arc::new(self.row);
