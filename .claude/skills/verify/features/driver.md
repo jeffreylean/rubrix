@@ -10,6 +10,8 @@ A drive script is a text file of steps that the gallery runs one per line, with 
 - `drive-record` writes one PNG per frame that `video.sh` turns into an mp4.
 - `drive-vsync` prints `AutoNoVsync` when `RUBRIX_NO_VSYNC=1`, and exits with code 2 for any value but `0` or `1`.
 - `drive-resize` changes the window size through Hyprland and exits with code 2 when the window keeps its size.
+- `drive-topics` parses each `log` and `expect` topic with the words it takes. Every topic is one word but `runs`, which takes a line number.
+- `drive-open` reads a relative `open` path from the script's directory and exits with code 2 when the page cannot show the file.
 
 ## How to get to it (user POV)
 
@@ -25,8 +27,12 @@ A drive script is a text file of steps that the gallery runs one per line, with 
 - **Screenshot while recording.** Run `.../recshot.drive`. It prints `drive: exit ok` and `exit=0`, and `<out>/inrec.png` exists next to the frames in `<out>/video`. With `frames start` and `frames stop` around the record, the PNG count trails the frame count by the same two frames as in a record with no screenshot.
 - **Resize.** Run `.../resize.drive`. It prints `drive: resize ok`, and `resize.png` is 800 by 600.
 
+- **Topics and open.** Run `cargo test -p bevy_rubrix --example gallery drive::tests`. `log_runs_parses_its_line`, `expect_runs_takes_the_text_after_the_line`, `log_runs_without_a_number_is_refused`, and `an_open_path_is_read_from_the_script_directory` pass.
+
 ## Gotchas
 
-- `open` on a page that takes no files exits with code 2.
+- `open` on a page that takes no files exits with code 2. So does an `open` the page cannot read, with `drive: line <n>: cannot read <path>: <error>`.
+- `open` reads a relative path from the drive script's directory, not from the out dir the gallery runs in. Fixture files live in `examples/gallery/fixtures/`, not in `drive/`, because a test reads every file in `drive/` as a script.
+- `expect` takes a topic's own words before the text. `expect runs 75 comment` checks topic `runs 75` for the text `comment`. `log runs` with no number is a parse error.
 - `frames stop` before `frames start` exits with code 2.
 - The `frames.drive` script scrolls down 100 frames and up 100 frames, three times, so every one of its 600 frames moves the content.
