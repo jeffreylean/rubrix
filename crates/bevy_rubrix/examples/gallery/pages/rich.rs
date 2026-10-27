@@ -17,19 +17,17 @@ use bevy::ui::{
 };
 use bevy_fynix::tokens::{SurfaceTokens, TextTokens, Tone};
 use bevy_fynix::views::{
-    BehaviorExt, FrameProps, LineColor, Span, button, column, ghost,
-    label, parley, rich, rich_layout, rich_point, row, scroll,
+    FrameProps, LineColor, Span, column, label, parley, rich,
+    rich_layout, rich_point, row, scroll,
 };
-use bevy_fynix::{
-    AnyView, Prop, ScopedExt, ViewExt, keyed, resource,
-};
+use bevy_fynix::{AnyView, ViewExt, keyed, resource};
 
+use super::control;
 use crate::{Build, PageView, Palette};
 
 const LONG_SPANS: usize = 200;
 const ROWS: usize = 65;
 const ROW_SPANS: usize = 10;
-const BUTTON_WIDTH: f32 = 140.0;
 
 #[derive(Resource)]
 struct LongLine {
@@ -106,17 +104,6 @@ pub fn build() -> PageView {
     .min_height(px(0.0))
     .gap(8.0)
     .boxed()
-}
-
-fn control(
-    text: impl Into<Prop<String>>,
-    press: impl Fn(&mut World) + Send + Sync + 'static,
-) -> PageView {
-    button(label(text))
-        .width(px(BUTTON_WIDTH))
-        .rules(ghost)
-        .on_activate(press)
-        .boxed()
 }
 
 fn controls() -> PageView {

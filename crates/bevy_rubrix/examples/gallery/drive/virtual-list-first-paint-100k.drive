@@ -1,0 +1,14 @@
+page virtual_list
+wait 30
+click 438 68
+wait 30
+page about
+wait 30
+frames start
+wait 70
+page virtual_list
+wait 120
+frames stop virtual-list-first-paint-100k.csv
+screenshot virtual-list-first-paint-100k.png
+log rows
+exit

@@ -1,0 +1,11 @@
+page virtual_list
+wait 30
+move 740 400
+scroll 0 -1000000
+wait 10
+click 586 68
+wait 10
+screenshot virtual-list-pinned.png
+log rows
+expect rows ..=10999
+exit

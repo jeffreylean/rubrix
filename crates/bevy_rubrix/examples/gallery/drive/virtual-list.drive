@@ -1,0 +1,6 @@
+page virtual_list
+wait 30
+screenshot virtual-list.png
+log rows
+log entities
+exit

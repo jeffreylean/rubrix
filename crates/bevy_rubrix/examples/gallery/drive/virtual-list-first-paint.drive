@@ -1,0 +1,8 @@
+frames start
+wait 70
+page virtual_list
+wait 120
+frames stop virtual-list-first-paint.csv
+screenshot virtual-list-first-paint.png
+log rows
+exit
