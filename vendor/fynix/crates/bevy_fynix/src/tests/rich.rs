@@ -1,4 +1,6 @@
 use core::time::Duration;
+use std::sync::mpsc;
+use std::thread;
 
 use bevy::app::App;
 use bevy::asset::AssetApp;
@@ -575,6 +577,38 @@ fn an_empty_rich_text_is_as_high_as_its_span_line_height() {
     app.update();
 
     assert_eq!(height(&app, empty), height(&app, worded));
+}
+
+/// A blank rich text millions of pixels high lays out its first two
+/// frames within 30 s, one line high to the pixel.
+fn a_huge_blank_line_lays_out_at(scale_factor: f32) {
+    let size: f32 = 6_990_511.0;
+    let (sent, received) = mpsc::channel();
+    thread::spawn(move || {
+        let mut app = laid_out_at(scale_factor);
+        let empty = mount::<Plain>(
+            app.world_mut(),
+            rich(Vec::new()).size(size),
+        );
+        app.update();
+        app.update();
+        let _ = sent.send(height(&app, empty));
+    });
+    let shown = received
+        .recv_timeout(Duration::from_secs(30))
+        .expect("two frames within 30 s");
+    let line = 1.2 * (size * scale_factor);
+    assert!((shown - line).abs() <= 1.0, "{shown} against {line}");
+}
+
+#[test]
+fn a_huge_empty_rich_text_lays_out_at_a_fractional_scale() {
+    a_huge_blank_line_lays_out_at(1.25);
+}
+
+#[test]
+fn a_huge_empty_rich_text_lays_out_at_scale_1() {
+    a_huge_blank_line_lays_out_at(1.0);
 }
 
 #[test]
