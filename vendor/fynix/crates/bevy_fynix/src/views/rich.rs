@@ -6,6 +6,8 @@ use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::{Component, Mutable};
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
+use bevy::ecs::query::With;
+use bevy::ecs::system::Query;
 use bevy::ecs::world::{EntityWorldMut, World};
 use bevy::math::Vec2;
 use bevy::text::{
@@ -15,7 +17,9 @@ use bevy::text::{
     TextFont, TextLayout, TextSpan, Underline, UnderlineColor,
 };
 use bevy::ui::widget::Text;
-use bevy::ui::{ComputedNode, UiGlobalTransform};
+use bevy::ui::{
+    ComputedNode, ComputedUiRenderTargetInfo, UiGlobalTransform,
+};
 use fynix::{Patch, element};
 use parley::Layout;
 
@@ -42,9 +46,14 @@ pub struct Rich {
     #[elem(patch = PatchBodyFont)]
     pub font: Prop<FontSource>,
     /// The size of a span whose look has none. The theme's body
-    /// size when unset.
+    /// size when unset or NaN.
     #[elem(
         default = theme.body_size(),
+        with = |size: f32, theme| if size.is_nan() {
+            theme.body_size()
+        } else {
+            size
+        },
         patch = PatchBodySize,
         blend = blend_f32
     )]
@@ -93,7 +102,7 @@ pub struct Span {
 /// or Bevy's default where it says nothing.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Look {
-    /// The rich text's tone when `None`.
+    /// The rich text's tone when `None` or a channel is NaN.
     pub color: Option<Color>,
     /// The rich text's font when `None`.
     pub font: Option<FontSource>,
@@ -102,7 +111,8 @@ pub struct Look {
     pub size: Option<f32>,
     pub weight: Option<FontWeight>,
     pub style: Option<FontStyle>,
-    /// A fill behind the span, the height of its line.
+    /// A fill behind the span, the height of its line. No fill when
+    /// a channel is NaN.
     pub background: Option<Color>,
     pub underline: Option<LineColor>,
     pub strikethrough: Option<LineColor>,
@@ -113,6 +123,7 @@ pub struct Look {
 pub enum LineColor {
     /// The span's text colour.
     Ink,
+    /// The span's text colour instead when a channel is NaN.
     Own(Color),
 }
 
@@ -228,13 +239,13 @@ pub fn rich_point(
 }
 
 #[derive(Component, Clone, Default)]
-struct Body {
+pub(crate) struct Body {
     font: FontSource,
     size: f32,
 }
 
 #[derive(Component)]
-struct Drawn(Look);
+pub(crate) struct Drawn(Look);
 
 fn prepare(world: &mut World, node: Entity) {
     world.entity_mut(node).insert((
@@ -310,6 +321,15 @@ fn font_of(look: &Look, body: &Body) -> TextFont {
     }
 }
 
+fn without_nan(color: Option<Color>) -> Option<Color> {
+    color.filter(|color| {
+        let linear = color.to_linear();
+        ![linear.red, linear.green, linear.blue, linear.alpha]
+            .iter()
+            .any(|channel| channel.is_nan())
+    })
+}
+
 fn draw(
     entity: &mut EntityWorldMut,
     look: &Look,
@@ -318,8 +338,11 @@ fn draw(
 ) {
     let fade = |color| faded(color, paint.opacity);
     put(entity, font_of(look, body));
-    put(entity, TextColor(fade(look.color.unwrap_or(paint.ink))));
-    match look.background {
+    put(
+        entity,
+        TextColor(fade(without_nan(look.color).unwrap_or(paint.ink))),
+    );
+    match without_nan(look.background) {
         Some(color) => put(entity, TextBackgroundColor(fade(color))),
         // bevy_ui_render has no
         // `RemovedComponents<TextBackgroundColor>`, so it redraws a
@@ -333,16 +356,18 @@ fn draw(
             }
         }
     }
-    let own = |line: Option<LineColor>| match line {
-        Some(LineColor::Own(color)) => Some(fade(color)),
+    let line_ink = |line: Option<LineColor>| match line {
+        Some(LineColor::Own(color)) => {
+            without_nan(Some(color)).map(fade)
+        }
         Some(LineColor::Ink) | None => None,
     };
     mark::<Underline>(entity, look.underline.is_some());
-    put_or_take(entity, own(look.underline).map(UnderlineColor));
+    put_or_take(entity, line_ink(look.underline).map(UnderlineColor));
     mark::<Strikethrough>(entity, look.strikethrough.is_some());
     put_or_take(
         entity,
-        own(look.strikethrough).map(StrikethroughColor),
+        line_ink(look.strikethrough).map(StrikethroughColor),
     );
 }
 
@@ -353,37 +378,64 @@ fn inherited(world: &World, root: Entity) -> Option<(Body, Paint)> {
     ))
 }
 
-/// Bevy lays out no text for an empty span, so a rich text with no
-/// text would measure no height.
-fn hold_line(world: &mut World, root: Entity) {
-    let Some(size) = world.get::<Body>(root).map(|body| body.size)
-    else {
-        return;
+/// The logical height of an inline box that Bevy lays out exactly as
+/// high as a line of text `size` high. Bevy scales a box as
+/// `height * scale_factor` and a relative line as
+/// `relative * (size * scale_factor)`, then rounds each up to whole
+/// pixels, so the plain product can land one pixel off.
+fn line_box(
+    size: f32,
+    line_height: LineHeight,
+    scale_factor: f32,
+) -> f32 {
+    let line = match line_height {
+        LineHeight::Px(px) => return px,
+        LineHeight::RelativeToFont(relative) => {
+            relative * (size * scale_factor)
+        }
     };
-    let line = match world
-        .get::<LineHeight>(root)
-        .copied()
-        .unwrap_or_default()
-    {
-        LineHeight::Px(px) => px,
-        LineHeight::RelativeToFont(scale) => scale * size,
-    };
-    let spans = spans_of(world, root);
-    let blank = spans.iter().all(|&span| {
-        world
-            .get::<TextSpan>(span)
-            .is_none_or(|text| text.0.is_empty())
-    });
-    let Some(&first) = spans.first() else {
-        return;
-    };
-    put_or_take(
-        &mut world.entity_mut(first),
-        blank.then_some(InlineBox {
+    let mut held = line / scale_factor;
+    loop {
+        let shown = (held * scale_factor).ceil();
+        if shown > line.ceil() {
+            held = held.next_down();
+        } else if shown < line.ceil() {
+            held = held.next_up();
+        } else {
+            return held;
+        }
+    }
+}
+
+/// Bevy lays out no text for an empty span.
+fn hold_line(first: &mut EntityWorldMut, blank: bool) {
+    if !blank {
+        first.remove::<InlineBox>();
+    } else if !first.contains::<InlineBox>() {
+        first.insert(InlineBox {
             kind: InlineBoxKind::InFlow,
-            size: Vec2::new(0.0, line),
-        }),
-    );
+            size: Vec2::ZERO,
+        });
+    }
+}
+
+pub(crate) fn size_line_boxes(
+    roots: Query<(&Body, &ComputedUiRenderTargetInfo)>,
+    mut held: Query<
+        (&mut InlineBox, &LineHeight, &ChildOf),
+        With<Drawn>,
+    >,
+) {
+    for (mut held, line_height, parent) in &mut held {
+        let Ok((body, target)) = roots.get(parent.parent()) else {
+            continue;
+        };
+        let height =
+            line_box(body.size, *line_height, target.scale_factor());
+        if held.size.y != height {
+            held.size.y = height;
+        }
+    }
 }
 
 /// A rich text with no spans keeps one empty span: a text that loses
@@ -403,35 +455,42 @@ impl Patch<Bevy, Spans> for PatchSpans {
         } else {
             &spans.0[..]
         };
+        let blank = spans.iter().all(|span| span.text.is_empty());
         let shown = spans_of(world, node);
         for (index, span) in spans.iter().enumerate() {
-            let Some(&kid) = shown.get(index) else {
-                let mut kid = world.spawn((
-                    TextSpan(span.text.clone()),
-                    Drawn(span.look.clone()),
-                    ChildOf(node),
-                ));
-                draw(&mut kid, &span.look, &body, paint);
-                continue;
+            let mut kid = match shown.get(index) {
+                Some(&kid) => {
+                    let mut kid = world.entity_mut(kid);
+                    if let Some(mut text) = kid.get_mut::<TextSpan>()
+                        && text.0 != span.text
+                    {
+                        text.0.clone_from(&span.text);
+                    }
+                    if let Some(mut drawn) = kid.get_mut::<Drawn>()
+                        && drawn.0 != span.look
+                    {
+                        drawn.0.clone_from(&span.look);
+                        draw(&mut kid, &span.look, &body, paint);
+                    }
+                    kid
+                }
+                None => {
+                    let mut kid = world.spawn((
+                        TextSpan(span.text.clone()),
+                        Drawn(span.look.clone()),
+                        ChildOf(node),
+                    ));
+                    draw(&mut kid, &span.look, &body, paint);
+                    kid
+                }
             };
-            let mut kid = world.entity_mut(kid);
-            if let Some(mut text) = kid.get_mut::<TextSpan>()
-                && text.0 != span.text
-            {
-                text.0.clone_from(&span.text);
-            }
-            let Some(mut drawn) = kid.get_mut::<Drawn>() else {
-                continue;
-            };
-            if drawn.0 != span.look {
-                drawn.0.clone_from(&span.look);
-                draw(&mut kid, &span.look, &body, paint);
+            if index == 0 {
+                hold_line(&mut kid, blank);
             }
         }
         for &kid in shown.get(spans.len()..).unwrap_or_default() {
             world.entity_mut(kid).despawn();
         }
-        hold_line(world, node);
     }
 }
 
@@ -464,7 +523,6 @@ fn rebody(
         font.font_size = FontSize::Px(body.size);
     }
     redraw(world, root);
-    hold_line(world, root);
 }
 
 pub struct PatchBodyInk;

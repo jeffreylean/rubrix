@@ -58,6 +58,7 @@ pub(crate) use menu::{
 pub use number_field::{Number, NumberField, number_field};
 pub(crate) use popup::plugin as popup_plugin;
 pub use popup::{DISMISS, POPUP, Popup, corners, popup};
+pub(crate) use rich::size_line_boxes;
 pub use rich::{
     LineColor, Look, Rich, RichProps, Span, Spans, rich, rich_layout,
     rich_point,
