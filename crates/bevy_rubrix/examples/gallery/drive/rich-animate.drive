@@ -1,0 +1,10 @@
+click 100 96
+wait 120
+click 438 68
+wait 60
+frames start
+wait 600
+frames stop rich-animate.csv
+log spans
+screenshot rich-animate.png
+exit

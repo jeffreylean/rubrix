@@ -323,6 +323,7 @@ impl Plugin for ShellPlugin {
             .insert_resource(DARK.scrollbar())
             .insert_resource(Selected(0))
             .init_resource::<Copied>()
+            .add_plugins(pages::plugin)
             .add_systems(
                 Update,
                 restore_scroll.run_if(resource_exists::<SavedScroll>),

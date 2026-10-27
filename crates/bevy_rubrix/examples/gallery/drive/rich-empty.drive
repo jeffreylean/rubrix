@@ -1,0 +1,11 @@
+click 100 96
+wait 120
+click 586 68
+wait 30
+log spans
+screenshot rich-empty.png
+click 734 68
+wait 30
+log spans
+screenshot rich-five.png
+exit

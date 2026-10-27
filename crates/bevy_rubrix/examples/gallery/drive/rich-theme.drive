@@ -1,0 +1,10 @@
+click 100 96
+wait 120
+log spans
+screenshot rich-dark.png
+click 100 771
+wait 60
+log theme
+log spans
+screenshot rich-light.png
+exit
