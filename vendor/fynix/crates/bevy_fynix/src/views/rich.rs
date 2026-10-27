@@ -6,7 +6,6 @@ use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::{Component, Mutable};
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
-use bevy::ecs::query::With;
 use bevy::ecs::system::Query;
 use bevy::ecs::world::{EntityWorldMut, World};
 use bevy::math::Vec2;
@@ -307,14 +306,14 @@ fn mark<C: Component + Default>(
     }
 }
 
+fn size_of(look: &Look, body: &Body) -> f32 {
+    look.size.filter(|size| !size.is_nan()).unwrap_or(body.size)
+}
+
 fn font_of(look: &Look, body: &Body) -> TextFont {
     TextFont {
         font: look.font.clone().unwrap_or_else(|| body.font.clone()),
-        font_size: FontSize::Px(
-            look.size
-                .filter(|size| !size.is_nan())
-                .unwrap_or(body.size),
-        ),
+        font_size: FontSize::Px(size_of(look, body)),
         weight: look.weight.unwrap_or(FontWeight::NORMAL),
         style: look.style.unwrap_or_default(),
         ..TextFont::default()
@@ -429,17 +428,17 @@ fn hold_line(first: &mut EntityWorldMut, blank: bool) {
 
 pub(crate) fn size_line_boxes(
     roots: Query<(&Body, &ComputedUiRenderTargetInfo)>,
-    mut held: Query<
-        (&mut InlineBox, &LineHeight, &ChildOf),
-        With<Drawn>,
-    >,
+    mut held: Query<(&mut InlineBox, &LineHeight, &Drawn, &ChildOf)>,
 ) {
-    for (mut held, line_height, parent) in &mut held {
+    for (mut held, line_height, drawn, parent) in &mut held {
         let Ok((body, target)) = roots.get(parent.parent()) else {
             continue;
         };
-        let height =
-            line_box(body.size, *line_height, target.scale_factor());
+        let height = line_box(
+            size_of(&drawn.0, body),
+            *line_height,
+            target.scale_factor(),
+        );
         if held.size.y != height {
             held.size.y = height;
         }

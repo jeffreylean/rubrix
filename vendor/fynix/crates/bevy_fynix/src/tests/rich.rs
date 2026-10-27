@@ -445,6 +445,23 @@ fn a_rich_text_with_no_text_is_one_line_of_its_size_high() {
 }
 
 #[test]
+fn a_blank_line_is_as_high_as_its_first_span_size() {
+    let mut app = laid_out();
+    let blank = mount::<Plain>(
+        app.world_mut(),
+        rich(vec![Span::new("").size(30.0), Span::new("")]),
+    );
+    let worded = mount::<Plain>(
+        app.world_mut(),
+        rich(vec![Span::new("x").size(30.0)]),
+    );
+    app.update();
+    app.update();
+
+    assert_eq!(height(&app, blank), height(&app, worded));
+}
+
+#[test]
 fn every_point_of_a_rich_text_with_no_text_is_byte_0() {
     let mut app = laid_out();
     let empty = mount::<Plain>(app.world_mut(), rich(Vec::new()));
