@@ -1,5 +1,9 @@
 //! The views this crate ships.
 
+/// The text layout crate Bevy lays text out with, at the version
+/// [`rich_layout`] hands out.
+pub use parley;
+
 mod behavior;
 mod button;
 mod checkbox;
@@ -15,6 +19,7 @@ mod label;
 mod menu;
 mod number_field;
 mod popup;
+mod rich;
 mod segmented;
 mod slider;
 mod stack;
@@ -53,6 +58,10 @@ pub(crate) use menu::{
 pub use number_field::{Number, NumberField, number_field};
 pub(crate) use popup::plugin as popup_plugin;
 pub use popup::{DISMISS, POPUP, Popup, corners, popup};
+pub use rich::{
+    LineColor, Look, Rich, RichProps, Span, Spans, rich, rich_layout,
+    rich_point,
+};
 pub use segmented::{Segmented, segmented};
 pub use slider::{Slider, slider};
 pub use stack::{Extra, Stack, column, overlay, row, scroll};
