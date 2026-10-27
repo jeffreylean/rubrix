@@ -4,7 +4,7 @@ from pathlib import Path
 parser = argparse.ArgumentParser(
     description="Write every virtual_list drive script but virtual-list.drive."
 )
-parser.add_argument("dir", nargs="?", type=Path, default=Path(__file__).parent)
+parser.add_argument("dir", nargs="?", type=Path, default=Path(__file__).parent / "drive")
 out = parser.parse_args().dir
 CENTER = "move 740 400"
 TEN_K, HUNDRED_K, APPEND, PLAIN = "click 290 68", "click 438 68", "click 586 68", "click 734 68"
