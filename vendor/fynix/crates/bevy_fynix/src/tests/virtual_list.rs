@@ -1131,6 +1131,52 @@ fn a_following_list_keeps_each_new_row_in_sight() {
     }
 }
 
+#[test]
+fn a_scroll_to_that_ends_at_the_bottom_keeps_a_list_following() {
+    for index in [975, 990] {
+        let mut app = laid_out();
+        app.insert_resource(Follow(true));
+        let area = list(&mut app, 1_000, uniform);
+        scroll_to(&mut app, area, index);
+        settle(&mut app);
+        assert_eq!(scroll(&app, area), 1_000.0 * 20.0 - VIEW);
+        assert!(state(&app, area).following(), "row {index}");
+
+        app.world_mut().resource_mut::<Count>().0 = 1_100;
+        settle(&mut app);
+
+        assert_eq!(
+            shown_at(&mut app, area, 1_099),
+            Some(VIEW - 20.0),
+            "row {index}"
+        );
+    }
+}
+
+#[test]
+fn a_scroll_to_in_a_following_list_that_fits_keeps_it_following() {
+    for (from, index) in [(10, 5), (0, 0)] {
+        let mut app = laid_out();
+        app.insert_resource(Follow(true));
+        let area = list(&mut app, from, uniform);
+        scroll_to(&mut app, area, index);
+        settle(&mut app);
+        assert!(state(&app, area).following(), "from {from}");
+
+        for count in (from + 2..=100).step_by(2) {
+            app.world_mut().resource_mut::<Count>().0 = count;
+            app.update();
+        }
+        settle(&mut app);
+
+        assert_eq!(
+            shown_at(&mut app, area, 99),
+            Some(VIEW - 20.0),
+            "from {from}"
+        );
+    }
+}
+
 fn regions(_: &World, index: usize) -> f32 {
     match index {
         ..3_000 => 20.0,
@@ -1453,6 +1499,42 @@ fn a_range_of_a_tall_row_scrolls_in_by_the_least() {
 }
 
 #[test]
+fn an_unmeasured_tall_row_scrolls_in_by_the_least() {
+    let mut app = laid_out();
+    app.insert_resource(Grown(5_000, 2_000.0));
+    let area = list(&mut app, 10_000, grown);
+    reveal_range(&mut app, area, 5_000, 1_500.0..1_520.0);
+    let span = state(&app, area).row_span(5_000).unwrap();
+    assert_eq!(scroll(&app, area), span.top + 1_520.0 - VIEW, "above");
+
+    let mut app = laid_out();
+    app.insert_resource(Grown(5_000, 2_000.0));
+    let area = list(&mut app, 10_000, grown);
+    scroll_to(&mut app, area, 9_000);
+    settle(&mut app);
+    app.world_mut()
+        .get_mut::<VirtualList>(area)
+        .expect("a list")
+        .scroll_into_view(5_000);
+    app.update();
+    app.update();
+    let span = state(&app, area).row_span(5_000).unwrap();
+    let bottom = span.top + span.height - VIEW;
+    assert_eq!(span.height, 2_000.0);
+    assert_eq!(scroll(&app, area), bottom, "by the second frame");
+    settle(&mut app);
+    assert_eq!(scroll(&app, area), bottom, "below");
+
+    reveal_range(&mut app, area, 5_000, 1_990.0..2_500.0);
+    assert_eq!(scroll(&app, area), bottom, "past its end");
+
+    scroll_to(&mut app, area, 4_000);
+    settle(&mut app);
+    reveal_range(&mut app, area, 5_000, 1_000.0..1_000.0);
+    assert_eq!(scroll(&app, area), span.top + 1_000.0 - VIEW, "empty");
+}
+
+#[test]
 fn turning_sideways_off_and_on_keeps_the_rows() {
     let mut app = laid_out();
     let area = sideways_list(&mut app);
@@ -1501,4 +1583,67 @@ fn turning_sideways_off_and_on_keeps_the_rows() {
     scroll_x(&mut app, area, 10_000.0);
     assert_eq!(right(&app, long), right(&app, cell), "the end shows");
     assert_eq!(state(&app, area).first_visible(), 3);
+}
+
+fn wraps(world: &World, index: usize) -> f32 {
+    let sideways = world.resource::<Sideways>().0;
+    if index.is_multiple_of(50) && !sideways {
+        200.0
+    } else {
+        20.0
+    }
+}
+
+fn wrapping_list(app: &mut App, sideways: bool) -> Entity {
+    app.insert_resource(Count(10_000));
+    app.insert_resource(Sideways(sideways));
+    mount::<Plain>(
+        app.world_mut(),
+        column((virtual_list(
+            resource::<Count, _>(|count| count.0),
+            ESTIMATE,
+            row(wraps),
+        )
+        .sideways(resource::<Sideways, _>(|on| on.0)),))
+        .width(px(300.0))
+        .height(px(VIEW)),
+    );
+    let area = app
+        .world_mut()
+        .query_filtered::<Entity, With<VirtualList>>()
+        .single(app.world())
+        .expect("one list");
+    settle(app);
+    scroll_to(app, area, 5_003);
+    settle(app);
+    area
+}
+
+#[test]
+fn turning_sideways_on_forgets_the_heights_rows_had_wrapped() {
+    let mut built = laid_out();
+    let area = wrapping_list(&mut built, true);
+    let spans = (0..10_000)
+        .map(|index| state(&built, area).row_span(index))
+        .collect::<Vec<_>>();
+
+    let mut app = laid_out();
+    let area = wrapping_list(&mut app, false);
+    let first = state(&app, area).first_visible();
+    let top = shown_at(&mut app, area, first);
+    app.insert_resource(Sideways(true));
+    settle(&mut app);
+
+    assert_eq!(state(&app, area).first_visible(), first);
+    assert_eq!(shown_at(&mut app, area, first), top);
+    assert_eq!(
+        state(&app, area).row_span(9_999).map(|span| span.top),
+        Some(9_999.0 * 20.0)
+    );
+    assert!(
+        (0..10_000)
+            .map(|index| state(&app, area).row_span(index))
+            .eq(spans),
+        "as if built scrolling sideways"
+    );
 }
