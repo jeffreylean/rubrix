@@ -858,3 +858,58 @@ fn a_list_scrolls_sideways_only_when_asked() {
 
     assert_eq!(node.overflow.x, OverflowAxis::Clip);
 }
+
+#[test]
+fn small_scrolls_up_leave_the_bottom() {
+    let mut app = laid_out();
+    let area = list(&mut app, 1_000, uniform);
+    scroll_to(&mut app, area, 999);
+    settle(&mut app);
+    let bottom = scroll(&app, area);
+
+    for _ in 0..4 {
+        app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y -=
+            0.5;
+        app.update();
+    }
+    settle(&mut app);
+
+    assert_eq!(scroll(&app, area), bottom - 2.0);
+}
+
+fn growing_at_the_bottom_at(scale_factor: f32) {
+    let mut app = laid_out();
+    app.world_mut()
+        .query::<&mut Camera>()
+        .single_mut(app.world_mut())
+        .unwrap()
+        .computed
+        .target_info = Some(RenderTargetInfo {
+        physical_size: UVec2::new(1000, 1000),
+        scale_factor,
+    });
+    app.insert_resource(Count(10_000));
+    let area = list(&mut app, 10_000, |_, _| 19.0);
+    scroll_to(&mut app, area, 9_999);
+    settle(&mut app);
+
+    for count in (10_002..=10_100).step_by(2) {
+        app.world_mut().resource_mut::<Count>().0 = count;
+        app.update();
+    }
+    settle(&mut app);
+
+    let last =
+        shown_at(&mut app, area, 10_099).expect("the last row");
+    assert!(
+        (last - (VIEW - 19.0)).abs() <= 1.0,
+        "{scale_factor}: {last}"
+    );
+}
+
+#[test]
+fn growing_at_the_bottom_follows_at_fractional_scales() {
+    for scale_factor in [1.0, 1.25, 1.5, 2.0] {
+        growing_at_the_bottom_at(scale_factor);
+    }
+}

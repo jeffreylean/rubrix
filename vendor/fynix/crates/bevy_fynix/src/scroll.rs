@@ -102,7 +102,7 @@ impl ScrollGoal {
 
 /// How far the content of a node overflows what it has to itself,
 /// which leaves out any room kept for bars.
-fn overflow(computed: &ComputedNode) -> Vec2 {
+pub(crate) fn overflow(computed: &ComputedNode) -> Vec2 {
     let visible = computed.size() - computed.scrollbar_size;
     ((computed.content_size() - visible)
         * computed.inverse_scale_factor())

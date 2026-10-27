@@ -25,10 +25,6 @@ use crate::{AnyView, Bevy, Cx, FynixSystems, Styled, View};
 
 const OVERSCAN: f64 = 1000.0;
 
-/// How near its end a list counts as scrolled to it, in logical px.
-/// Bevy rounds the end a wheel can reach to whole physical pixels.
-const AT_END: f64 = 1.0;
-
 /// How much of a row, in logical px, has to show for it to count as
 /// showing, so that a row only rounding shows does not.
 const SHOWN: f64 = 0.5;
@@ -250,7 +246,7 @@ pub struct VirtualList {
     first_visible: usize,
     target: Option<Target>,
     pinned: bool,
-    placed_at: f64,
+    placed_at: f32,
     widths: Option<Widths>,
 }
 
@@ -288,7 +284,7 @@ impl VirtualList {
             placed_at: 0.0,
             widths: None,
         };
-        list.place(&[], 0.0, 0.0);
+        list.place(&[], 0.0, 0.0, 0.0);
         list
     }
 
@@ -360,17 +356,16 @@ impl VirtualList {
         measured: &[(usize, f32)],
         view: f32,
         scroll: f32,
+        end: f32,
     ) -> Scroll {
         let view = f64::from(view);
-        let scroll = f64::from(scroll);
         let view_laid_out = view > 0.0;
         let pinned = if view_laid_out {
-            let bottom = self.heights.total() - view;
-            scroll >= bottom - AT_END
-                || self.pinned && scroll >= self.placed_at - AT_END
+            scroll >= end || self.pinned && scroll >= self.placed_at
         } else {
             self.pinned
         };
+        let scroll = f64::from(scroll);
         let mut anchor = self.shown_at(scroll);
         let mut within = scroll - self.heights.offset(anchor);
         for &(index, height) in measured {
@@ -429,7 +424,6 @@ impl VirtualList {
         .clamp(0.0, bottom);
         let jump = target.is_some() && to != at;
         self.pinned = pinned && !jump;
-        self.placed_at = to;
         self.fill(to, view);
         Scroll {
             to: to as f32,
@@ -521,7 +515,8 @@ fn place_rows(
                 Some((placed.index, height))
             })
             .collect::<Vec<_>>();
-        let scroll = list.place(&measured, view, position.y);
+        let end = scroll::overflow(area).y;
+        let scroll = list.place(&measured, view, position.y, end);
         if scroll.jump {
             *goal = ScrollGoal::default();
             position.y = scroll.to;
@@ -529,6 +524,7 @@ fn place_rows(
             let delta = Vec2::Y * (scroll.to - position.y);
             goal.shift(&mut position, delta);
         }
+        list.placed_at = position.y;
         for placed in &list.slots {
             let (top, height) = (px(placed.top), px(placed.height));
             if let Some(slot) = placed.node
