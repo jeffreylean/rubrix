@@ -516,27 +516,9 @@ fn place_rows(
     {
         let scale = area.inverse_scale_factor();
         let view = area.content_box().height() * scale;
-        let mut wide = vec![None::<f32>; list.slots.len()];
-        for (cell, room, content, _) in &cells {
-            let RowSlot { list: of, slot } = cell.0;
-            let Ok((room, _)) = nodes.get(room.parent()) else {
-                continue;
-            };
-            if of != entity || room.size().x <= 0.0 {
-                continue;
-            }
-            let by = (content.size().x - room.content_box().width())
-                .max(0.0)
-                * scale;
-            if let Some(most) = wide.get_mut(slot) {
-                *most = Some(most.map_or(by, |most| most.max(by)));
-            }
-        }
-        let wide = wide
-            .into_iter()
-            .zip(&list.slots)
-            .filter_map(|(by, placed)| Some((placed.index, by?)))
-            .collect::<Vec<_>>();
+        let wide = list.widths.is_some().then(|| {
+            overflows(entity, &list.slots, &cells, &nodes, scale)
+        });
         let measured = list
             .slots
             .iter()
@@ -567,7 +549,7 @@ fn place_rows(
         }
         let mut width = percent(100.0);
         if let Some(widths) = &mut list.widths {
-            for (index, by) in wide {
+            for (index, by) in wide.into_iter().flatten() {
                 widths.set(index, by);
             }
             position.x = position.x.clamp(0.0, widths.widest);
@@ -590,6 +572,42 @@ fn place_rows(
             spacer.width = width;
         }
     }
+}
+
+/// How far the content of the sideways cells in each slot of the
+/// list overflows them, at most, by the row the slot shows.
+fn overflows(
+    list: Entity,
+    slots: &[Placed],
+    cells: &Query<(
+        &Sideways,
+        &ChildOf,
+        &ComputedNode,
+        &mut UiTransform,
+    )>,
+    nodes: &Query<(&ComputedNode, &mut Node)>,
+    scale: f32,
+) -> Vec<(usize, f32)> {
+    let mut wide = vec![None::<f32>; slots.len()];
+    for (cell, room, content, _) in cells {
+        let RowSlot { list: of, slot } = cell.0;
+        let Ok((room, _)) = nodes.get(room.parent()) else {
+            continue;
+        };
+        if of != list || room.size().x <= 0.0 {
+            continue;
+        }
+        let by = (content.size().x - room.content_box().width())
+            .max(0.0)
+            * scale;
+        if let Some(most) = wide.get_mut(slot) {
+            *most = Some(most.map_or(by, |most| most.max(by)));
+        }
+    }
+    wide.into_iter()
+        .zip(slots)
+        .filter_map(|(by, placed)| Some((placed.index, by?)))
+        .collect()
 }
 
 fn track<T: 'static>() -> AnyView<Bevy, T> {
