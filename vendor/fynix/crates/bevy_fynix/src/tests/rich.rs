@@ -19,7 +19,7 @@ use bevy::text::{
     UnderlineColor,
 };
 use bevy::time::TimeUpdateStrategy;
-use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin};
+use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin, UiScale};
 use fynix::{Motion, ScopedExt};
 use parley::{Affinity, Cluster, Cursor};
 
@@ -614,6 +614,29 @@ fn a_huge_blank_line_lays_out_at(scale_factor: f32) {
         .expect("two frames within 30 s");
     let line = 1.2 * (size * scale_factor);
     assert!((shown - line).abs() <= 1.0, "{shown} against {line}");
+}
+
+#[test]
+fn a_blank_line_lays_out_at_a_negative_ui_scale() {
+    let (sent, received) = mpsc::channel();
+    thread::spawn(move || {
+        let mut app = laid_out();
+        app.insert_resource(UiScale(-1.25));
+        let empty = mount::<Plain>(
+            app.world_mut(),
+            rich(Vec::new()).size(296.0),
+        );
+        let span = kids(&app, empty)[0];
+        app.world_mut()
+            .entity_mut(span)
+            .insert(LineHeight::RelativeToFont(1.3));
+        app.update();
+        app.update();
+        let _ = sent.send(());
+    });
+    received
+        .recv_timeout(Duration::from_secs(30))
+        .expect("two frames within 30 s");
 }
 
 #[test]

@@ -381,7 +381,9 @@ fn inherited(world: &World, root: Entity) -> Option<(Body, Paint)> {
 /// high as a line of text `size` high. Bevy scales a box as
 /// `height * scale_factor` and a relative line as
 /// `relative * (size * scale_factor)`, then rounds each up to whole
-/// pixels, so the plain product can land one pixel off.
+/// pixels, so the plain product can land one pixel off. Bevy lays a
+/// node out at 0 by 0 at a scale factor of 0 or below, which leaves
+/// no pixel to match, so there the box takes the plain product.
 fn line_box(
     size: f32,
     line_height: LineHeight,
@@ -389,6 +391,11 @@ fn line_box(
 ) -> f32 {
     let line = match line_height {
         LineHeight::Px(px) => return px,
+        LineHeight::RelativeToFont(relative)
+            if scale_factor <= 0.0 =>
+        {
+            return relative * size;
+        }
         LineHeight::RelativeToFont(relative) => {
             relative * (size * scale_factor)
         }
