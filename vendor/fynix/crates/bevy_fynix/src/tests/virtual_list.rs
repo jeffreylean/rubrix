@@ -166,8 +166,6 @@ fn height(app: &App, node: Entity) -> f32 {
     computed.size().y * computed.inverse_scale_factor()
 }
 
-/// Where each row draws, from the top of the area: its own box, cut
-/// to its slot's when the slot clips, in order.
 fn drawn(app: &mut App, area: Entity) -> Vec<(f32, f32)> {
     let origin = top(app, area);
     let built = app
@@ -207,7 +205,6 @@ fn assert_apart(app: &mut App, area: Entity, when: &str) {
     }
 }
 
-/// The longest stretch of the viewport no row draws over.
 fn uncovered(app: &mut App, area: Entity) -> f32 {
     let mut at = 0.0f32;
     let mut worst = 0.0f32;

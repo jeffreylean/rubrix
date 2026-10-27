@@ -33,13 +33,9 @@ const AT_END: f64 = 1.0;
 /// showing, so that a row only rounding shows does not.
 const SHOWN: f64 = 0.5;
 
-/// The most row slots a list builds. When the overscan holds more
-/// rows, it is cut on both sides of the view.
-const MOST: usize = 199;
+const MAX_SLOTS: usize = 199;
 
-/// How far, as a ratio, the mean laid-out row height may drift from
-/// the estimate before it takes the estimate's place.
-const DRIFT: core::ops::RangeInclusive<f32> = 0.8..=1.25;
+const ESTIMATE_TOLERANCE: core::ops::RangeInclusive<f32> = 0.8..=1.25;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(
@@ -60,8 +56,8 @@ pub struct VirtualListView<R> {
 
 /// A scroll area of `count` rows, each `estimate` pixels high until
 /// it has been laid out, built by `row`. Once the mean height of the
-/// rows laid out is more than a quarter off `estimate`, the mean
-/// takes its place.
+/// rows laid out is below 0.8 or above 1.25 times `estimate`, the
+/// mean takes its place.
 ///
 /// A row that scrolls far out of sight is not despawned but shows
 /// another row instead, so `row` builds the view of a [`RowSlot`]
@@ -221,7 +217,7 @@ impl RowSlot {
             };
             let moved = cx.under(cell, Cx::spawn);
             let mut node = cx.world.entity_mut(moved);
-            node.insert(Sideways(self));
+            node.insert(SidewaysContent(self));
             node.get_mut::<Node>().expect("a node").flex_shrink = 0.0;
             cx.under(moved, |cx| cx.build(content));
             cell
@@ -229,9 +225,8 @@ impl RowSlot {
     }
 }
 
-/// The content of a [`RowSlot::sideways`] cell.
 #[derive(Component)]
-struct Sideways(RowSlot);
+struct SidewaysContent(RowSlot);
 
 /// Where a row sits in its list's content, in logical pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -261,11 +256,8 @@ pub struct VirtualList {
 
 #[derive(Clone, Copy)]
 enum Target {
-    /// The row to show first.
     First(usize),
-    /// The row to show whole, and whether it has been placed at its
-    /// estimate already.
-    Whole { index: usize, again: bool },
+    Whole { index: usize, remeasured: bool },
 }
 
 #[derive(Default)]
@@ -312,7 +304,7 @@ impl VirtualList {
     pub fn scroll_into_view(&mut self, index: usize) {
         self.target = Some(Target::Whole {
             index,
-            again: false,
+            remeasured: false,
         });
     }
 
@@ -351,7 +343,6 @@ impl VirtualList {
         self.slots.len()
     }
 
-    /// How many rows the list has.
     pub fn count(&self) -> usize {
         self.count
     }
@@ -372,9 +363,8 @@ impl VirtualList {
     ) -> Scroll {
         let view = f64::from(view);
         let scroll = f64::from(scroll);
-        // A view of no height has not been laid out, or is hidden,
-        // so it says nothing about where the user left it.
-        let pinned = if view > 0.0 {
+        let view_laid_out = view > 0.0;
+        let pinned = if view_laid_out {
             let bottom = self.heights.total() - view;
             scroll >= bottom - AT_END
                 || self.pinned && scroll >= self.placed_at - AT_END
@@ -392,7 +382,7 @@ impl VirtualList {
             }
         }
         if let Some(mean) = self.heights.mean()
-            && !DRIFT.contains(&(mean / self.estimate))
+            && !ESTIMATE_TOLERANCE.contains(&(mean / self.estimate))
         {
             self.estimate = mean;
             self.heights.reestimate(mean);
@@ -419,11 +409,13 @@ impl VirtualList {
                 self.heights.offset(index.min(last))
             }
             Some(Target::Whole { .. }) if self.count == 0 => 0.0,
-            Some(Target::Whole { index, again }) => {
+            Some(Target::Whole { index, remeasured }) => {
                 let index = index.min(last);
-                if !again && !self.heights.known[index] {
-                    self.target =
-                        Some(Target::Whole { index, again: true });
+                if !remeasured && !self.heights.known[index] {
+                    self.target = Some(Target::Whole {
+                        index,
+                        remeasured: true,
+                    });
                 }
                 let top = self.heights.offset(index);
                 let end = self.heights.offset(index + 1);
@@ -452,13 +444,13 @@ impl VirtualList {
         let mut end =
             (self.heights.index_at(top + view + 2.0 * OVERSCAN) + 1)
                 .min(count);
-        if end.saturating_sub(first) > MOST {
+        if end.saturating_sub(first) > MAX_SLOTS {
             let shown = self.heights.index_at(scroll);
             let below = self.heights.index_at(scroll + view) + 1;
-            let spare = MOST.saturating_sub(below - shown);
+            let spare = MAX_SLOTS.saturating_sub(below - shown);
             first = first.max(shown.saturating_sub(spare / 2));
-            end = end.min(first + MOST);
-            first = first.max(end.saturating_sub(MOST));
+            end = end.min(first + MAX_SLOTS);
+            first = first.max(end.saturating_sub(MAX_SLOTS));
         }
         let need = end.saturating_sub(first);
         let pool = if self.slots.len() > 2 * need {
@@ -467,7 +459,7 @@ impl VirtualList {
             self.slots.len().max(need)
         }
         .min(count)
-        .min(MOST);
+        .min(MAX_SLOTS);
         let start = first.min(count - pool);
         self.slots.truncate(pool);
         let mut shown = vec![false; pool];
@@ -506,7 +498,7 @@ fn place_rows(
     )>,
     mut nodes: Query<(&ComputedNode, &mut Node)>,
     mut cells: Query<(
-        &Sideways,
+        &SidewaysContent,
         &ChildOf,
         &ComputedNode,
         &mut UiTransform,
@@ -574,13 +566,11 @@ fn place_rows(
     }
 }
 
-/// How far the content of the sideways cells in each slot of the
-/// list overflows them, at most, by the row the slot shows.
 fn overflows(
     list: Entity,
     slots: &[Placed],
     cells: &Query<(
-        &Sideways,
+        &SidewaysContent,
         &ChildOf,
         &ComputedNode,
         &mut UiTransform,
@@ -620,11 +610,9 @@ fn track<T: 'static>() -> AnyView<Bevy, T> {
             right: px(0.0),
             ..Node::default()
         };
-        // The rows stay as the area scrolls sideways, and only their
-        // sideways cells move.
         cx.world
             .entity_mut(node)
-            .insert(IgnoreScroll(BVec2::new(true, false)));
+            .insert(IgnoreScroll(BVec2 { x: true, y: false }));
         node
     })
 }
@@ -645,10 +633,8 @@ where
         let placed = &mut state.slots[slot];
         placed.node = Some(node);
         let (top, height) = (placed.top, placed.height);
-        // The slot is as high as its row is known to be and clips it,
-        // so a row taller than its estimate cannot draw over the next
-        // before it is measured. In a block its row keeps its height
-        // whatever the slot's, and that is what the slot measures.
+        // In a block its row keeps its height whatever the slot's,
+        // and that is what the slot measures.
         *cx.world.get_mut::<Node>(node).expect("a node") = Node {
             display: Display::Block,
             position_type: PositionType::Absolute,
@@ -687,8 +673,6 @@ where
     )
 }
 
-/// How far the widest sideways cell of each row overflows it, and
-/// the most any row does.
 #[derive(Default)]
 struct Widths {
     each: Vec<f32>,
@@ -726,8 +710,8 @@ struct Heights {
     each: Vec<f32>,
     known: Vec<bool>,
     tree: Vec<f64>,
-    /// The sum of the heights laid out, and how many there are.
-    laid_out: (f64, usize),
+    laid_out_sum: f64,
+    laid_out_rows: usize,
 }
 
 fn lowest(k: usize) -> usize {
@@ -743,10 +727,10 @@ impl Heights {
         self.offset(self.len())
     }
 
-    /// The mean height of the rows laid out, if any are.
     fn mean(&self) -> Option<f32> {
-        let (sum, rows) = self.laid_out;
-        (rows > 0).then(|| (sum / rows as f64) as f32)
+        (self.laid_out_rows > 0).then(|| {
+            (self.laid_out_sum / self.laid_out_rows as f64) as f32
+        })
     }
 
     fn resize(&mut self, count: usize, estimate: f32) {
@@ -755,8 +739,8 @@ impl Heights {
         }
         for index in count..self.len() {
             if self.known[index] {
-                self.laid_out.0 -= f64::from(self.each[index]);
-                self.laid_out.1 -= 1;
+                self.laid_out_sum -= f64::from(self.each[index]);
+                self.laid_out_rows -= 1;
             }
         }
         self.known.resize(count, false);
@@ -772,14 +756,14 @@ impl Heights {
     fn set(&mut self, index: usize, height: f32) {
         if !self.known[index] {
             self.known[index] = true;
-            self.laid_out.1 += 1;
-            self.laid_out.0 += f64::from(self.each[index]);
+            self.laid_out_rows += 1;
+            self.laid_out_sum += f64::from(self.each[index]);
         }
         if self.each[index] == height {
             return;
         }
         let by = f64::from(height) - f64::from(self.each[index]);
-        self.laid_out.0 += by;
+        self.laid_out_sum += by;
         self.each[index] = height;
         let mut k = index + 1;
         while k < self.tree.len() {
@@ -788,7 +772,6 @@ impl Heights {
         }
     }
 
-    /// Gives every row not laid out yet the height `estimate`.
     fn reestimate(&mut self, estimate: f32) {
         for (height, &known) in self.each.iter_mut().zip(&self.known)
         {

@@ -1,13 +1,11 @@
-"""Writes the virtual_list page's drive scripts, all but
-virtual-list.drive, into the directory this file is in or the one
-given.
-
-Run with: python3 -I gen_drives.py [dir]
-"""
-import sys
+import argparse
 from pathlib import Path
 
-out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent
+parser = argparse.ArgumentParser(
+    description="Write every virtual_list drive script but virtual-list.drive."
+)
+parser.add_argument("dir", nargs="?", type=Path, default=Path(__file__).parent)
+out = parser.parse_args().dir
 CENTER = "move 740 400"
 TEN_K, HUNDRED_K, APPEND, PLAIN = "click 290 68", "click 438 68", "click 586 68", "click 734 68"
 
@@ -116,14 +114,16 @@ write(
     "log rows",
     "exit",
 )
-# Row 5000 has three lines and sits just above the viewport: every
-# row is 17 px, and rows 0 and 100, measured at the top, add 34 each.
+ROW = 17
+THREE_LINE_EXTRA = 2 * ROW
+ROWS_MEASURED_AT_TOP = 2
+ROW_5000_ABOVE_VIEW = 5001 * ROW + ROWS_MEASURED_AT_TOP * THREE_LINE_EXTRA + 1
 write(
     "virtual-list-anchor",
     "page virtual_list",
     "wait 30",
     CENTER,
-    "scroll 0 -85086",
+    f"scroll 0 -{ROW_5000_ABOVE_VIEW}",
     "log rows",
     "expect rows first_visible 5001",
     "wait 10",
@@ -164,8 +164,6 @@ write(
     "screenshot f2-not-pinned.png",
     "exit",
 )
-# Every frame from the one before a jump, and through a thumb drag,
-# for checking that no frame draws one row over another.
 write(
     "virtual-list-jump-record",
     "page virtual_list",

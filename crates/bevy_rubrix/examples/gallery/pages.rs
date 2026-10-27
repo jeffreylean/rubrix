@@ -56,8 +56,6 @@ fn control(
         .boxed()
 }
 
-/// `buttons`, a row, wrapping onto more lines when it runs out of
-/// room. fynix's `Frame` has no wrap prop, so this sets its `Node`.
 fn wrapping(buttons: PageView) -> PageView {
     AnyView::new(|cx: &mut Build| {
         let root = cx.build(buttons);
