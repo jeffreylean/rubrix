@@ -2,7 +2,7 @@ use std::ops::Bound;
 
 use rubrix_diff::{
     Anchor, Block, Edit, Expansion, FileDiff, Hunk, Layout, LineRef,
-    Meta, PatchBuilder, Row, Rows, Side, diff_texts, rows,
+    Meta, PatchBuilder, Row, Rows, Side, diff_texts, realign, rows,
 };
 
 const LAYOUTS: [Layout; 2] = [Layout::Stacked, Layout::Split];
@@ -729,6 +729,55 @@ fn split_changes_pairs_the_middle_lines_and_stacked_rows_stay() {
             assert_eq!(table.find(row.anchor()), Some(index as u32));
         }
     }
+}
+
+#[test]
+fn only_paired_rows_carry_word_ranges() {
+    let mut diff = diff_texts(
+        "x\nfirst one\nsecond two\nthird three\ny\n",
+        "x\nsecond 2\ny\n",
+        1,
+    );
+    realign(&mut diff);
+    let marked = |layout| {
+        let table = build(&diff, layout);
+        let words: Vec<_> =
+            table.range(..).map(|row| row.words(&diff)).collect();
+        let shown = show(&table);
+        shown.into_iter().zip(words).collect::<Vec<_>>()
+    };
+    let changed = Some((vec![7..10], vec![7..8]));
+
+    let stacked = marked(Layout::Stacked);
+    let expected = [
+        ("C 1/1", None),
+        ("D 2", None),
+        ("D 3", changed.clone()),
+        ("D 4", None),
+        ("A 2", changed.clone()),
+        ("C 5/3", None),
+    ];
+    assert_eq!(
+        stacked,
+        expected.map(|(row, words)| (row.to_owned(), words))
+    );
+
+    let split = marked(Layout::Split);
+    let expected = [
+        ("C 1/1", None),
+        ("D 2", None),
+        ("P 3/2", changed),
+        ("D 4", None),
+        ("C 5/3", None),
+    ];
+    assert_eq!(
+        split,
+        expected.map(|(row, words)| (row.to_owned(), words))
+    );
+
+    let added = diff_texts("", "a\nb\n", 3);
+    let table = build(&added, Layout::Stacked);
+    assert!(table.range(..).all(|row| row.words(&added).is_none()));
 }
 
 fn partial_diff() -> FileDiff {
