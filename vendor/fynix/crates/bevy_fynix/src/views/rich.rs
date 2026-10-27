@@ -68,8 +68,6 @@ pub struct Rich {
     /// 1.0 when unset.
     #[elem(default = 1.0, patch = PatchScale, blend = blend_f32)]
     pub scale: Prop<f32>,
-    /// Last, so the first build spawns each span once with what it
-    /// takes from the root, not once and again for each root prop.
     #[elem(patch = PatchSpans)]
     pub spans: Prop<Spans>,
 }
@@ -175,8 +173,8 @@ impl Span {
     }
 }
 
-/// The spans of a [`Rich`], shared so that holding them again is
-/// cheap: the spans prop is copied each update the element changes.
+/// The spans of a [`Rich`], shared because fynix copies a prop on
+/// every update while its element changes.
 #[derive(Clone, Debug, Default)]
 pub struct Spans(Arc<[Span]>);
 
@@ -227,16 +225,12 @@ pub fn rich_point(
     )
 }
 
-/// On a rich text's root: what a span takes when its look leaves it
-/// out. The colours are in the root's [`Paint`].
 #[derive(Component, Clone, Default)]
 struct Body {
     font: FontSource,
     size: f32,
 }
 
-/// On a span: the look last written onto it, before the root's
-/// opacity.
 #[derive(Component)]
 struct Drawn(Look);
 
@@ -251,7 +245,6 @@ fn prepare(world: &mut World, node: Entity) {
     ));
 }
 
-/// The spans under `root`, in order.
 fn spans_of(world: &World, root: Entity) -> Vec<Entity> {
     world
         .get::<Children>(root)
@@ -262,8 +255,6 @@ fn spans_of(world: &World, root: Entity) -> Vec<Entity> {
         .collect()
 }
 
-/// Puts `value` on `entity`, or overwrites the one there if it
-/// differs, so an unchanged component is never marked changed.
 fn put<C: Component<Mutability = Mutable> + PartialEq>(
     entity: &mut EntityWorldMut,
     value: C,
@@ -278,22 +269,18 @@ fn put<C: Component<Mutability = Mutable> + PartialEq>(
     }
 }
 
-/// Puts `value` on `entity`, or takes the component off for `None`.
-/// Whether one was taken off.
 fn put_or_take<C: Component<Mutability = Mutable> + PartialEq>(
     entity: &mut EntityWorldMut,
     value: Option<C>,
-) -> bool {
+) {
     match value {
-        Some(value) => {
-            put(entity, value);
-            false
+        Some(value) => put(entity, value),
+        None => {
+            entity.remove::<C>();
         }
-        None => entity.take::<C>().is_some(),
     }
 }
 
-/// Puts the marker `C` on `entity` or takes it off.
 fn mark<C: Component + Default>(
     entity: &mut EntityWorldMut,
     on: bool,
@@ -317,9 +304,6 @@ fn font_of(look: &Look, body: &Body) -> TextFont {
     }
 }
 
-/// Writes `look` onto the span `entity`, with what it leaves out
-/// taken from the root's `body` and every colour at the root's
-/// `paint`. Each component is written only if it differs.
 fn draw(
     entity: &mut EntityWorldMut,
     look: &Look,
@@ -329,16 +313,19 @@ fn draw(
     let fade = |color| faded(color, paint.opacity);
     put(entity, font_of(look, body));
     put(entity, TextColor(fade(look.color.unwrap_or(paint.ink))));
-    let unplated = put_or_take(
-        entity,
-        look.background
-            .map(|color| TextBackgroundColor(fade(color))),
-    );
-    // bevy_ui_render has no `RemovedComponents<TextBackgroundColor>`,
-    // so it redraws a span that loses its plate only when something
-    // else on the span changes.
-    if unplated && let Some(mut ink) = entity.get_mut::<TextColor>() {
-        ink.set_changed();
+    match look.background {
+        Some(color) => put(entity, TextBackgroundColor(fade(color))),
+        // bevy_ui_render has no
+        // `RemovedComponents<TextBackgroundColor>`, so it redraws a
+        // span that loses its plate only when something else on the
+        // span changes.
+        None => {
+            if entity.take::<TextBackgroundColor>().is_some()
+                && let Some(mut ink) = entity.get_mut::<TextColor>()
+            {
+                ink.set_changed();
+            }
+        }
     }
     let own = |line: Option<LineColor>| match line {
         Some(LineColor::Own(color)) => Some(fade(color)),
@@ -353,7 +340,6 @@ fn draw(
     );
 }
 
-/// What a root hands its spans.
 fn inherited(world: &World, root: Entity) -> Option<(Body, Paint)> {
     Some((
         world.get::<Body>(root)?.clone(),
@@ -368,11 +354,10 @@ fn blank() -> [Span; 1] {
     [Span::new(" ")]
 }
 
-/// Writes the spans by index onto the root's children: the span at an
-/// index keeps its entity, and only the tail is spawned or despawned.
-/// A rich text always keeps one span, as Bevy lays a text out again
-/// only when its children change, and a text that loses its last
-/// child loses `Children` with it, so its old glyphs would stay.
+/// A rich text always keeps one span: a text that loses its last
+/// child loses `Children` with it, and Bevy lays a text out again
+/// when `Children` changes but not when it is removed, so its old
+/// glyphs would stay.
 pub struct PatchSpans;
 
 impl Patch<Bevy, Spans> for PatchSpans {
@@ -418,7 +403,6 @@ impl Patch<Bevy, Spans> for PatchSpans {
     }
 }
 
-/// Writes every span again from its look and what the root hands it.
 fn redraw(world: &mut World, root: Entity) {
     let Some((body, paint)) = inherited(world, root) else {
         return;
@@ -433,8 +417,6 @@ fn redraw(world: &mut World, root: Entity) {
     }
 }
 
-/// Edits the root's [`Body`] and its own font to match, then redraws
-/// the spans.
 fn rebody(
     world: &mut World,
     root: Entity,
@@ -452,7 +434,6 @@ fn rebody(
     redraw(world, root);
 }
 
-/// [`PatchInk`] on the root, then on every span.
 pub struct PatchBodyInk;
 
 impl Patch<Bevy, Color> for PatchBodyInk {
@@ -462,7 +443,6 @@ impl Patch<Bevy, Color> for PatchBodyInk {
     }
 }
 
-/// [`PatchOpacity`] on the root, then on every span.
 pub struct PatchBodyOpacity;
 
 impl Patch<Bevy, f32> for PatchBodyOpacity {
@@ -472,7 +452,6 @@ impl Patch<Bevy, f32> for PatchBodyOpacity {
     }
 }
 
-/// Writes the root's font, then every span's.
 pub struct PatchBodyFont;
 
 impl Patch<Bevy, FontSource> for PatchBodyFont {
@@ -481,7 +460,6 @@ impl Patch<Bevy, FontSource> for PatchBodyFont {
     }
 }
 
-/// Writes the root's size, then every span's.
 pub struct PatchBodySize;
 
 impl Patch<Bevy, f32> for PatchBodySize {

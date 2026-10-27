@@ -1,7 +1,3 @@
-//! `rich` against a headless app: spans keep their entities and
-//! their untouched components across edits, fade with the root, and
-//! lay out so a byte offset maps to a point and back.
-
 use core::time::Duration;
 
 use bevy::app::App;
@@ -38,7 +34,6 @@ fn words(count: usize) -> Vec<Span> {
         .collect()
 }
 
-/// A rich text bound to [`Line`], holding `spans` to start with.
 fn line(app: &mut App, spans: Vec<Span>) -> Entity {
     app.insert_resource(Line(spans));
     let root = mount::<Plain>(
@@ -70,7 +65,6 @@ fn changed<C: Component>(app: &App, span: Entity) -> Tick {
         .changed
 }
 
-/// When the text, font and colour of `span` last changed.
 fn ticks(app: &App, span: Entity) -> [Tick; 3] {
     [
         changed::<TextSpan>(app, span),
@@ -264,8 +258,6 @@ fn the_root_size_reaches_spans_with_no_size_of_their_own() {
     assert_eq!(size(spans[1]), FontSize::Px(20.0));
 }
 
-/// An app that lays text out headless in a 1000 by 1000 window, with
-/// Bevy's default font.
 fn laid_out() -> App {
     let mut app = app();
     app.insert_resource(TimeUpdateStrategy::ManualDuration(
@@ -300,7 +292,6 @@ fn laid_out() -> App {
 
 const MIXED: [&str; 4] = ["héllo ", "wörld ", "日本語 ", "😀 x"];
 
-/// A rich text of [`MIXED`], laid out.
 fn mixed(app: &mut App) -> Entity {
     let spans = MIXED
         .iter()
@@ -342,7 +333,6 @@ fn rich_layout_maps_every_character_boundary_to_a_point_and_back() {
     assert_eq!(checked, full.chars().count());
 }
 
-/// Where `at`, in logical window pixels, falls in the text of `root`.
 fn cursor_at(
     app: &mut App,
     root: Entity,
