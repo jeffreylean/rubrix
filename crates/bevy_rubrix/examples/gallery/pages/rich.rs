@@ -168,9 +168,10 @@ fn controls() -> PageView {
     .gap(8.0);
     AnyView::new(|cx: &mut Build| {
         let root = cx.build(buttons);
-        if let Some(mut node) = cx.world.get_mut::<Node>(root) {
-            node.flex_wrap = FlexWrap::Wrap;
-        }
+        cx.world
+            .get_mut::<Node>(root)
+            .expect("a row node")
+            .flex_wrap = FlexWrap::Wrap;
         root
     })
     .boxed()

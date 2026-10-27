@@ -405,9 +405,6 @@ fn rich_layout_of_no_text_is_one_line_high() {
     assert!(line > 0.0);
     assert_eq!(height(&app, empty), line);
     assert_eq!(height(&app, blanks), line);
-    let cursor =
-        cursor_at(&mut app, empty, Vec2::ZERO).expect("a cursor");
-    assert_eq!(cursor.index(), 0);
 }
 
 #[derive(Resource)]

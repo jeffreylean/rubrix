@@ -193,8 +193,8 @@ impl PartialEq for Spans {
 /// The parley layout of the rich text `root` as Bevy last laid it
 /// out, in physical pixels from the top left of its content box. Its
 /// byte offsets index the text of the spans joined in order. A rich
-/// text with no text lays out no bytes on one line of its size, so
-/// every point in it is byte 0.
+/// text with no text lays out one line and no bytes, so every point
+/// in it is byte 0.
 pub fn rich_layout(
     world: &World,
     root: Entity,
@@ -353,19 +353,20 @@ fn inherited(world: &World, root: Entity) -> Option<(Body, Paint)> {
     ))
 }
 
-/// Holds a rich text with no text one line high. Bevy lays out no
-/// text for an empty span, so the line would measure no height. An
-/// inline box on the first span gives it the height of a line of the
-/// root's size and adds no byte to the layout.
+/// Bevy lays out no text for an empty span, so a rich text with no
+/// text would measure no height.
 fn hold_line(world: &mut World, root: Entity) {
     let Some(size) = world.get::<Body>(root).map(|body| body.size)
     else {
         return;
     };
-    let line = match world.get::<LineHeight>(root).copied() {
-        Some(LineHeight::Px(px)) => px,
-        Some(LineHeight::RelativeToFont(scale)) => scale * size,
-        None => return,
+    let line = match world
+        .get::<LineHeight>(root)
+        .copied()
+        .unwrap_or_default()
+    {
+        LineHeight::Px(px) => px,
+        LineHeight::RelativeToFont(scale) => scale * size,
     };
     let spans = spans_of(world, root);
     let blank = spans.iter().all(|&span| {
