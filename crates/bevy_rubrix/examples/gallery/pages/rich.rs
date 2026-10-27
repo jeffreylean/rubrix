@@ -12,8 +12,8 @@ use bevy::math::Vec2;
 use bevy::picking::events::PointerPress;
 use bevy::text::FontSource;
 use bevy::ui::{
-    ComputedNode, ComputedUiTargetCamera, FlexWrap, Node,
-    UiGlobalTransform, percent, px,
+    ComputedNode, ComputedUiTargetCamera, UiGlobalTransform, percent,
+    px,
 };
 use bevy_fynix::tokens::{SurfaceTokens, TextTokens, Tone};
 use bevy_fynix::views::{
@@ -22,7 +22,7 @@ use bevy_fynix::views::{
 };
 use bevy_fynix::{AnyView, ViewExt, keyed, resource};
 
-use super::control;
+use super::{control, wrapping};
 use crate::{Build, PageView, Palette};
 
 const LONG_SPANS: usize = 200;
@@ -153,17 +153,7 @@ fn controls() -> PageView {
         ),
     ))
     .gap(8.0);
-    // fynix's `Frame` has no wrap prop, so this sets the row's
-    // `Node`.
-    AnyView::new(|cx: &mut Build| {
-        let root = cx.build(buttons);
-        cx.world
-            .get_mut::<Node>(root)
-            .expect("a row node")
-            .flex_wrap = FlexWrap::Wrap;
-        root
-    })
-    .boxed()
+    wrapping(buttons.boxed())
 }
 
 fn hue(palette: Palette, degrees: f32) -> Color {

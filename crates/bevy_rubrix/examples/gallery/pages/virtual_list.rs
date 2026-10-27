@@ -6,7 +6,7 @@ use bevy_fynix::views::{
 };
 use bevy_fynix::{ViewExt, keyed, resource};
 
-use super::control;
+use super::{control, wrapping};
 use crate::PageView;
 
 /// The height of a one-line row: the body size, 14 px, at Bevy's
@@ -41,7 +41,7 @@ pub fn build() -> PageView {
 }
 
 fn controls() -> PageView {
-    row((
+    let buttons = row((
         control("10,000 rows", |world| {
             world.resource_mut::<Rows>().count = 10_000;
         }),
@@ -62,8 +62,8 @@ fn controls() -> PageView {
             },
         ),
     ))
-    .gap(8.0)
-    .boxed()
+    .gap(8.0);
+    wrapping(buttons.boxed())
 }
 
 fn rows() -> PageView {

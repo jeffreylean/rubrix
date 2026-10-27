@@ -2,13 +2,13 @@ use std::path::PathBuf;
 
 use bevy::app::App;
 use bevy::ecs::world::World;
-use bevy::ui::px;
+use bevy::ui::{FlexWrap, Node, px};
 use bevy_fynix::views::{
     BehaviorExt, FrameProps, button, ghost, label,
 };
-use bevy_fynix::{Prop, ScopedExt, ViewExt};
+use bevy_fynix::{AnyView, Prop, ScopedExt, ViewExt};
 
-use crate::PageView;
+use crate::{Build, PageView};
 
 mod about;
 pub mod rich;
@@ -54,4 +54,18 @@ fn control(
         .rules(ghost)
         .on_activate(press)
         .boxed()
+}
+
+/// `buttons`, a row, wrapping onto more lines when it runs out of
+/// room. fynix's `Frame` has no wrap prop, so this sets its `Node`.
+fn wrapping(buttons: PageView) -> PageView {
+    AnyView::new(|cx: &mut Build| {
+        let root = cx.build(buttons);
+        cx.world
+            .get_mut::<Node>(root)
+            .expect("a row node")
+            .flex_wrap = FlexWrap::Wrap;
+        root
+    })
+    .boxed()
 }
