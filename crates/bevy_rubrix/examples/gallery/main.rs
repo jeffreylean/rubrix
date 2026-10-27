@@ -323,6 +323,7 @@ impl Plugin for ShellPlugin {
             .insert_resource(DARK.scrollbar())
             .insert_resource(Selected(0))
             .init_resource::<Copied>()
+            .add_plugins(pages::plugin)
             .add_systems(
                 Update,
                 restore_scroll.run_if(resource_exists::<SavedScroll>),
@@ -414,6 +415,7 @@ fn sidebar() -> AnyView<Bevy, Palette> {
                 .on_activate(toggle_theme),
             ))
             .width(px(SIDEBAR_WIDTH))
+            .shrink(0.0)
             .height(percent(100.0))
             .padding(UiRect::all(px(12.0)))
             .gap(12.0)

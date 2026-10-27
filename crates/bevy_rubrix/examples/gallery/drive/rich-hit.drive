@@ -1,0 +1,13 @@
+click 100 96
+wait 120
+log hit
+click 342 233
+wait 10
+log hit
+expect hit 15 'ö'
+click 387 233
+wait 10
+log hit
+expect hit 21 '日'
+screenshot rich-hit.png
+exit

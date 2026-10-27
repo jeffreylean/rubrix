@@ -1,0 +1,6 @@
+click 100 96
+wait 120
+log page
+log spans
+screenshot rich.png
+exit

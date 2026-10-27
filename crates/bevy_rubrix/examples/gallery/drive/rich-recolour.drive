@@ -1,0 +1,9 @@
+click 100 96
+wait 120
+log spans
+screenshot rich-before.png
+click 290 68
+wait 30
+log spans
+screenshot rich-recolour.png
+exit

@@ -1,0 +1,10 @@
+click 100 96
+wait 120
+log page
+log theme
+screenshot rich-lines.png
+click 100 771
+wait 120
+log theme
+screenshot rich-lines-light.png
+exit

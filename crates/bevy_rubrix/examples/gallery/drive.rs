@@ -35,8 +35,11 @@ use std::time::{Duration, Instant};
 use std::{fmt, fs, mem};
 
 use bevy::app::{App, AppExit, First, Plugin};
+use bevy::color::Srgba;
 use bevy::ecs::change_detection::Mut;
+use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::Children;
 use bevy::ecs::message::MessageUpdateSystems;
 use bevy::ecs::observer::On;
 use bevy::ecs::query::With;
@@ -58,10 +61,12 @@ use bevy::picking::PickingSystems;
 use bevy::render::view::screenshot::{
     Screenshot, ScreenshotCaptured, save_to_disk,
 };
+use bevy::text::{TextColor, TextSpan};
 use bevy::ui::ScrollPosition;
 use bevy::window::{CursorMoved, PrimaryWindow, Window, WindowEvent};
 
 use crate::pages::PAGES;
+use crate::pages::rich::{Hit, HitLineRoot, LongLineRoot};
 use crate::{
     Copied, Mode, PAGE_CENTER, Ready, Selected, page_areas, scrollers,
 };
@@ -1048,8 +1053,57 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
         "theme" => {
             format!("theme {}", world.resource::<Mode>().0.name())
         }
+        "spans" => match spans_under::<LongLineRoot>(world) {
+            Some(spans) => {
+                let listed = spans
+                    .iter()
+                    .map(|(span, text, color)| {
+                        format!("{span} {text:?} {}", color.to_hex())
+                    })
+                    .collect::<Vec<_>>();
+                format!(
+                    "spans {}: {}",
+                    spans.len(),
+                    listed.join(", ")
+                )
+            }
+            None => "spans none".into(),
+        },
+        "hit" => {
+            let text = spans_under::<HitLineRoot>(world)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(_, text, _)| text)
+                .collect::<String>();
+            let offset = world.resource::<Hit>().byte;
+            let hit = offset.and_then(|offset| {
+                let at = text.get(offset..)?.chars().next()?;
+                Some(format!("hit {offset} {at:?}"))
+            });
+            hit.unwrap_or_else(|| "hit none".into())
+        }
         _ => return None,
     })
+}
+
+fn spans_under<M: Component>(
+    world: &mut World,
+) -> Option<Vec<(Entity, String, Srgba)>> {
+    let root = world
+        .query_filtered::<Entity, With<M>>()
+        .iter(world)
+        .next()?;
+    let spans = world
+        .get::<Children>(root)?
+        .iter()
+        .copied()
+        .filter_map(|span| {
+            let text = world.get::<TextSpan>(span)?;
+            let color = world.get::<TextColor>(span)?;
+            Some((span, text.0.clone(), color.0.to_srgba()))
+        })
+        .collect();
+    Some(spans)
 }
 
 #[cfg(test)]
@@ -1057,7 +1111,7 @@ mod tests {
     use core::time::Duration;
 
     use bevy::app::{Last, PostUpdate};
-    use bevy::asset::AssetApp;
+    use bevy::asset::{AssetApp, AssetId, Assets};
     use bevy::camera::visibility::{
         InheritedVisibility, VisibilitySystems,
     };
@@ -1072,6 +1126,7 @@ mod tests {
     use bevy::input::InputPlugin;
     use bevy::math::UVec2;
     use bevy::picking::DefaultPickingPlugins;
+    use bevy::text::Font;
     use bevy::time::TimeUpdateStrategy;
     use bevy::transform::TransformPlugin;
     use bevy::ui::UiPlugin;
@@ -1081,7 +1136,7 @@ mod tests {
     use bevy_fynix::{FynixPlugin, mount};
 
     use super::*;
-    use crate::{Palette, ShellPlugin, shell, toggle_theme};
+    use crate::{FONT, Palette, ShellPlugin, shell, toggle_theme};
 
     fn steps(script: &str) -> Vec<Step> {
         parse(script)
@@ -1250,14 +1305,11 @@ exit
         .add_plugins(ShellPlugin)
         .init_asset::<bevy::image::Image>()
         .init_asset::<bevy::image::TextureAtlasLayout>()
-        .init_asset::<bevy::text::Font>()
-        .init_resource::<bevy::text::FontAtlasSet>()
-        .init_resource::<bevy::text::LayoutCx>()
-        .init_resource::<bevy::text::TextPipeline>()
-        .init_resource::<bevy::text::FontCx>()
-        .init_resource::<bevy::text::ScaleCx>()
-        .init_resource::<bevy::text::RemSize>()
-        .add_plugins(UiPlugin)
+        .add_plugins((
+            bevy::text::TextPlugin,
+            UiPlugin,
+            bevy::ui_widgets::ButtonPlugin,
+        ))
         .add_systems(
             PostUpdate,
             show_everything
@@ -1276,6 +1328,13 @@ exit
                 ..Default::default()
             },
         ));
+        app.world_mut()
+            .resource_mut::<Assets<Font>>()
+            .insert(
+                AssetId::default(),
+                Font::from_bytes(FONT.to_vec()),
+            )
+            .expect("the default font handle accepts a font");
         mount::<Palette>(app.world_mut(), shell());
         for _ in 0..3 {
             app.update();
@@ -1540,6 +1599,85 @@ exit
             }
         }
         assert!(seen >= 10, "found {seen} shipped scripts");
+    }
+
+    fn logged<'a>(app: &'a App, topic: &str) -> Vec<&'a str> {
+        app.world()
+            .resource::<Drive>()
+            .said
+            .iter()
+            .filter_map(|line| line.strip_prefix(topic))
+            .collect()
+    }
+
+    fn listed(line: &str) -> Vec<(&str, &str)> {
+        let (_, spans) = line.split_once(": ").expect("a span list");
+        spans
+            .split(", ")
+            .map(|span| {
+                let (id, rest) = span.split_once(' ').expect("an id");
+                let (_, color) =
+                    rest.rsplit_once(' ').expect("a colour");
+                (id, color)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_recolour_keeps_every_span_of_the_long_line() {
+        let mut app = headless(
+            "click 100 96\nwait 5\nlog spans\nclick 290 68\nwait \
+             5\nlog spans\nexit",
+        );
+        run(&mut app);
+        let lines = logged(&app, "spans ");
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        let (before, after) = (listed(lines[0]), listed(lines[1]));
+        assert_eq!(before.len(), 200);
+        let ids = |spans: &[(&str, &str)]| {
+            spans
+                .iter()
+                .map(|span| span.0.to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&before), ids(&after));
+        let recoloured = before
+            .iter()
+            .zip(&after)
+            .filter(|(b, a)| b.1 != a.1)
+            .count();
+        assert_eq!(recoloured, 200);
+    }
+
+    #[test]
+    fn the_long_line_keeps_one_empty_span_at_0_and_grows_back() {
+        let mut app = headless(
+            "click 100 96\nwait 5\nlog spans\nclick 586 68\nwait \
+             5\nlog spans\nclick 734 68\nwait 5\nlog spans\nexit",
+        );
+        run(&mut app);
+        let lines = logged(&app, "spans ");
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        let first = listed(lines[0])[0].0.to_owned();
+        assert!(lines[1].starts_with("1: "), "{}", lines[1]);
+        assert!(lines[1].contains(" \"\" "), "one empty span");
+        let five = listed(lines[2]);
+        assert_eq!(five.len(), 5);
+        assert_eq!(five[0].0, first, "the first span kept");
+    }
+
+    #[test]
+    fn a_press_on_the_hit_line_logs_the_byte_of_its_character() {
+        let mut app = headless(
+            "click 100 96\nwait 5\nlog hit\nclick 342 233\nwait \
+             3\nlog hit\nclick 387 233\nwait 3\nlog hit\nexit",
+        );
+        run(&mut app);
+        assert_eq!(
+            logged(&app, "hit "),
+            ["none", "15 'ö'", "21 '日'"],
+            "the bytes of ö in wörld and of 日"
+        );
     }
 
     #[test]

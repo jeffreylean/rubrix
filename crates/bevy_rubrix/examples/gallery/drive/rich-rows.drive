@@ -1,0 +1,13 @@
+click 100 96
+wait 120
+frames start
+wait 70
+click 1178 68
+wait 120
+frames stop rich-rows.csv
+log entities
+move 740 400
+scroll 0 -2000
+wait 60
+screenshot rich-rows.png
+exit

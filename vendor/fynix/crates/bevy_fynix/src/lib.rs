@@ -33,6 +33,8 @@ use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::world::World;
 use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::input_focus::{InputFocus, InputFocusSystems};
+use bevy::text::detect_text_needs_rerender;
+use bevy::ui::UiSystems;
 use bevy::ui_widgets::MenuFocusSystem;
 pub use cursor::{CursorPlugin, EntityCursor, OverrideCursor};
 pub use fynix::{
@@ -153,7 +155,13 @@ impl Plugin for CorePlugin {
                 .before(MenuFocusSystem)
                 .before(InputFocusSystems::FocusChangeEvents),
         )
-        .add_systems(Update, views::despawn_orphans);
+        .add_systems(Update, views::despawn_orphans)
+        .add_systems(
+            PostUpdate,
+            views::size_line_boxes
+                .in_set(UiSystems::Content)
+                .before(detect_text_needs_rerender),
+        );
     }
 }
 

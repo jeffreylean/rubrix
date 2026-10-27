@@ -1,0 +1,7 @@
+click 100 96
+wait 120
+screenshot rich-plate-on.png
+click 1030 68
+wait 30
+screenshot rich-plate-off.png
+exit
