@@ -1,11 +1,13 @@
 page virtual_list
 wait 30
+click 882 68
+wait 2
 move 740 400
 scroll 0 -85000
 wait 10
 log rows
 expect rows first_visible 4996
-expect rows total 10000
+expect rows total 10000 following false
 click 586 68
 wait 10
 log rows

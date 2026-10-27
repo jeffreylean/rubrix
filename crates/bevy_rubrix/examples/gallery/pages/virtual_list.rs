@@ -17,6 +17,7 @@ const ESTIMATE: f32 = 17.0;
 struct Rows {
     count: usize,
     plain: bool,
+    follow: bool,
 }
 
 impl Default for Rows {
@@ -24,6 +25,7 @@ impl Default for Rows {
         Self {
             count: 10_000,
             plain: false,
+            follow: false,
         }
     }
 }
@@ -61,6 +63,16 @@ fn controls() -> PageView {
                 rows.plain = !rows.plain;
             },
         ),
+        control(
+            resource::<Rows, _>(|rows| {
+                let on = if rows.follow { "on" } else { "off" };
+                format!("follow {on}")
+            }),
+            |world| {
+                let mut rows = world.resource_mut::<Rows>();
+                rows.follow = !rows.follow;
+            },
+        ),
     ))
     .gap(8.0);
     wrapping(buttons.boxed())
@@ -77,6 +89,7 @@ fn rows() -> PageView {
                 label(slot.index().map(text)).wrap(false).boxed()
             },
         )
+        .follow_bottom(resource::<Rows, _>(|rows| rows.follow))
         .boxed(),
         Some(count) => scroll(
             (0..count)

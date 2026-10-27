@@ -7,7 +7,10 @@ parser = argparse.ArgumentParser(
 parser.add_argument("dir", nargs="?", type=Path, default=Path(__file__).parent / "drive")
 out = parser.parse_args().dir
 CENTER = "move 740 400"
-TEN_K, HUNDRED_K, APPEND, PLAIN = "click 290 68", "click 438 68", "click 586 68", "click 734 68"
+TEN_K, HUNDRED_K, APPEND, PLAIN, FOLLOW = (
+    "click 290 68", "click 438 68", "click 586 68", "click 734 68", "click 882 68"
+)
+FOLLOW_ON = [FOLLOW, "wait 2"]
 
 
 def write(name, *steps):
@@ -136,26 +139,31 @@ write(
     "virtual-list-pinned",
     "page virtual_list",
     "wait 30",
+    FOLLOW_ON,
     CENTER,
     "scroll 0 -1000000",
     "wait 10",
+    "log rows",
+    "expect rows following true",
     APPEND,
     "wait 10",
     "screenshot virtual-list-pinned.png",
     "log rows",
     "expect rows ..=10999",
+    "expect rows total 11000 following true",
     "exit",
 )
 write(
     "virtual-list-not-pinned",
     "page virtual_list",
     "wait 30",
+    FOLLOW_ON,
     CENTER,
     "scroll 0 -85000",
     "wait 10",
     "log rows",
     "expect rows first_visible 4996",
-    "expect rows total 10000",
+    "expect rows total 10000 following false",
     APPEND,
     "wait 10",
     "log rows",
