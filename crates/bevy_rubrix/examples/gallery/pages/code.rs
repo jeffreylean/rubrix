@@ -70,7 +70,9 @@ pub fn build() -> PageView {
         label("Code").size(20.0),
         controls(),
         label(resource::<CodeFile, _>(|file| {
-            format!("{}, {} lines", file.name, file.source.rows())
+            let rows = file.source.rows();
+            let lines = if rows == 1 { "line" } else { "lines" };
+            format!("{}, {rows} {lines}", file.name)
         }))
         .tone(Tone::Dim),
         code_view(resource::<CodeFile, _>(|file| {
