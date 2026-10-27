@@ -18,7 +18,7 @@ use bevy::text::{
 use bevy::time::TimeUpdateStrategy;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin};
 use fynix::{Motion, ScopedExt};
-use parley::{Affinity, Cursor};
+use parley::{Affinity, Cluster, Cursor};
 
 use crate::tests::{Plain, app, kids};
 use crate::tokens::Tone;
@@ -63,6 +63,11 @@ fn changed<C: Component>(app: &App, span: Entity) -> Tick {
         .get_change_ticks::<C>()
         .expect("the component")
         .changed
+}
+
+fn span_count(app: &mut App) -> usize {
+    let world = app.world_mut();
+    world.query::<&TextSpan>().iter(world).count()
 }
 
 fn ticks(app: &App, span: Entity) -> [Tick; 3] {
@@ -117,10 +122,11 @@ fn growing_from_10_to_12_spans_spawns_2() {
     assert_eq!(grown.len(), 12);
     assert_eq!(grown[..10], first[..], "the first 10 kept");
     assert_eq!(text(&app, grown[11]), "w11 ");
+    assert_eq!(span_count(&mut app), 12, "no span left over");
 }
 
 #[test]
-fn shrinking_to_no_spans_leaves_one_blank_span() {
+fn shrinking_to_no_spans_leaves_one_empty_span() {
     let mut app = app();
     let root = line(&mut app, words(10));
     let first = kids(&app, root)[0];
@@ -128,11 +134,8 @@ fn shrinking_to_no_spans_leaves_one_blank_span() {
     set_line(&mut app, Vec::new());
 
     assert_eq!(kids(&app, root), vec![first]);
-    assert_eq!(
-        text(&app, first),
-        " ",
-        "a space, to keep a line high"
-    );
+    assert_eq!(text(&app, first), "");
+    assert_eq!(span_count(&mut app), 1, "the other 9 despawned");
 
     set_line(&mut app, words(5));
     let grown = kids(&app, root);
@@ -313,7 +316,8 @@ fn rich_layout_maps_every_character_boundary_to_a_point_and_back() {
     assert_eq!(layout.len(), 1, "one line");
     let mut last = f64::MIN;
     let mut checked = 0;
-    for (index, _) in full.char_indices() {
+    let ends = full.char_indices().map(|(index, _)| index);
+    for index in ends.chain([full.len()]) {
         let caret = Cursor::from_byte_index(
             layout,
             index,
@@ -330,7 +334,7 @@ fn rich_layout_maps_every_character_boundary_to_a_point_and_back() {
         assert_eq!(back.index(), index);
         checked += 1;
     }
-    assert_eq!(checked, full.chars().count());
+    assert_eq!(checked, full.chars().count() + 1, "and the end");
 }
 
 fn cursor_at(
@@ -404,4 +408,80 @@ fn rich_layout_of_no_text_is_one_line_high() {
     let cursor =
         cursor_at(&mut app, empty, Vec2::ZERO).expect("a cursor");
     assert_eq!(cursor.index(), 0);
+}
+
+#[test]
+fn every_point_of_a_rich_text_with_no_text_is_byte_0() {
+    let mut app = laid_out();
+    let empty = mount::<Plain>(app.world_mut(), rich(Vec::new()));
+    let blanks =
+        mount::<Plain>(app.world_mut(), rich(vec![Span::new(""); 3]));
+    app.update();
+    app.update();
+
+    for root in [empty, blanks] {
+        let layout =
+            rich_layout(app.world(), root).expect("a layout");
+        let points =
+            [(0.0, 0.0), (10_000.0, 1.0), (10_000.0, 10_000.0)];
+        for (x, y) in points {
+            let cursor = Cursor::from_point(layout, x, y);
+            assert_eq!(cursor.index(), 0, "caret at ({x}, {y})");
+        }
+        for (x, y) in points {
+            if let Some((cluster, _)) =
+                Cluster::from_point(layout, x, y)
+            {
+                assert_eq!(
+                    cluster.text_range(),
+                    0..0,
+                    "at ({x}, {y})"
+                );
+            }
+        }
+        let caret =
+            Cursor::from_byte_index(layout, 0, Affinity::Downstream)
+                .geometry(layout, 1.0);
+        assert!(caret.y1 > caret.y0, "a caret one line high");
+    }
+}
+
+#[test]
+fn a_list_of_empty_spans_keeps_a_span_entity_each() {
+    let mut app = app();
+    let root = line(&mut app, words(5));
+    let first = kids(&app, root);
+
+    set_line(&mut app, vec![Span::new(""); 5]);
+    assert_eq!(kids(&app, root), first, "one entity per span");
+    assert!(first.iter().all(|&span| text(&app, span).is_empty()));
+
+    set_line(&mut app, words(5));
+    assert_eq!(kids(&app, root), first, "the same five");
+    assert_eq!(text(&app, first[4]), "w4 ");
+}
+
+#[test]
+fn a_fade_leaves_the_font_of_a_span_sized_nan_alone() {
+    let mut app = app();
+    app.insert_resource(Shade(Tone::Body));
+    let root = mount::<Plain>(
+        app.world_mut(),
+        rich(vec![Span::new("a "), Span::new("b").size(f32::NAN)])
+            .size(9.0)
+            .tone(resource::<Shade, _>(|shade| shade.0))
+            .transition(Motion::Interact),
+    );
+    app.update();
+    let span = kids(&app, root)[1];
+    let before = changed::<TextFont>(&app, span);
+
+    app.world_mut().resource_mut::<Shade>().0 = Tone::Accent;
+    app.update();
+    app.update();
+
+    assert_ne!(color(&app, span), Color::WHITE, "the fade ran");
+    assert_eq!(changed::<TextFont>(&app, span), before);
+    let font = app.world().get::<TextFont>(span).unwrap();
+    assert_eq!(font.font_size, FontSize::Px(9.0), "the root's size");
 }
