@@ -314,6 +314,37 @@ fn in_the_middle_it_builds_the_rows_within_the_overscan() {
 }
 
 #[test]
+fn an_overscan_of_100_px_builds_only_the_rows_within_it() {
+    const NEAR: f32 = 100.0;
+    let mut app = laid_out();
+    app.insert_resource(Count(10_000));
+    mount::<Plain>(
+        app.world_mut(),
+        column((virtual_list(
+            resource::<Count, _>(|count| count.0),
+            ESTIMATE,
+            row(uniform),
+        )
+        .overscan(NEAR),))
+        .width(px(300.0))
+        .height(px(VIEW)),
+    );
+    settle(&mut app);
+    let area = app
+        .world_mut()
+        .query_filtered::<Entity, With<VirtualList>>()
+        .single(app.world())
+        .expect("one list");
+    scroll_to(&mut app, area, 5_000);
+    settle(&mut app);
+
+    assert_eq!(state(&app, area).first_visible(), 5_000);
+    assert_cover(&mut app, area, -NEAR, VIEW + NEAR);
+    let most = ((VIEW + 2.0 * NEAR) / ESTIMATE) as usize + 1;
+    assert!(rows(&mut app, area).len() <= most);
+}
+
+#[test]
 fn at_the_end_the_last_row_ends_the_viewport() {
     let mut app = laid_out();
     let area = list(&mut app, 10_000, tall_hundredths);
