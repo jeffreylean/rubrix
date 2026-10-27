@@ -8,12 +8,14 @@ use bevy::app::App;
 use bevy::camera::{Camera, RenderTargetInfo};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::world::World;
 use bevy::math::UVec2;
 use bevy::ui::{
-    ComputedNode, Display, ScrollPosition, UiGlobalTransform, Val, px,
+    ComputedNode, Display, Node, ScrollPosition, UiGlobalTransform, Val,
+    px,
 };
 
 use super::layout::laid_out;
@@ -101,18 +103,29 @@ fn list_in(
     row: impl Fn(RowSlot) -> AnyView<Bevy, Plain> + Send + Sync + 'static,
     view: impl Into<Prop<Val>>,
 ) -> Entity {
+    let area = mounted(app, count, ESTIMATE, row, view);
+    settle(app);
+    area
+}
+
+fn mounted(
+    app: &mut App,
+    count: usize,
+    estimate: f32,
+    row: impl Fn(RowSlot) -> AnyView<Bevy, Plain> + Send + Sync + 'static,
+    view: impl Into<Prop<Val>>,
+) -> Entity {
     app.insert_resource(Count(count));
     mount::<Plain>(
         app.world_mut(),
         column((virtual_list(
             resource::<Count, _>(|count| count.0),
-            ESTIMATE,
+            estimate,
             row,
         ),))
         .width(px(300.0))
         .height(view),
     );
-    settle(app);
     app.world_mut()
         .query_filtered::<Entity, With<VirtualList>>()
         .single(app.world())
@@ -145,6 +158,69 @@ fn top(app: &App, node: Entity) -> f32 {
     let at = app.world().get::<UiGlobalTransform>(node).unwrap();
     (at.translation.y - computed.size().y / 2.0)
         * computed.inverse_scale_factor()
+}
+
+fn height(app: &App, node: Entity) -> f32 {
+    let computed = app.world().get::<ComputedNode>(node).unwrap();
+    computed.size().y * computed.inverse_scale_factor()
+}
+
+/// Where each row draws, from the top of the area: its own box, cut
+/// to its slot's when the slot clips, in order.
+fn drawn(app: &mut App, area: Entity) -> Vec<(f32, f32)> {
+    let origin = top(app, area);
+    let built = app
+        .world_mut()
+        .query_filtered::<(Entity, &ChildOf), With<Shows>>()
+        .iter(app.world())
+        .map(|(row, slot)| (row, slot.parent()))
+        .collect::<Vec<_>>();
+    let mut spans = built
+        .into_iter()
+        .map(|(row, slot)| {
+            let start = top(app, row) - origin;
+            let end = start + height(app, row);
+            let node = app.world().get::<Node>(slot).unwrap();
+            if node.overflow.y.is_visible() {
+                (start, end)
+            } else {
+                let from = top(app, slot) - origin;
+                (start.max(from), end.min(from + height(app, slot)))
+            }
+        })
+        .filter(|(start, end)| end > start)
+        .collect::<Vec<_>>();
+    spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+    spans
+}
+
+fn assert_apart(app: &mut App, area: Entity, when: &str) {
+    let spans = drawn(app, area);
+    for pair in spans.windows(2) {
+        assert!(
+            pair[1].0 >= pair[0].1 - 0.01,
+            "{when}: a row drawn at {:?} and one at {:?}",
+            pair[0],
+            pair[1]
+        );
+    }
+}
+
+/// The longest stretch of the viewport no row draws over.
+fn uncovered(app: &mut App, area: Entity) -> f32 {
+    let mut at = 0.0f32;
+    let mut worst = 0.0f32;
+    for (start, end) in drawn(app, area) {
+        if end <= at {
+            continue;
+        }
+        worst = worst.max(start.min(VIEW) - at);
+        at = end;
+        if at >= VIEW {
+            return worst;
+        }
+    }
+    worst.max(VIEW - at)
 }
 
 fn rows(app: &mut App, area: Entity) -> Vec<(usize, Entity, f32)> {
@@ -493,4 +569,74 @@ fn a_list_at_its_end_keeps_it_in_sight_as_the_viewport_shrinks() {
     settle(&mut app);
 
     assert_eq!(shown_at(&mut app, area, 9_999), Some(280.0));
+}
+
+#[test]
+fn no_frame_draws_an_unmeasured_row_over_the_next() {
+    let mut app = laid_out();
+    let area = list(&mut app, 10_000, tall_hundredths);
+
+    scroll_to(&mut app, area, 5_000);
+    for frame in 1..=4 {
+        app.update();
+        assert_apart(&mut app, area, &format!("scroll_to, frame {frame}"));
+    }
+    app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y +=
+        20_000.0;
+    for frame in 1..=4 {
+        app.update();
+        assert_apart(&mut app, area, &format!("a jump, frame {frame}"));
+    }
+}
+
+fn under_a_wrong_estimate(count: usize, estimate: f32) {
+    let mut app = laid_out();
+    let area = mounted(&mut app, count, estimate, row(uniform), px(VIEW));
+    let check = |app: &mut App, when: &str| {
+        let slots = state(app, area).rows();
+        assert!(slots < 200, "{when}: {slots} slots");
+        assert_apart(app, area, when);
+    };
+    for frame in 1..=30 {
+        app.update();
+        check(&mut app, &format!("first paint, frame {frame}"));
+    }
+    type Jump = fn(&mut App, Entity);
+    let jumps: [(&str, Jump); 2] = [
+        ("scroll_to", |app, area| scroll_to(app, area, 5_000)),
+        ("a jump", |app, area| {
+            app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y +=
+                20_000.0;
+        }),
+    ];
+    for (name, jump) in jumps {
+        jump(&mut app, area);
+        for frame in 1..=8 {
+            app.update();
+            let when = format!("{estimate} px, {name}, frame {frame}");
+            check(&mut app, &when);
+            if frame >= 2 {
+                let gap = uncovered(&mut app, area);
+                assert_eq!(gap, 0.0, "{when}: {gap} px uncovered");
+            }
+        }
+    }
+}
+
+#[test]
+fn an_estimate_ten_times_too_small_stays_in_bounds() {
+    under_a_wrong_estimate(10_000, ESTIMATE / 10.0);
+    under_a_wrong_estimate(100_000, ESTIMATE / 10.0);
+}
+
+#[test]
+fn a_right_estimate_stays_in_bounds() {
+    under_a_wrong_estimate(10_000, ESTIMATE);
+    under_a_wrong_estimate(100_000, ESTIMATE);
+}
+
+#[test]
+fn an_estimate_ten_times_too_large_stays_in_bounds() {
+    under_a_wrong_estimate(10_000, ESTIMATE * 10.0);
+    under_a_wrong_estimate(100_000, ESTIMATE * 10.0);
 }
