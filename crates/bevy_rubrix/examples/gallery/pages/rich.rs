@@ -166,6 +166,8 @@ fn controls() -> PageView {
         ),
     ))
     .gap(8.0);
+    // fynix's `Frame` has no wrap prop, so this sets the row's
+    // `Node`.
     AnyView::new(|cx: &mut Build| {
         let root = cx.build(buttons);
         cx.world
