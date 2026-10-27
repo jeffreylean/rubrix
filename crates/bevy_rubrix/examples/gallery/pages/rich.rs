@@ -144,12 +144,9 @@ fn controls() -> PageView {
             world.resource_mut::<LongLine>().count = LONG_SPANS;
         }),
         control(
-            resource::<Toggles, _>(|toggles| {
-                format!(
-                    "plate {}",
-                    if toggles.plate { "on" } else { "off" }
-                )
-            }),
+            // The label stays put, so taking the plate off changes
+            // nothing else on screen that would redraw the text.
+            "plate",
             |world| {
                 let mut toggles = world.resource_mut::<Toggles>();
                 toggles.plate = !toggles.plate;
