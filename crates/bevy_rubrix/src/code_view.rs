@@ -1,5 +1,3 @@
-//! A highlighted text shown one row per line in a virtual list.
-
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -22,13 +20,8 @@ use crate::tokens::{Styles, SyntaxTokens};
 /// Bevy's line height, as a factor of the font size.
 const LINE_HEIGHT: f32 = 1.2;
 
-/// The columns between tab stops.
 const TAB: usize = 4;
 
-/// How far past each end of the view the list builds rows. Each
-/// frame draws every row built, and a code row has about five times
-/// the glyphs of a label, so the list's default of 1,000 px costs a
-/// scroll frame more than 3 ms.
 const OVERSCAN: f32 = 400.0;
 
 /// A text and its highlights. It is lexed once, when it is made, and
@@ -150,11 +143,6 @@ impl CodeView {
 }
 
 /// What a code view shows, on the view's root entity.
-///
-/// Only the view writes it. A new source gives it a new revision, and
-/// each revision builds its own list, which reads the rows once, so
-/// its rows and their count always agree and nothing measured for
-/// the old text stays.
 #[derive(Component)]
 pub struct CodeDoc {
     source: CodeSource,
@@ -204,7 +192,6 @@ pub struct CodeLine {
     pub row: usize,
 }
 
-/// How every row of one view is drawn, read from the theme once.
 #[derive(Clone)]
 struct RowStyle {
     styles: Styles,
@@ -256,8 +243,6 @@ where
     }
 }
 
-/// A column that takes its parent's free space and can shrink below
-/// what it holds. The list's basis is 0, so its parent sizes it.
 fn filling() -> Stack<()> {
     column(()).grow(1.0).min_width(px(0.0)).min_height(px(0.0))
 }
@@ -283,9 +268,6 @@ where
     })
 }
 
-/// A line number and the line's text. The gutter stays outside the
-/// sideways cell, so only the text moves when the view scrolls
-/// sideways.
 fn code_row<T>(
     root: Entity,
     slot: RowSlot,
@@ -337,9 +319,6 @@ where
         .boxed()
 }
 
-/// What `show` makes of the row that `slot` shows, read again when
-/// the slot moves to another row. Within one list that is the only
-/// time a row's content changes.
 fn at_row(
     root: Entity,
     slot: RowSlot,
@@ -359,12 +338,14 @@ fn digits(rows: usize) -> usize {
     rows.checked_ilog10().map_or(1, |log| log as usize + 1)
 }
 
-/// A line as its row shows it, with each tab as spaces to the next
-/// stop.
 pub(crate) struct Shown<'a> {
     text: Cow<'a, str>,
-    /// The byte of each tab in the line, and the spaces it became.
-    tabs: Vec<(usize, usize)>,
+    tabs: Vec<Tab>,
+}
+
+struct Tab {
+    byte: usize,
+    spaces: usize,
 }
 
 impl<'a> Shown<'a> {
@@ -382,7 +363,7 @@ impl<'a> Shown<'a> {
             if c == '\t' {
                 let spaces = TAB - column % TAB;
                 text.extend(core::iter::repeat_n(' ', spaces));
-                tabs.push((at, spaces));
+                tabs.push(Tab { byte: at, spaces });
                 column += spaces;
             } else {
                 text.push(c);
@@ -399,20 +380,17 @@ impl<'a> Shown<'a> {
         &self.text
     }
 
-    /// Where the line's byte `source` shows in [`Shown::text`].
-    pub(crate) fn shown(&self, source: usize) -> usize {
-        source
+    pub(crate) fn shown(&self, source_byte: usize) -> usize {
+        source_byte
             + self
                 .tabs
                 .iter()
-                .take_while(|&&(at, _)| at < source)
-                .map(|&(_, spaces)| spaces - 1)
+                .take_while(|tab| tab.byte < source_byte)
+                .map(|tab| tab.spaces - 1)
                 .sum::<usize>()
     }
 }
 
-/// The spans that show `line`, one per run in the run's look, with
-/// runs that look alike joined into one span.
 pub(crate) fn line_spans(
     line: &str,
     runs: &[Run],

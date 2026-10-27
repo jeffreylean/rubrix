@@ -33,7 +33,6 @@ impl Plugin for RubrixPlugin {
     }
 }
 
-/// An app with no text assets has nowhere to put the font.
 fn load_code_font(fonts: Option<ResMut<Assets<Font>>>) {
     if let Some(mut fonts) = fonts {
         fonts

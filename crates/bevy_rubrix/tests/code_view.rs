@@ -1,8 +1,3 @@
-//! The code view, headless with no layout: what its rows show.
-//!
-//! With no layout the view is 0 px high, so its list builds the rows
-//! within its 400 px overscan of the scroll offset, 48 at the top.
-
 use core::time::Duration;
 
 use bevy::app::App;
@@ -26,8 +21,6 @@ use rubrix_highlight::{highlight, spans};
 
 const BODY: Color = Color::WHITE;
 
-/// A theme that gives every root kind a colour of its own, so a span
-/// in the wrong kind shows in the wrong colour.
 struct Distinct;
 
 fn root_colour(kind: Kind) -> Color {
@@ -100,7 +93,6 @@ struct Showing(CodeSource);
 #[derive(Resource)]
 struct Wrapping(Overflow);
 
-/// An app showing the source in [`Showing`], which a test may swap.
 fn showing(source: CodeSource) -> App {
     let mut app = app();
     app.insert_resource(Showing(source))
@@ -133,7 +125,6 @@ fn list_state(app: &mut App) -> &VirtualList {
     app.world().get::<VirtualList>(list).expect("a list")
 }
 
-/// The spans of the rich text `root`: their text and colour.
 fn spans_of(app: &App, root: Entity) -> Vec<(String, Color)> {
     let world = app.world();
     world
@@ -158,7 +149,6 @@ fn text_of(app: &App, root: Entity) -> String {
         .collect()
 }
 
-/// Each built row's text rich, by the row it shows.
 fn lines(app: &mut App) -> Vec<(usize, Entity)> {
     let mut lines = app
         .world_mut()
@@ -178,8 +168,6 @@ fn line(app: &mut App, row: usize) -> Entity {
         .1
 }
 
-/// The text of every rich text that is all digits and spaces: the
-/// line numbers.
 fn numbers(app: &mut App) -> Vec<String> {
     let roots = app
         .world_mut()
@@ -200,8 +188,6 @@ fn numbers(app: &mut App) -> Vec<String> {
     numbers
 }
 
-/// What `highlight` says a row shows: the text of each run in its
-/// kind's colour, runs of one colour joined.
 fn expected(
     lang: Lang,
     text: &str,

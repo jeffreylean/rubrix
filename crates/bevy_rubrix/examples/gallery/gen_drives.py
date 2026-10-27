@@ -8,9 +8,8 @@ parser = argparse.ArgumentParser(
 parser.add_argument("dir", nargs="?", type=Path, default=Path(__file__).parent / "drive")
 out = parser.parse_args().dir
 CENTER = "move 740 400"
-TEN_K, HUNDRED_K, APPEND, PLAIN, FOLLOW = (
-    "click 290 68", "click 438 68", "click 586 68", "click 734 68", "click 882 68"
-)
+BUTTONS = ["click 290 68", "click 438 68", "click 586 68", "click 734 68", "click 882 68"]
+TEN_K, HUNDRED_K, APPEND, PLAIN, FOLLOW = BUTTONS
 FOLLOW_ON = [FOLLOW, "wait 2"]
 
 
@@ -226,8 +225,7 @@ write(
     "exit",
 )
 
-# The code page. Its buttons sit where the virtual_list page's first four do.
-LARGE_RS, LARGE_TS, STRESS, WRAP = TEN_K, HUNDRED_K, APPEND, PLAIN
+LARGE_RS, LARGE_TS, STRESS, WRAP = BUTTONS[:4]
 THEME = "click 100 771"
 SETTLE = "wait 120"
 LARGE_RS_LINES = (
@@ -237,16 +235,14 @@ LARGE_RS_LINES = (
 )
 
 
-def to_line(line):
-    """Scrolls a code view at its top until `line`, from 1, is the first that shows."""
-    return f"scroll 0 -{(line - 1) * ROW}"
+def to_line(line_number):
+    return f"scroll 0 -{(line_number - 1) * ROW}"
 
 
 def code(name, *steps):
     write(f"code-{name}", "page code", SETTLE, *steps, "exit")
 
 
-# Lane 1 times the first paint, so the page opens inside the frames.
 write(
     "code-large",
     "frames start",
@@ -372,7 +368,6 @@ code(
     "expect rows total 1 following",
     "log runs 1",
 )
-# Lane 9 shows a doc comment and a line with a keyword and strings.
 quoted = next(
     n for n, line in enumerate(LARGE_RS_LINES, 1) if line.startswith("const ") and '"' in line
 )

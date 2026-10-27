@@ -21,11 +21,8 @@ const LARGE_RS: &str =
 const LARGE_TS: &str =
     include_str!("../../../../../bench/fixtures/ts/large.ts.txt");
 
-/// The stress input is `large.rs.txt`'s lines over and over, cut
-/// at this many, so its last line number is 100,000.
 const STRESS_LINES: usize = 100_000;
 
-/// The file on show.
 #[derive(Resource)]
 struct CodeFile {
     name: String,
@@ -136,7 +133,6 @@ fn stress() -> String {
     text
 }
 
-/// Shows the one file in `paths`, as the language its name says.
 pub fn open(
     world: &mut World,
     paths: &[PathBuf],
@@ -151,7 +147,6 @@ pub fn open(
         format!("cannot read {}: {error}", path.display())
     })?;
     let text = String::from_utf8_lossy(&bytes).into_owned();
-    // Highlighting panics at 4 GiB.
     if text.len() >= u32::MAX as usize {
         return Err(format!("{} is 4 GiB or more", path.display()));
     }

@@ -1,6 +1,3 @@
-//! How a theme colours code: a style per [`Kind`], and how a kind
-//! with none falls back to its parents.
-
 use std::sync::Arc;
 
 use bevy::color::Color;
@@ -119,8 +116,6 @@ pub fn resolve<T: SyntaxTokens + ?Sized>(
     (theme.tone(Tone::Body), face.unwrap_or_default())
 }
 
-/// Every kind's look under one theme, resolved once when a view is
-/// built: a view reads its theme only then.
 #[derive(Clone)]
 pub(crate) struct Styles(Arc<[Look; Kind::COUNT]>);
 
@@ -150,7 +145,6 @@ mod tests {
     const BLUE: Color = Color::srgb(0.0, 0.0, 1.0);
     const GREEN: Color = Color::srgb(0.0, 1.0, 0.0);
 
-    /// A theme that styles only the kinds `styles` names.
     struct Only(Vec<(Kind, SyntaxStyle)>);
 
     impl TextTokens for Only {

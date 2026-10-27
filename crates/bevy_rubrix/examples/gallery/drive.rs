@@ -294,7 +294,6 @@ fn parse_line(text: &str) -> Result<Option<Step>, String> {
     Ok(Some(step))
 }
 
-/// How many words a topic takes after its name.
 fn topic_args(name: &str) -> usize {
     match name {
         "runs" => 1,
@@ -302,8 +301,6 @@ fn topic_args(name: &str) -> usize {
     }
 }
 
-/// The topic at the start of `text`, with its words, and the text
-/// after it.
 fn split_topic(text: &str) -> Result<(String, &str), String> {
     let (name, mut rest) = first_word(text);
     let mut topic = name.to_owned();
@@ -548,7 +545,6 @@ impl DrivePlugin {
         parse(script).map(Self)
     }
 
-    /// This, with each relative `open` path read from `dir`.
     fn opening_from(mut self, dir: &Path) -> Self {
         for line in &mut self.0 {
             if let Step::Open(paths) = &mut line.step {
@@ -1168,15 +1164,13 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
     })
 }
 
-/// The runs the code page's line `line`, from 1, was lexed into, and
-/// the spans its row shows, or `not shown` while no row shows it.
-fn runs(world: &mut World, line: usize) -> String {
+fn runs(world: &mut World, line_number: usize) -> String {
     let Some((view, row, runs)) = world
         .query::<(Entity, &CodeDoc)>()
         .iter(world)
         .next()
         .and_then(|(view, doc)| {
-            let row = line
+            let row = line_number
                 .checked_sub(1)
                 .filter(|&row| row < doc.rows())?;
             let runs = spans(doc.runs(row))
@@ -1187,7 +1181,7 @@ fn runs(world: &mut World, line: usize) -> String {
             Some((view, row, runs))
         })
     else {
-        return format!("runs {line} none");
+        return format!("runs {line_number} none");
     };
     let runs = if runs.is_empty() {
         "empty".to_owned()
@@ -1211,7 +1205,7 @@ fn runs(world: &mut World, line: usize) -> String {
         }
         None => "not shown".to_owned(),
     };
-    format!("runs {line}: {runs} | {shown}")
+    format!("runs {line_number}: {runs} | {shown}")
 }
 
 fn spans_under<M: Component>(
@@ -1227,7 +1221,6 @@ fn spans_under<M: Component>(
         .then(|| spans_of(world, root))
 }
 
-/// Each span of the rich text `root`, its text, and its colour.
 fn spans_of(
     world: &World,
     root: Entity,
@@ -1954,13 +1947,13 @@ exit
         let node =
             world.get::<ComputedNode>(first).expect("laid out");
         let width = node.size().x * node.inverse_scale_factor();
-        // Five digits, each 600 of the font's 1000 units at 14 px,
-        // and layout rounds to whole pixels.
-        assert!((width - 42.0).abs() <= 1.0, "{width} px");
+        let digits = 5.0;
+        let advance = 600.0 / 1000.0;
+        let font_size = 14.0;
+        let laid_out = digits * advance * font_size;
+        assert!((width - laid_out).abs() <= 1.0, "{width} px");
     }
 
-    /// The left edge, in logical px, of the first rich text whose
-    /// spans read `text`.
     fn left_of(world: &mut World, text: &str) -> f32 {
         let roots = world
             .query_filtered::<Entity, With<Text>>()
