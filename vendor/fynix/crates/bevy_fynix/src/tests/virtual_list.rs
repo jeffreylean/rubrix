@@ -45,6 +45,9 @@ struct Across(f32);
 #[derive(Resource)]
 struct Grown(usize, f32);
 
+#[derive(Resource)]
+struct Follow(bool);
+
 #[derive(Component)]
 struct Shows(usize);
 
@@ -120,13 +123,17 @@ fn mounted(
     view: impl Into<Prop<Val>>,
 ) -> Entity {
     app.insert_resource(Count(count));
+    if !app.world().contains_resource::<Follow>() {
+        app.insert_resource(Follow(false));
+    }
     mount::<Plain>(
         app.world_mut(),
         column((virtual_list(
             resource::<Count, _>(|count| count.0),
             estimate,
             row,
-        ),))
+        )
+        .follow_bottom(resource::<Follow, _>(|follow| follow.0)),))
         .width(px(300.0))
         .height(view),
     );
@@ -414,6 +421,7 @@ fn the_first_row_holds_still_when_a_row_above_grows() {
 #[test]
 fn growing_at_the_bottom_keeps_the_last_row_in_sight() {
     let mut app = laid_out();
+    app.insert_resource(Follow(true));
     let area = list(&mut app, 10_000, tall_hundredths);
     scroll_to(&mut app, area, 9_999);
     settle(&mut app);
@@ -445,6 +453,7 @@ fn growing_in_the_middle_keeps_the_first_row_still() {
 #[test]
 fn growing_from_no_rows_follows_the_bottom() {
     let mut app = laid_out();
+    app.insert_resource(Follow(true));
     let area = list(&mut app, 0, uniform);
     assert!(rows(&mut app, area).is_empty());
     assert_eq!(state(&app, area).spawned(), None);
@@ -557,6 +566,7 @@ fn a_hidden_list_builds_no_more_than_its_band() {
 #[test]
 fn a_list_at_its_end_keeps_it_in_sight_as_the_viewport_shrinks() {
     let mut app = laid_out();
+    app.insert_resource(Follow(true));
     app.insert_resource(Tall(VIEW));
     let area = list_in(
         &mut app,
@@ -866,6 +876,7 @@ fn a_list_scrolls_sideways_only_when_asked() {
 #[test]
 fn small_scrolls_up_leave_the_bottom() {
     let mut app = laid_out();
+    app.insert_resource(Follow(true));
     let area = list(&mut app, 1_000, uniform);
     scroll_to(&mut app, area, 999);
     settle(&mut app);
@@ -892,7 +903,7 @@ fn growing_at_the_bottom_at(scale_factor: f32) {
         physical_size: UVec2::new(1000, 1000),
         scale_factor,
     });
-    app.insert_resource(Count(10_000));
+    app.insert_resource(Follow(true));
     let area = list(&mut app, 10_000, |_, _| 19.0);
     scroll_to(&mut app, area, 9_999);
     settle(&mut app);
@@ -982,4 +993,135 @@ fn a_width_change_reestimates_rows_out_of_sight() {
         })
     );
     assert_eq!(shown_at(&mut app, area, 5_000), Some(0.0));
+}
+
+#[test]
+fn a_list_grown_from_empty_shows_its_first_row() {
+    for from in [0, 10] {
+        let mut app = laid_out();
+        let area = list(&mut app, from, uniform);
+
+        app.world_mut().resource_mut::<Count>().0 = 10_000;
+        settle(&mut app);
+
+        assert_eq!(scroll(&app, area), 0.0, "from {from}");
+        assert_eq!(
+            state(&app, area).first_visible(),
+            0,
+            "from {from}"
+        );
+    }
+}
+
+#[test]
+fn growing_at_the_bottom_moves_no_list_that_does_not_follow() {
+    let mut app = laid_out();
+    let area = list(&mut app, 1_000, uniform);
+    scroll_to(&mut app, area, 999);
+    settle(&mut app);
+    let first = state(&app, area).first_visible();
+    scroll_to(&mut app, area, first);
+    settle(&mut app);
+    let at = scroll(&app, area);
+
+    app.world_mut().resource_mut::<Count>().0 = 2_000;
+    settle(&mut app);
+
+    assert_eq!(scroll(&app, area), at);
+    assert_eq!(state(&app, area).first_visible(), first);
+}
+
+#[test]
+fn scroll_to_the_top_of_a_list_that_fits_keeps_it_there() {
+    let mut app = laid_out();
+    let area = list(&mut app, 10, uniform);
+    scroll_to(&mut app, area, 0);
+    settle(&mut app);
+
+    app.world_mut().resource_mut::<Count>().0 = 10_000;
+    settle(&mut app);
+
+    assert_eq!(scroll(&app, area), 0.0);
+}
+
+#[test]
+fn scroll_to_moves_a_following_list_where_it_says() {
+    let mut app = laid_out();
+    app.insert_resource(Follow(true));
+    let area = list(&mut app, 0, uniform);
+
+    app.world_mut().resource_mut::<Count>().0 = 10_000;
+    scroll_to(&mut app, area, 0);
+    settle(&mut app);
+    assert_eq!(scroll(&app, area), 0.0, "in the frame it grows");
+
+    app.world_mut().resource_mut::<Count>().0 = 20_000;
+    settle(&mut app);
+    scroll_to(&mut app, area, 0);
+    settle(&mut app);
+    assert_eq!(scroll(&app, area), 0.0, "once it follows");
+    assert!(!state(&app, area).following());
+}
+
+#[test]
+fn scroll_to_the_top_of_a_following_list_that_fits_keeps_it_there() {
+    let mut app = laid_out();
+    app.insert_resource(Follow(true));
+    let area = list(&mut app, 10, uniform);
+    assert!(state(&app, area).following());
+    scroll_to(&mut app, area, 0);
+    settle(&mut app);
+
+    app.world_mut().resource_mut::<Count>().0 = 10_000;
+    settle(&mut app);
+
+    assert_eq!(scroll(&app, area), 0.0);
+}
+
+#[test]
+fn a_following_list_follows_again_back_at_the_bottom() {
+    let mut app = laid_out();
+    app.insert_resource(Follow(true));
+    let area = list(&mut app, 1_000, uniform);
+    scroll_to(&mut app, area, 500);
+    settle(&mut app);
+
+    app.world_mut().resource_mut::<Count>().0 = 2_000;
+    settle(&mut app);
+    assert_eq!(
+        state(&app, area).first_visible(),
+        500,
+        "away from it"
+    );
+
+    app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y =
+        1.0e9;
+    settle(&mut app);
+    assert!(state(&app, area).following());
+    app.world_mut().resource_mut::<Count>().0 = 3_000;
+    settle(&mut app);
+    assert_eq!(shown_at(&mut app, area, 2_999), Some(VIEW - 20.0));
+}
+
+#[test]
+fn a_following_list_keeps_each_new_row_in_sight() {
+    for height in [uniform as Height, tall_hundredths] {
+        let mut app = laid_out();
+        app.insert_resource(Follow(true));
+        let area = list(&mut app, 0, height);
+        for count in (2..=600).step_by(2) {
+            app.world_mut().resource_mut::<Count>().0 = count;
+            app.update();
+            let top =
+                shown_at(&mut app, area, count.saturating_sub(3));
+            assert!(
+                count < 4 || top.is_some_and(|top| (0.0..VIEW).contains(&top)),
+                "{count} rows: row {} at {top:?}",
+                count - 3
+            );
+        }
+        settle(&mut app);
+        let last = shown_at(&mut app, area, 599).unwrap();
+        assert_eq!(last + height(app.world(), 599), VIEW);
+    }
 }

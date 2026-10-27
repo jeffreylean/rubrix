@@ -47,6 +47,7 @@ pub struct VirtualListView<R> {
     count: Prop<usize>,
     estimate: f32,
     sideways: bool,
+    follow: Prop<bool>,
     row: R,
 }
 
@@ -54,6 +55,11 @@ pub struct VirtualListView<R> {
 /// it has been laid out, built by `row`. Once the mean height of the
 /// rows laid out is below 0.8 or above 1.25 times `estimate`, the
 /// mean takes its place.
+///
+/// Unless the view [follows the
+/// bottom](VirtualListView::follow_bottom), rows added keep its first
+/// visible row in place, so a list that grows from no rows shows its
+/// first.
 ///
 /// A row that scrolls far out of sight is not despawned but shows
 /// another row instead, so `row` builds the view of a [`RowSlot`]
@@ -101,6 +107,7 @@ pub fn virtual_list<R>(
         count: count.into(),
         estimate,
         sideways: false,
+        follow: Prop::Value(false),
         row,
     }
 }
@@ -116,6 +123,22 @@ impl<R> VirtualListView<R> {
     pub fn sideways(mut self) -> Self {
         self.sideways = true;
         self.frame = self.frame.overflow(Overflow::scroll());
+        self
+    }
+
+    /// Keeps the view at the bottom while `on` holds and the view is
+    /// at the bottom, as rows are added or grow, including while
+    /// every row fits the view. A scroll up by the user stops it, as
+    /// does a [`scroll_to`](VirtualList::scroll_to) of a row other
+    /// than the last, or a
+    /// [`scroll_into_view`](VirtualList::scroll_into_view) that ends
+    /// above the bottom. Moving the view back to the bottom
+    /// starts it again.
+    pub fn follow_bottom(
+        mut self,
+        on: impl Into<Prop<bool>>,
+    ) -> Self {
+        self.follow = on.into();
         self
     }
 }
@@ -150,6 +173,13 @@ where
                 world.get_mut::<VirtualList>(list)
             {
                 state.count = count;
+            }
+        });
+        cx.effect(list, self.follow, |world, list, &on| {
+            if let Some(mut state) =
+                world.get_mut::<VirtualList>(list)
+            {
+                state.follow = on;
             }
         });
         *cx.world.get_mut::<Node>(spacer).expect("a node") = Node {
@@ -247,7 +277,8 @@ pub struct VirtualList {
     spawned: Range<usize>,
     first_visible: usize,
     target: Option<Target>,
-    pinned: bool,
+    follow: bool,
+    pin: Pin,
     placed_at: f32,
     widths: Option<Widths>,
     /// The area's width when its rows were measured.
@@ -258,6 +289,13 @@ pub struct VirtualList {
 enum Target {
     First(usize),
     Whole { index: usize, remeasured: bool },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pin {
+    AtBottom,
+    Unpinned,
+    HeldByTarget,
 }
 
 #[derive(Default)]
@@ -284,7 +322,8 @@ impl VirtualList {
             spawned: 0..0,
             first_visible: 0,
             target: None,
-            pinned: false,
+            follow: false,
+            pin: Pin::Unpinned,
             placed_at: 0.0,
             widths: None,
             across: 0.0,
@@ -348,6 +387,12 @@ impl VirtualList {
         self.count
     }
 
+    /// Whether the view follows the bottom as rows are added, as
+    /// [`follow_bottom`](VirtualListView::follow_bottom) describes.
+    pub fn following(&self) -> bool {
+        self.follow && self.pin == Pin::AtBottom
+    }
+
     /// Rows out of sight cannot be measured again, so a change in
     /// the area's width leaves each with the height it had only as an
     /// estimate, until it shows or the mean moves it.
@@ -377,12 +422,17 @@ impl VirtualList {
         end: f32,
     ) -> Scroll {
         let view = f64::from(view);
-        let view_laid_out = view > 0.0;
-        let pinned = if view_laid_out {
-            scroll >= end || self.pinned && scroll >= self.placed_at
-        } else {
-            self.pinned
-        };
+        let held =
+            self.pin == Pin::HeldByTarget && scroll == self.placed_at;
+        let pinned = self.follow
+            && !held
+            && if view > 0.0 {
+                scroll >= end
+                    || self.pin == Pin::AtBottom
+                        && scroll >= self.placed_at
+            } else {
+                self.pin == Pin::AtBottom
+            };
         let scroll = f64::from(scroll);
         let mut anchor = self.shown_at(scroll);
         let mut within = scroll - self.heights.offset(anchor);
@@ -440,8 +490,23 @@ impl VirtualList {
             }
         }
         .clamp(0.0, bottom);
+        self.pin = match target {
+            None if pinned => Pin::AtBottom,
+            None if held => Pin::HeldByTarget,
+            None => Pin::Unpinned,
+            Some(Target::First(index))
+                if self.follow && self.count > 0 && index >= last =>
+            {
+                Pin::AtBottom
+            }
+            Some(Target::Whole { .. })
+                if self.follow && to >= bottom =>
+            {
+                Pin::AtBottom
+            }
+            Some(_) => Pin::HeldByTarget,
+        };
         let jump = target.is_some() && to != at;
-        self.pinned = pinned && !jump;
         self.fill(to, view);
         Scroll {
             to: to as f32,
