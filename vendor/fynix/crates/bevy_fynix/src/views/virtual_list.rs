@@ -69,7 +69,9 @@ pub struct VirtualListView<R> {
 ///
 /// A row is clipped to the height it is known to have, so on the
 /// frame a row first shows, before it is laid out, it shows only as
-/// much of itself as its estimate.
+/// much of itself as its estimate. Each row's top and bottom sit on
+/// whole physical pixels, so rows meet without overlapping at any
+/// scale factor.
 ///
 /// The area takes the free space along its parent's direction and
 /// can shrink below its rows. Its basis is 0, so in a column a
@@ -284,6 +286,7 @@ pub struct VirtualList {
     widths: Option<Widths>,
     /// The area's width when its rows were measured.
     across: f32,
+    physical_per_logical: f64,
 }
 
 #[derive(Clone, Copy)]
@@ -328,6 +331,7 @@ impl VirtualList {
             placed_at: 0.0,
             widths: None,
             across: 0.0,
+            physical_per_logical: 1.0,
         };
         list.place(&mut [], 0.0, 0.0, 0.0);
         list
@@ -553,9 +557,15 @@ impl VirtualList {
         for (slot, index) in free.into_iter().zip(missing) {
             self.slots[slot].index = index;
         }
+        let whole = |y: f64| {
+            (y * self.physical_per_logical).round()
+                / self.physical_per_logical
+        };
         for placed in &mut self.slots {
-            placed.top = self.heights.offset(placed.index) as f32;
-            placed.height = self.heights.each[placed.index];
+            let top = whole(self.heights.offset(placed.index));
+            let bottom = whole(self.heights.offset(placed.index + 1));
+            placed.top = top as f32;
+            placed.height = (bottom - top) as f32;
         }
         self.spawned = start..start + pool;
         self.first_visible = self.shown_at(scroll);
@@ -581,6 +591,9 @@ fn place_rows(
     for (entity, mut list, area, mut position, mut goal) in &mut lists
     {
         let scale = area.inverse_scale_factor();
+        if scale > 0.0 {
+            list.physical_per_logical = f64::from(scale.recip());
+        }
         let view = area.content_box().height() * scale;
         let wide = list.widths.is_some().then(|| {
             overflows(entity, &list.slots, &cells, &nodes, scale)

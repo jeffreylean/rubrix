@@ -1337,3 +1337,39 @@ fn a_width_change_keeps_a_right_estimate_past_one_huge_row() {
         20.0
     );
 }
+
+fn at_scale(scale_factor: f32) -> App {
+    let mut app = laid_out();
+    app.world_mut()
+        .query::<&mut Camera>()
+        .single_mut(app.world_mut())
+        .unwrap()
+        .computed
+        .target_info = Some(RenderTargetInfo {
+        physical_size: UVec2::new(1000, 1000),
+        scale_factor,
+    });
+    app
+}
+
+#[test]
+fn rows_never_overlap_at_any_scale() {
+    for scale_factor in [1.0, 1.25, 1.5, 2.0] {
+        let mut app = at_scale(scale_factor);
+        let area =
+            mounted(&mut app, 10_000, 16.3, row(regions), px(VIEW));
+        for (index, frames) in [(9_999, 4), (5_000, 4), (100, 4)] {
+            scroll_to(&mut app, area, index);
+            for frame in 1..=frames {
+                app.update();
+                assert_apart(
+                    &mut app,
+                    area,
+                    &format!(
+                        "{scale_factor}x, row {index}, frame {frame}"
+                    ),
+                );
+            }
+        }
+    }
+}
