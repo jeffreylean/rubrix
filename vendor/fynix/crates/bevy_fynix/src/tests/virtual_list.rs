@@ -49,6 +49,9 @@ struct Grown(usize, f32);
 #[derive(Resource)]
 struct Follow(bool);
 
+#[derive(Resource)]
+struct Sideways(bool);
+
 #[derive(Component)]
 struct Shows(usize);
 
@@ -759,6 +762,7 @@ fn wide(index: usize) -> f32 {
 fn sideways_list(app: &mut App) -> Entity {
     app.insert_resource(Count(10_000));
     app.insert_resource(Across(300.0));
+    app.insert_resource(Sideways(true));
     let row = |slot: RowSlot| {
         let gutter = AnyView::new(|cx| {
             let gutter =
@@ -793,7 +797,7 @@ fn sideways_list(app: &mut App) -> Entity {
             ESTIMATE,
             row,
         )
-        .sideways(),))
+        .sideways(resource::<Sideways, _>(|on| on.0)),))
         .width(resource::<Across, _>(|across| px(across.0)))
         .height(px(VIEW)),
     );
@@ -1446,4 +1450,55 @@ fn a_range_of_a_tall_row_scrolls_in_by_the_least() {
         top + 400.0,
         "taller than the view"
     );
+}
+
+#[test]
+fn turning_sideways_off_and_on_keeps_the_rows() {
+    let mut app = laid_out();
+    let area = sideways_list(&mut app);
+    scroll_to(&mut app, area, 3);
+    settle(&mut app);
+    scroll_x(&mut app, area, 10_000.0);
+    let long = shows(&mut app, 7);
+    let cell = app.world().get::<ChildOf>(long).unwrap().parent();
+    let cell = app.world().get::<ChildOf>(cell).unwrap().parent();
+    let spans = (0..20)
+        .map(|index| state(&app, area).row_span(index))
+        .collect::<Vec<_>>();
+
+    app.insert_resource(Sideways(false));
+    settle(&mut app);
+    assert_eq!(state(&app, area).first_visible(), 3);
+    assert_eq!(
+        (0..20)
+            .map(|index| state(&app, area).row_span(index))
+            .collect::<Vec<_>>(),
+        spans
+    );
+    assert_eq!(
+        app.world().get::<ScrollPosition>(area).unwrap().x,
+        0.0
+    );
+    let moved = app.world().get::<ChildOf>(long).unwrap().parent();
+    assert_eq!(
+        left(&app, moved),
+        left(&app, cell),
+        "back at the start"
+    );
+    assert_eq!(
+        right(&app, moved),
+        right(&app, cell),
+        "the cell's width"
+    );
+    scroll_x(&mut app, area, 10_000.0);
+    assert_eq!(
+        app.world().get::<ScrollPosition>(area).unwrap().x,
+        0.0
+    );
+
+    app.insert_resource(Sideways(true));
+    settle(&mut app);
+    scroll_x(&mut app, area, 10_000.0);
+    assert_eq!(right(&app, long), right(&app, cell), "the end shows");
+    assert_eq!(state(&app, area).first_visible(), 3);
 }

@@ -46,7 +46,7 @@ pub struct VirtualListView<R> {
     pub frame: Frame,
     count: Prop<usize>,
     estimate: f32,
-    sideways: bool,
+    sideways: Prop<bool>,
     follow: Prop<bool>,
     row: R,
 }
@@ -109,23 +109,25 @@ pub fn virtual_list<R>(
             .grow(1.0),
         count: count.into(),
         estimate,
-        sideways: false,
+        sideways: Prop::Value(false),
         follow: Prop::Value(false),
         row,
     }
 }
 
 impl<R> VirtualListView<R> {
-    /// Lets the list scroll sideways, by one offset for every row and
-    /// with one bar. Only the [`RowSlot::sideways`] cells of a row
-    /// move. The list scrolls as far as the content of the widest
-    /// such cell of any row laid out so far overflows its cell, so a
-    /// wide row that scrolls out of sight keeps the range. A change
-    /// in the area's width forgets the rows out of sight until they
-    /// show again.
-    pub fn sideways(mut self) -> Self {
-        self.sideways = true;
-        self.frame = self.frame.overflow(Overflow::scroll());
+    /// Lets the list scroll sideways while `on` holds, by one offset
+    /// for every row and with one bar. Only the [`RowSlot::sideways`]
+    /// cells of a row move. The list scrolls as far as the content of
+    /// the widest such cell of any row laid out so far overflows its
+    /// cell, so a wide row that scrolls out of sight keeps the range.
+    /// A change in the area's width forgets the rows out of sight
+    /// until they show again.
+    ///
+    /// Turning it off or on keeps the first visible row and the
+    /// heights laid out, and forgets only how far rows overflow.
+    pub fn sideways(mut self, on: impl Into<Prop<bool>>) -> Self {
+        self.sideways = on.into();
         self
     }
 
@@ -162,11 +164,7 @@ where
         let list = cx.build(self.frame);
         let spacer = cx.under(list, Cx::spawn);
         let count = self.count.get(cx.world).unwrap_or(0);
-        let mut state =
-            VirtualList::new(self.estimate, count, spacer);
-        if self.sideways {
-            state.widths = Some(Widths::default());
-        }
+        let state = VirtualList::new(self.estimate, count, spacer);
         let height = state.height();
         let mut area = cx.world.entity_mut(list);
         area.insert((ScrollGoal::default(), state));
@@ -184,6 +182,21 @@ where
                 world.get_mut::<VirtualList>(list)
             {
                 state.follow = on;
+            }
+        });
+        cx.effect(list, self.sideways, |world, list, &on| {
+            let mut area = world.entity_mut(list);
+            if let Some(mut state) = area.get_mut::<VirtualList>()
+                && state.widths.is_some() != on
+            {
+                state.widths = on.then(Widths::default);
+            }
+            if let Some(mut node) = area.get_mut::<Node>() {
+                node.overflow.x = if on {
+                    OverflowAxis::Scroll
+                } else {
+                    OverflowAxis::Clip
+                };
             }
         });
         *cx.world.get_mut::<Node>(spacer).expect("a node") = Node {
@@ -231,9 +244,11 @@ impl RowSlot {
     }
 
     /// A cell of the row that clips `content` to the room the row
-    /// leaves it, while `content` keeps its own width. In a list that
-    /// scrolls [sideways](VirtualListView::sideways), `content` moves
-    /// with the list's sideways offset and the rest of the row stays.
+    /// leaves it. While the list scrolls
+    /// [sideways](VirtualListView::sideways), `content` keeps its own
+    /// width and moves with the list's sideways offset, and the rest
+    /// of the row stays. Otherwise `content` takes the cell's width,
+    /// so text that wraps wraps inside it.
     pub fn sideways<T: 'static>(
         self,
         content: AnyView<Bevy, T>,
@@ -247,10 +262,17 @@ impl RowSlot {
                 overflow: Overflow::clip_x(),
                 ..Node::default()
             };
+            let sideways = cx
+                .world
+                .get::<VirtualList>(self.list)
+                .is_some_and(|list| list.widths.is_some());
             let moved = cx.under(cell, Cx::spawn);
             let mut node = cx.world.entity_mut(moved);
             node.insert(SidewaysContent(self));
-            node.get_mut::<Node>().expect("a node").flex_shrink = 0.0;
+            fit(
+                &mut node.get_mut::<Node>().expect("a node"),
+                sideways,
+            );
             cx.under(moved, |cx| cx.build(content));
             cell
         })
@@ -259,6 +281,18 @@ impl RowSlot {
 
 #[derive(Component)]
 struct SidewaysContent(RowSlot);
+
+fn fit(node: &mut Node, sideways: bool) {
+    let (width, shrink) = if sideways {
+        (Val::Auto, 0.0)
+    } else {
+        (percent(100.0), 1.0)
+    };
+    if node.width != width || node.flex_shrink != shrink {
+        node.width = width;
+        node.flex_shrink = shrink;
+    }
+}
 
 /// Where a row sits in its list's content, in logical pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -406,6 +440,7 @@ impl VirtualList {
         self.slots.len()
     }
 
+    /// How many rows the list has.
     pub fn count(&self) -> usize {
         self.count
     }
@@ -604,6 +639,7 @@ fn place_rows(
     )>,
     mut nodes: Query<(&ComputedNode, &mut Node)>,
     mut cells: Query<(
+        Entity,
         &SidewaysContent,
         &ChildOf,
         &ComputedNode,
@@ -653,18 +689,28 @@ fn place_rows(
             }
         }
         let mut width = percent(100.0);
+        let mut x = 0.0;
         if let Some(widths) = &mut list.widths {
             for (index, by) in wide.into_iter().flatten() {
                 widths.set(index, by);
             }
-            position.x = position.x.clamp(0.0, widths.widest);
+            x = position.x.clamp(0.0, widths.widest);
             width = px(across + widths.widest);
-            let shift = Val2::px(-position.x, 0.0);
-            for (cell, _, _, mut moved) in &mut cells {
-                if cell.0.list == entity && moved.translation != shift
-                {
-                    moved.translation = shift;
-                }
+        }
+        if position.x != x {
+            position.x = x;
+        }
+        let shift = Val2::px(-x, 0.0);
+        let sideways = list.widths.is_some();
+        for (moved, cell, _, _, mut transform) in &mut cells {
+            if cell.0.list != entity {
+                continue;
+            }
+            if transform.translation != shift {
+                transform.translation = shift;
+            }
+            if let Ok((_, mut node)) = nodes.get_mut(moved) {
+                fit(&mut node, sideways);
             }
         }
         let height = list.height();
@@ -681,6 +727,7 @@ fn overflows(
     list: Entity,
     slots: &[Placed],
     cells: &Query<(
+        Entity,
         &SidewaysContent,
         &ChildOf,
         &ComputedNode,
@@ -690,7 +737,7 @@ fn overflows(
     scale: f32,
 ) -> Vec<(usize, f32)> {
     let mut wide = vec![None::<f32>; slots.len()];
-    for (cell, room, content, _) in cells {
+    for (_, cell, room, content, _) in cells {
         let RowSlot { list: of, slot } = cell.0;
         let Ok((room, _)) = nodes.get(room.parent()) else {
             continue;
