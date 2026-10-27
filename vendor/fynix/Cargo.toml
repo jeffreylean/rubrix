@@ -19,6 +19,11 @@ motiongfx_interp = { version = "0.5.0", default-features = false }
 
 # bevy
 bevy = { version = "0.20", default-features = false }
+# The version bevy_text 0.20 lays text out with, which it does not
+# re-export.
+parley = { version = "=0.11.1", default-features = false, features = [
+    "std",
+] }
 
 # other
 lenz = { version = "0.1.0", default-features = false }
