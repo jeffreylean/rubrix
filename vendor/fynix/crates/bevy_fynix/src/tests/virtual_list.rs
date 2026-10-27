@@ -1125,3 +1125,215 @@ fn a_following_list_keeps_each_new_row_in_sight() {
         assert_eq!(last + height(app.world(), 599), VIEW);
     }
 }
+
+fn regions(_: &World, index: usize) -> f32 {
+    match index {
+        ..3_000 => 20.0,
+        3_000..7_000 => 10.0,
+        _ => 200.0,
+    }
+}
+
+fn one_huge(_: &World, index: usize) -> f32 {
+    if index == 5_010 { 2_000.0 } else { 20.0 }
+}
+
+fn landing_failures(
+    count: usize,
+    estimate: f32,
+    height: Height,
+) -> Vec<String> {
+    let mut app = laid_out();
+    let area =
+        mounted(&mut app, count, estimate, row(height), px(VIEW));
+    let mut failed = Vec::new();
+    let mut check = |app: &mut App, when: String, cover: bool| {
+        let slots = state(app, area).rows();
+        let spans = drawn(app, area);
+        let overlap = spans
+            .windows(2)
+            .find(|pair| pair[1].0 < pair[0].1 - 0.01)
+            .map(|pair| (pair[0], pair[1]));
+        let gap = if cover { uncovered(app, area) } else { 0.0 };
+        if slots >= 200 || overlap.is_some() || gap > 0.0 {
+            failed.push(format!(
+                "{estimate} px, {count} rows, {when}: {slots} \
+                 slots, {gap} px uncovered, overlap {overlap:?}"
+            ));
+        }
+    };
+    for frame in 1..=10 {
+        app.update();
+        check(
+            &mut app,
+            format!("first paint, frame {frame}"),
+            frame >= 2,
+        );
+    }
+    let thumb = |app: &mut App, area: Entity, at: f32| {
+        let list = state(app, area);
+        let end = list.row_span(list.count() - 1).unwrap().top;
+        app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y =
+            end * at;
+    };
+    type Land = Box<dyn Fn(&mut App, Entity)>;
+    let lands: [(&str, Land); 6] = [
+        (
+            "scroll_to(5000)",
+            Box::new(|app, area| scroll_to(app, area, 5_000)),
+        ),
+        (
+            "a jump of 20,000 px",
+            Box::new(|app, area| {
+                app.world_mut()
+                    .get_mut::<ScrollPosition>(area)
+                    .unwrap()
+                    .y += 20_000.0;
+            }),
+        ),
+        (
+            "scroll_to the last",
+            Box::new(move |app, area| {
+                scroll_to(app, area, count - 1)
+            }),
+        ),
+        (
+            "the thumb to 0.5",
+            Box::new(move |app, area| thumb(app, area, 0.5)),
+        ),
+        (
+            "scroll_to(7100)",
+            Box::new(|app, area| scroll_to(app, area, 7_100)),
+        ),
+        (
+            "the thumb to 0.31",
+            Box::new(move |app, area| thumb(app, area, 0.31)),
+        ),
+    ];
+    for (name, land) in lands {
+        land(&mut app, area);
+        for frame in 1..=6 {
+            app.update();
+            check(
+                &mut app,
+                format!("{name}, frame {frame}"),
+                frame >= 2,
+            );
+        }
+    }
+    for step in 0..12 {
+        thumb(&mut app, area, 0.1 + step as f32 / 40.0);
+        app.update();
+        check(&mut app, format!("drag step {step}"), false);
+    }
+    for frame in 2..=6 {
+        app.update();
+        check(&mut app, format!("drag end, frame {frame}"), true);
+    }
+    failed
+}
+
+const REAL_TO_TEN_TIMES: [f32; 9] =
+    [2.0, 4.0, 10.0, 16.0, 20.0, 25.0, 50.0, 100.0, 200.0];
+
+fn assert_landings(height: Height, count: usize) {
+    let failed = REAL_TO_TEN_TIMES
+        .into_iter()
+        .flat_map(|estimate| {
+            landing_failures(count, estimate, height)
+        })
+        .collect::<Vec<_>>();
+    assert!(failed.is_empty(), "{}", failed.join("\n"));
+}
+
+#[test]
+fn regions_of_other_heights_show_whole_by_the_second_frame() {
+    assert_landings(regions, 10_000);
+}
+
+#[test]
+fn regions_of_other_heights_show_whole_at_100k() {
+    assert_landings(regions, 100_000);
+}
+
+#[test]
+fn one_huge_row_leaves_landings_whole_by_the_second_frame() {
+    assert_landings(one_huge, 10_000);
+    assert_landings(one_huge, 100_000);
+}
+
+#[test]
+fn three_line_rows_show_whole_by_the_second_frame() {
+    assert_landings(tall_hundredths, 10_000);
+    assert_landings(tall_hundredths, 100_000);
+}
+
+#[test]
+fn one_huge_row_barely_moves_the_estimate() {
+    let mut app = laid_out();
+    let area = list(&mut app, 10_000, |_, index| {
+        if index == 3 { 2_000.0 } else { 20.0 }
+    });
+
+    let last = state(&app, area).row_span(9_999).unwrap();
+    let real = 9_999.0 * 20.0 + 1_980.0;
+    assert!(
+        (last.top - real).abs() / real < 0.03,
+        "row 9999 at {} of {real}",
+        last.top
+    );
+    scroll_to(&mut app, area, 9_999);
+    settle(&mut app);
+    assert_eq!(shown_at(&mut app, area, 9_999), Some(VIEW - 20.0));
+}
+
+#[test]
+fn a_right_estimate_holds_through_a_few_tall_rows() {
+    let mut app = laid_out();
+    let area = list(&mut app, 10_000, tall_hundredths);
+    scroll_to(&mut app, area, 5_000);
+    settle(&mut app);
+
+    assert_eq!(
+        state(&app, area).row_span(9_999).unwrap().height,
+        20.0
+    );
+    assert_eq!(
+        state(&app, area).row_span(2_001).unwrap().height,
+        20.0
+    );
+}
+
+#[test]
+fn a_width_change_keeps_a_right_estimate_past_one_huge_row() {
+    let mut app = laid_out();
+    app.insert_resource(Across(300.0));
+    app.insert_resource(Count(10_000));
+    mount::<Plain>(
+        app.world_mut(),
+        column((virtual_list(
+            resource::<Count, _>(|count| count.0),
+            ESTIMATE,
+            row(one_huge),
+        ),))
+        .width(resource::<Across, _>(|across| px(across.0)))
+        .height(px(VIEW)),
+    );
+    settle(&mut app);
+    let area = app
+        .world_mut()
+        .query_filtered::<Entity, With<VirtualList>>()
+        .single(app.world())
+        .expect("one list");
+    scroll_to(&mut app, area, 5_000);
+    settle(&mut app);
+
+    app.insert_resource(Across(200.0));
+    settle(&mut app);
+
+    assert_eq!(state(&app, area).row_span(100).unwrap().height, 20.0);
+    assert_eq!(
+        state(&app, area).row_span(9_999).unwrap().height,
+        20.0
+    );
+}

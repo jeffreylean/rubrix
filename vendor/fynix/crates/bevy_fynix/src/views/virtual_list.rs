@@ -52,9 +52,10 @@ pub struct VirtualListView<R> {
 }
 
 /// A scroll area of `count` rows, each `estimate` pixels high until
-/// it has been laid out, built by `row`. Once the mean height of the
-/// rows laid out is below 0.8 or above 1.25 times `estimate`, the
-/// mean takes its place.
+/// it has been laid out, built by `row`. Once the median height of
+/// the rows laid out in a frame is below 0.8 or above 1.25 times
+/// `estimate`, the median takes its place, so a few rows much taller
+/// than the rest leave it as it is.
 ///
 /// Unless the view [follows the
 /// bottom](VirtualListView::follow_bottom), rows added keep its first
@@ -328,7 +329,7 @@ impl VirtualList {
             widths: None,
             across: 0.0,
         };
-        list.place(&[], 0.0, 0.0, 0.0);
+        list.place(&mut [], 0.0, 0.0, 0.0);
         list
     }
 
@@ -395,7 +396,7 @@ impl VirtualList {
 
     /// Rows out of sight cannot be measured again, so a change in
     /// the area's width leaves each with the height it had only as an
-    /// estimate, until it shows or the mean moves it.
+    /// estimate, until it shows or the median moves it.
     fn measured_across(&mut self, across: f32) {
         if self.across != across {
             self.across = across;
@@ -416,7 +417,7 @@ impl VirtualList {
 
     fn place(
         &mut self,
-        measured: &[(usize, f32)],
+        measured: &mut [(usize, f32)],
         view: f32,
         scroll: f32,
         end: f32,
@@ -436,19 +437,15 @@ impl VirtualList {
         let scroll = f64::from(scroll);
         let mut anchor = self.shown_at(scroll);
         let mut within = scroll - self.heights.offset(anchor);
-        for &(index, height) in measured {
-            // A slot not laid out yet measures 0, as does a row of a
-            // hidden list and an empty row. Taken, 0 would put every
-            // row inside the overscan.
-            if height > 0.0 {
-                self.heights.set(index, height);
-            }
+        for &(index, height) in &*measured {
+            self.heights.set(index, height);
         }
-        if let Some(mean) = self.heights.mean()
-            && !ESTIMATE_TOLERANCE.contains(&(mean / self.estimate))
+        if let Some(typical) = lower_median(measured)
+            && !ESTIMATE_TOLERANCE
+                .contains(&(typical / self.estimate))
         {
-            self.estimate = mean;
-            self.heights.reestimate(mean);
+            self.estimate = typical;
+            self.heights.reestimate(typical);
         }
         if let Some(widths) = &mut self.widths {
             widths.resize(self.count);
@@ -588,20 +585,20 @@ fn place_rows(
         let wide = list.widths.is_some().then(|| {
             overflows(entity, &list.slots, &cells, &nodes, scale)
         });
-        let measured = list
+        let mut measured = list
             .slots
             .iter()
             .filter_map(|placed| {
                 let (node, _) = nodes.get(placed.node?).ok()?;
                 let height = node.content_size().y
                     * node.inverse_scale_factor();
-                Some((placed.index, height))
+                (height > 0.0).then_some((placed.index, height))
             })
             .collect::<Vec<_>>();
         let across = area.content_box().width() * scale;
         list.measured_across(across);
         let end = scroll::overflow(area).y;
-        let scroll = list.place(&measured, view, position.y, end);
+        let scroll = list.place(&mut measured, view, position.y, end);
         if scroll.jump {
             *goal = ScrollGoal::default();
             position.y = scroll.to;
@@ -789,13 +786,18 @@ impl Widths {
     }
 }
 
+fn lower_median(heights: &mut [(usize, f32)]) -> Option<f32> {
+    let middle = heights.len().checked_sub(1)? / 2;
+    let (_, &mut (_, height), _) = heights
+        .select_nth_unstable_by(middle, |a, b| a.1.total_cmp(&b.1));
+    Some(height)
+}
+
 #[derive(Default)]
 struct Heights {
     each: Vec<f32>,
     known: Vec<bool>,
     tree: Vec<f64>,
-    laid_out_sum: f64,
-    laid_out_rows: usize,
 }
 
 fn lowest(k: usize) -> usize {
@@ -811,21 +813,9 @@ impl Heights {
         self.offset(self.len())
     }
 
-    fn mean(&self) -> Option<f32> {
-        (self.laid_out_rows > 0).then(|| {
-            (self.laid_out_sum / self.laid_out_rows as f64) as f32
-        })
-    }
-
     fn resize(&mut self, count: usize, estimate: f32) {
         if self.tree.is_empty() {
             self.tree.push(0.0);
-        }
-        for index in count..self.len() {
-            if self.known[index] {
-                self.laid_out_sum -= f64::from(self.each[index]);
-                self.laid_out_rows -= 1;
-            }
         }
         self.known.resize(count, false);
         self.each.resize(count, estimate);
@@ -838,16 +828,11 @@ impl Heights {
     }
 
     fn set(&mut self, index: usize, height: f32) {
-        if !self.known[index] {
-            self.known[index] = true;
-            self.laid_out_rows += 1;
-            self.laid_out_sum += f64::from(self.each[index]);
-        }
+        self.known[index] = true;
         if self.each[index] == height {
             return;
         }
         let by = f64::from(height) - f64::from(self.each[index]);
-        self.laid_out_sum += by;
         self.each[index] = height;
         let mut k = index + 1;
         while k < self.tree.len() {
@@ -858,8 +843,6 @@ impl Heights {
 
     fn forget(&mut self) {
         self.known.fill(false);
-        self.laid_out_sum = 0.0;
-        self.laid_out_rows = 0;
     }
 
     fn reestimate(&mut self, estimate: f32) {
