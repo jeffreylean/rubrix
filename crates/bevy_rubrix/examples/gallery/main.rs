@@ -414,6 +414,9 @@ fn sidebar() -> AnyView<Bevy, Palette> {
                 .on_activate(toggle_theme),
             ))
             .width(px(SIDEBAR_WIDTH))
+            // A page as wide as a paragraph left on one line would
+            // otherwise squeeze the list.
+            .shrink(0.0)
             .height(percent(100.0))
             .padding(UiRect::all(px(12.0)))
             .gap(12.0)
