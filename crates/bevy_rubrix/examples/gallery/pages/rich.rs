@@ -20,72 +20,69 @@ use bevy_fynix::views::{
     BehaviorExt, FrameProps, LineColor, Span, button, column, ghost,
     label, parley, rich, rich_layout, rich_point, row, scroll,
 };
-use bevy_fynix::{AnyView, ScopedExt, ViewExt, keyed, resource};
+use bevy_fynix::{
+    AnyView, Prop, ScopedExt, ViewExt, keyed, resource,
+};
 
 use crate::{Build, PageView, Palette};
 
-/// The spans of the long line.
-const LONG: usize = 200;
+const LONG_SPANS: usize = 200;
 const ROWS: usize = 65;
 const ROW_SPANS: usize = 10;
-pub const BUTTON_WIDTH: f32 = 140.0;
+const BUTTON_WIDTH: f32 = 140.0;
 
-/// The line of [`LONG`] spans: how many it shows and how far its
-/// colours have turned.
 #[derive(Resource)]
-pub struct Line {
-    pub count: usize,
-    pub turn: u32,
-    pub every_frame: bool,
+struct LongLine {
+    count: usize,
+    turn: u32,
+    animate: bool,
 }
 
-impl Default for Line {
+impl Default for LongLine {
     fn default() -> Self {
         Self {
-            count: LONG,
+            count: LONG_SPANS,
             turn: 0,
-            every_frame: false,
+            animate: false,
         }
     }
 }
 
-/// Whether the plate span of the styles line has its background.
 #[derive(Resource)]
-pub struct Plate(pub bool);
+struct Toggles {
+    plate: bool,
+    rows: bool,
+}
 
-impl Default for Plate {
+impl Default for Toggles {
     fn default() -> Self {
-        Self(true)
+        Self {
+            plate: true,
+            rows: false,
+        }
     }
 }
 
-/// Whether the section of [`ROWS`] rows is built.
 #[derive(Resource, Default)]
-pub struct Rows(pub bool);
+pub struct Hit {
+    pub byte: Option<usize>,
+}
 
-/// The byte offset of the character under the last press on the
-/// [`HitLine`], if one landed on a character.
-#[derive(Resource, Default)]
-pub struct Hit(pub Option<usize>);
-
-/// The root of the long line, which `log spans` reads.
 #[derive(Component)]
-pub struct LongLine;
+pub struct LongLineRoot;
 
-/// The root of the line a click is mapped to a byte offset in.
 #[derive(Component)]
-pub struct HitLine;
+pub struct HitLineRoot;
 
 pub fn plugin(app: &mut App) {
-    app.init_resource::<Line>()
-        .init_resource::<Plate>()
-        .init_resource::<Rows>()
+    app.init_resource::<LongLine>()
+        .init_resource::<Toggles>()
         .init_resource::<Hit>()
         .add_systems(Update, turn);
 }
 
-fn turn(mut line: ResMut<Line>) {
-    if line.every_frame {
+fn turn(mut line: ResMut<LongLine>) {
+    if line.animate {
         line.turn += 1;
     }
 }
@@ -112,7 +109,7 @@ pub fn build() -> PageView {
 }
 
 fn control(
-    text: impl Into<bevy_fynix::Prop<String>>,
+    text: impl Into<Prop<String>>,
     press: impl Fn(&mut World) + Send + Sync + 'static,
 ) -> PageView {
     button(label(text))
@@ -125,46 +122,49 @@ fn control(
 fn controls() -> PageView {
     row((
         control("recolour", |world| {
-            world.resource_mut::<Line>().turn += 1;
+            world.resource_mut::<LongLine>().turn += 1;
         }),
         control(
-            resource::<Line, _>(|line| {
-                let on = if line.every_frame { "on" } else { "off" };
+            resource::<LongLine, _>(|line| {
+                let on = if line.animate { "on" } else { "off" };
                 format!("animate {on}")
             }),
             |world| {
-                let mut line = world.resource_mut::<Line>();
-                line.every_frame = !line.every_frame;
+                let mut line = world.resource_mut::<LongLine>();
+                line.animate = !line.animate;
             },
         ),
         control("0 spans", |world| {
-            world.resource_mut::<Line>().count = 0;
+            world.resource_mut::<LongLine>().count = 0;
         }),
         control("5 spans", |world| {
-            world.resource_mut::<Line>().count = 5;
+            world.resource_mut::<LongLine>().count = 5;
         }),
         control("200 spans", |world| {
-            world.resource_mut::<Line>().count = LONG;
+            world.resource_mut::<LongLine>().count = LONG_SPANS;
         }),
         control(
-            resource::<Plate, _>(|plate| {
+            resource::<Toggles, _>(|toggles| {
                 format!(
                     "plate {}",
-                    if plate.0 { "on" } else { "off" }
+                    if toggles.plate { "on" } else { "off" }
                 )
             }),
             |world| {
-                let mut plate = world.resource_mut::<Plate>();
-                plate.0 = !plate.0;
+                let mut toggles = world.resource_mut::<Toggles>();
+                toggles.plate = !toggles.plate;
             },
         ),
         control(
-            resource::<Rows, _>(|rows| {
-                format!("rows {}", if rows.0 { "on" } else { "off" })
+            resource::<Toggles, _>(|toggles| {
+                format!(
+                    "rows {}",
+                    if toggles.rows { "on" } else { "off" }
+                )
             }),
             |world| {
-                let mut rows = world.resource_mut::<Rows>();
-                rows.0 = !rows.0;
+                let mut toggles = world.resource_mut::<Toggles>();
+                toggles.rows = !toggles.rows;
             },
         ),
     ))
@@ -172,8 +172,6 @@ fn controls() -> PageView {
     .boxed()
 }
 
-/// A colour on the wheel at `degrees`, light enough to read on the
-/// palette's panel.
 fn hue(palette: Palette, degrees: f32) -> Color {
     let lightness = if palette.dark { 0.72 } else { 0.38 };
     Color::hsl(degrees % 360.0, 0.75, lightness)
@@ -214,8 +212,8 @@ fn style_spans(palette: Palette, plate: bool) -> Vec<Span> {
 fn styles() -> PageView {
     AnyView::new(|cx: &mut Build| {
         let palette = *cx.theme();
-        cx.build(rich(resource::<Plate, _>(move |plate| {
-            style_spans(palette, plate.0)
+        cx.build(rich(resource::<Toggles, _>(move |toggles| {
+            style_spans(palette, toggles.plate)
         })))
     })
     .boxed()
@@ -260,8 +258,7 @@ fn wrapped() -> PageView {
     .boxed()
 }
 
-/// The text of the [`HitLine`], whose byte offsets `log hit` reports.
-pub const HIT_TEXT: [&str; 3] = ["click: ", "héllo wörld ", "日本 x"];
+const HIT_TEXT: [&str; 3] = ["click: ", "héllo wörld ", "日本 x"];
 
 fn hit_line() -> PageView {
     AnyView::new(|cx: &mut Build| {
@@ -272,25 +269,22 @@ fn hit_line() -> PageView {
         let root = cx.build(rich(spans));
         cx.world
             .entity_mut(root)
-            .insert(HitLine)
+            .insert(HitLineRoot)
             .observe(remember_hit);
         root
     })
     .boxed()
 }
 
-/// A press lands on a span and bubbles up to the root.
 fn remember_hit(press: On<PointerPress>, mut commands: Commands) {
     let root = press.event_target();
     let at = press.pointer.position;
     commands.queue(move |world: &mut World| {
         let offset = character_at(world, root, at);
-        world.resource_mut::<Hit>().0 = offset;
+        world.resource_mut::<Hit>().byte = offset;
     });
 }
 
-/// The byte offset of the character of `root` under `at`, a window
-/// position.
 fn character_at(
     world: &World,
     root: Entity,
@@ -309,7 +303,7 @@ fn character_at(
     Some(cluster.text_range().start)
 }
 
-fn long_spans(line: &Line, palette: Palette) -> Vec<Span> {
+fn long_spans(line: &LongLine, palette: Palette) -> Vec<Span> {
     (0..line.count)
         .map(|index| {
             let degrees = (index as u32 * 37 + line.turn * 23) as f32;
@@ -322,17 +316,16 @@ fn long_spans(line: &Line, palette: Palette) -> Vec<Span> {
 fn long_line() -> PageView {
     AnyView::new(|cx: &mut Build| {
         let palette = *cx.theme();
-        let spans = resource::<Line, _>(move |line| {
+        let spans = resource::<LongLine, _>(move |line| {
             long_spans(line, palette)
         });
         let root = cx.build(rich(spans));
-        cx.world.entity_mut(root).insert(LongLine);
+        cx.world.entity_mut(root).insert(LongLineRoot);
         root
     })
     .boxed()
 }
 
-/// One row of [`ROW_SPANS`] spans, as a code view would show a line.
 fn row_spans(index: usize, palette: Palette) -> Vec<Span> {
     let mut spans = vec![Span::new(format!("{index:02} "))];
     spans.extend((1..ROW_SPANS).map(|column| {
@@ -344,7 +337,7 @@ fn row_spans(index: usize, palette: Palette) -> Vec<Span> {
 }
 
 fn rows() -> PageView {
-    keyed(resource::<Rows, _>(|rows| rows.0), |shown| {
+    keyed(resource::<Toggles, _>(|toggles| toggles.rows), |shown| {
         if !*shown {
             return column(()).boxed();
         }

@@ -27,7 +27,6 @@ pub const PAGES: &[Page] = &[
     },
 ];
 
-/// The resources and systems the pages read and run.
 pub fn plugin(app: &mut App) {
     rich::plugin(app);
 }

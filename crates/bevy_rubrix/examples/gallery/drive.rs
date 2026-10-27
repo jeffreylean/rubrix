@@ -14,9 +14,7 @@
 //! - `key <combo>` such as `ctrl+a`, and `type <text>`
 //! - `screenshot <path>`, `record start <dir>`, `record stop`
 //! - `frames start`, `frames stop <csv>`
-//! - `log <topic>`, `expect <topic> <text>`, `clipboard`. The topics
-//!   are `entities`, `hit`, `page`, `present_mode`, `scroll`, `spans`
-//!   and `theme`
+//! - `log <topic>`, `expect <topic> <text>`, `clipboard`
 //! - `resize <width> <height>`, `open <path>...`
 //!
 //! Positions are logical pixels in the window. A scroll `dy` below
@@ -68,7 +66,7 @@ use bevy::ui::ScrollPosition;
 use bevy::window::{CursorMoved, PrimaryWindow, Window, WindowEvent};
 
 use crate::pages::PAGES;
-use crate::pages::rich::{Hit, HitLine, LongLine};
+use crate::pages::rich::{Hit, HitLineRoot, LongLineRoot};
 use crate::{
     Copied, Mode, PAGE_CENTER, Ready, Selected, page_areas, scrollers,
 };
@@ -1055,7 +1053,7 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
         "theme" => {
             format!("theme {}", world.resource::<Mode>().0.name())
         }
-        "spans" => match spans_under::<LongLine>(world) {
+        "spans" => match spans_under::<LongLineRoot>(world) {
             Some(spans) => {
                 let listed = spans
                     .iter()
@@ -1072,12 +1070,12 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
             None => "spans none".into(),
         },
         "hit" => {
-            let text = spans_under::<HitLine>(world)
+            let text = spans_under::<HitLineRoot>(world)
                 .unwrap_or_default()
                 .into_iter()
                 .map(|(_, text, _)| text)
                 .collect::<String>();
-            let offset = world.resource::<Hit>().0;
+            let offset = world.resource::<Hit>().byte;
             let hit = offset.and_then(|offset| {
                 let at = text.get(offset..)?.chars().next()?;
                 Some(format!("hit {offset} {at:?}"))
@@ -1088,8 +1086,6 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
     })
 }
 
-/// The entity, text and colour of each span of the first rich text
-/// marked `M`, in order.
 fn spans_under<M: Component>(
     world: &mut World,
 ) -> Option<Vec<(Entity, String, Srgba)>> {
@@ -1605,7 +1601,6 @@ exit
         assert!(seen >= 10, "found {seen} shipped scripts");
     }
 
-    /// The lines `log` printed for `topic`.
     fn logged<'a>(app: &'a App, topic: &str) -> Vec<&'a str> {
         app.world()
             .resource::<Drive>()
@@ -1615,7 +1610,6 @@ exit
             .collect()
     }
 
-    /// The id and colour of each span a `log spans` line lists.
     fn listed(line: &str) -> Vec<(&str, &str)> {
         let (_, spans) = line.split_once(": ").expect("a span list");
         spans
