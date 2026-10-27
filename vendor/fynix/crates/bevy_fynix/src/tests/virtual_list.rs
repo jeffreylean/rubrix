@@ -1162,6 +1162,90 @@ fn a_scroll_to_in_a_following_list_that_fits_keeps_it_following() {
     }
 }
 
+fn scroll_to_failures(
+    scale_factor: f32,
+    follow: bool,
+    height: Height,
+    index: usize,
+) -> Vec<String> {
+    let mut app = at_scale(scale_factor);
+    app.insert_resource(Follow(follow));
+    let area = mounted(&mut app, 10_000, 17.0, row(height), px(VIEW));
+    settle(&mut app);
+    let case = format!(
+        "{scale_factor}x, rows of {} px, following {follow}, \
+         scroll_to({index})",
+        height(app.world(), 0)
+    );
+    let mut failed = Vec::new();
+    let mut at_bottom = false;
+    scroll_to(&mut app, area, index);
+    for (when, frames) in [("by the second frame", 2), ("settled", 6)]
+    {
+        for _ in 0..frames {
+            app.update();
+        }
+        let list = state(&app, area);
+        let top = list.row_span(index).unwrap().top;
+        let last = list.row_span(9_999).unwrap();
+        let bottom = last.top + last.height - VIEW;
+        at_bottom = top >= bottom;
+        let (shown, want) = if top <= bottom {
+            (index, 0.0)
+        } else {
+            (9_999, VIEW - last.height)
+        };
+        let got = shown_at(&mut app, area, shown);
+        if !got.is_some_and(|got| (got - want).abs() <= 1.0) {
+            failed.push(format!(
+                "{case}, {when}: row {shown} at {got:?}, not {want}"
+            ));
+        }
+    }
+    let following = state(&app, area).following();
+    if following != (follow && at_bottom) {
+        failed.push(format!("{case}: following() is {following}"));
+    }
+    let first = state(&app, area).first_visible();
+    app.world_mut().resource_mut::<Count>().0 = 10_100;
+    settle(&mut app);
+    if following {
+        let want = VIEW - height(app.world(), 10_099);
+        let got = shown_at(&mut app, area, 10_099);
+        if !got.is_some_and(|got| (got - want).abs() <= 1.0) {
+            failed.push(format!(
+                "{case}, grown: row 10099 at {got:?}, not {want}"
+            ));
+        }
+    } else if state(&app, area).first_visible() != first {
+        failed.push(format!(
+            "{case}, grown: first visible {} not {first}",
+            state(&app, area).first_visible()
+        ));
+    }
+    failed
+}
+
+#[test]
+fn scroll_to_lands_where_it_says_once_the_rows_are_measured() {
+    let mut failed = Vec::new();
+    for scale_factor in [1.0, 1.25, 1.5] {
+        for follow in [true, false] {
+            for height in [(|_, _| 19.0) as Height, |_, _| 15.0] {
+                for index in [5_000, 9_973, 9_990, 9_999] {
+                    failed.extend(scroll_to_failures(
+                        scale_factor,
+                        follow,
+                        height,
+                        index,
+                    ));
+                }
+            }
+        }
+    }
+    assert!(failed.is_empty(), "{}", failed.join("\n"));
+}
+
 fn regions(_: &World, index: usize) -> f32 {
     match index {
         ..3_000 => 20.0,
