@@ -746,7 +746,8 @@ fn only_paired_rows_carry_word_ranges() {
         let shown = show(&table);
         shown.into_iter().zip(words).collect::<Vec<_>>()
     };
-    let changed = Some((vec![7..10], vec![7..8]));
+    let (old_word, new_word) = (7..10, 7..8);
+    let changed = Some((vec![old_word], vec![new_word]));
 
     let stacked = marked(Layout::Stacked);
     let expected = [

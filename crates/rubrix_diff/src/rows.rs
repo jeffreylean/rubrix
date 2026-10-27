@@ -5,7 +5,7 @@ use core::ops::{Bound, Range, RangeBounds};
 
 use crate::expand::{Expansion, Shown};
 use crate::model::{Block, FileDiff, Hunk};
-use crate::words::word_changes;
+use crate::words::{WordRanges, word_changes};
 
 /// How change blocks become rows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -143,12 +143,9 @@ impl Row {
     ///
     /// `None` for every other row, unpaired changes included, and
     /// for a pair with a line over 1,000 bytes. `diff` must be the
-    /// diff the row came from. Run [`realign`](crate::realign) on it
-    /// before deriving rows, so that similar lines pair.
-    pub fn words(
-        &self,
-        diff: &FileDiff,
-    ) -> Option<(Vec<Range<u32>>, Vec<Range<u32>>)> {
+    /// diff the row came from. Run [`realign`](crate::realign()) on
+    /// it before deriving rows, so that similar lines pair.
+    pub fn words(&self, diff: &FileDiff) -> Option<WordRanges> {
         let (old, new) = match *self {
             Row::Paired { old, new } => (old.index, new.index),
             Row::Deletion { old } => {
@@ -170,9 +167,6 @@ impl Row {
     }
 }
 
-/// The `(old, new)` indexes of the pair that line `index` on `lane`
-/// belongs to: line i of a change block's side pairs with line i of
-/// the other side while `i < min(old_len, new_len)`.
 fn partner(
     diff: &FileDiff,
     index: u32,

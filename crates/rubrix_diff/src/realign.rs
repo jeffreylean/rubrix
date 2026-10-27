@@ -1,22 +1,17 @@
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::ops::Range;
 
 use crate::model::{Block, FileDiff, Lines};
 
-/// Blocks that would need more line comparisons than this keep their
-/// positional pairing.
 const MAX_COMPARISONS: u64 = 4096;
 
-/// How much a shifted pairing must beat the positional one, per
-/// paired line, before a block is re-split. Near ties keep the
-/// diff's own order.
 const MIN_GAIN_PER_PAIR: f64 = 0.5;
 
 /// Re-splits each change block whose sides differ in length so that
-/// the most similar old and new lines pair, as Pierre's
-/// `realignChangeContent.ts` does. The shorter side slides along the
-/// longer one; the surplus lines become pure deletions or additions
-/// at the block's edges.
+/// the most similar old and new lines pair. The shorter side slides
+/// along the longer one; the surplus lines become pure deletions or
+/// additions at the block's edges.
 ///
 /// Changes stay inside their block, so stacked rows and every
 /// layout's row count stay the same; split rows and word ranges
@@ -47,7 +42,7 @@ fn realign_block(
     {
         return;
     }
-    let strip = |lines: &Lines, range: core::ops::Range<u32>| {
+    let strip = |lines: &Lines, range: Range<u32>| {
         range
             .map(|i| {
                 lines.line(i).split_whitespace().collect::<String>()
@@ -72,15 +67,15 @@ fn realign_block(
             })
             .sum::<f64>()
     };
-    let mut best =
-        (0, score(0) + f64::from(pairs) * MIN_GAIN_PER_PAIR);
-    for offset in 1..=surplus {
-        let shifted = score(offset);
-        if shifted > best.1 {
-            best = (offset, shifted);
+    let positional_bar =
+        score(0) + f64::from(pairs) * MIN_GAIN_PER_PAIR;
+    let (mut offset, mut best) = (0, positional_bar);
+    for shift in 1..=surplus {
+        let shifted = score(shift);
+        if shifted > best {
+            (offset, best) = (shift, shifted);
         }
     }
-    let offset = best.0;
     if offset == 0 {
         return;
     }
@@ -94,8 +89,6 @@ fn realign_block(
     );
 }
 
-/// 0 to 1: shared prefix plus shared suffix over the longer length.
-/// 1 for equal lines, 0 when one is empty and the other is not.
 fn similarity(a: &str, b: &str) -> f64 {
     if a == b {
         return 1.0;

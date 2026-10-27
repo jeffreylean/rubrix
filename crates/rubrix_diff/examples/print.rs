@@ -525,7 +525,6 @@ fn number(line: Option<LineRef>, width: usize) -> String {
     format!("{:>width$}", shown.unwrap_or_default())
 }
 
-/// The changed byte ranges to underline on each side of a row.
 #[derive(Clone, Copy)]
 struct Marks<'a> {
     old: &'a [Range<u32>],

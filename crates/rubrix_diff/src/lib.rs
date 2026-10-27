@@ -55,7 +55,7 @@ pub use patch::{PatchError, PatchErrorKind, parse_patch};
 pub use realign::realign;
 pub use rows::{Anchor, Layout, LineNo, LineRef, Row, Rows, rows};
 use similar::DiffOp;
-pub use words::word_changes;
+pub use words::{WordRanges, word_changes};
 
 /// A line-diff algorithm for `similar` to run.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
