@@ -382,7 +382,10 @@ fn inherited(world: &World, root: Entity) -> Option<(Body, Paint)> {
 /// high as a line of text `size` high. Bevy scales a box as
 /// `height * scale_factor` and a relative line as
 /// `relative * (size * scale_factor)`, then rounds each up to whole
-/// pixels, so the plain product can land one pixel off.
+/// pixels, so the plain product can land one pixel off. Once one f32
+/// step of the height moves the box more than a pixel, as on lines
+/// millions of pixels high at a fractional scale factor, no height
+/// may land on the line, and the nearer of the two either side wins.
 fn line_box(
     size: f32,
     line_height: LineHeight,
@@ -394,16 +397,24 @@ fn line_box(
             relative * (size * scale_factor)
         }
     };
+    let miss = |held: f32| (held * scale_factor).ceil() - line.ceil();
     let mut held = line / scale_factor;
-    loop {
-        let shown = (held * scale_factor).ceil();
-        if shown > line.ceil() {
-            held = held.next_down();
-        } else if shown < line.ceil() {
-            held = held.next_up();
-        } else {
-            return held;
-        }
+    let step: fn(f32) -> f32 = if miss(held) > 0.0 {
+        f32::next_down
+    } else if miss(held) < 0.0 {
+        f32::next_up
+    } else {
+        return held;
+    };
+    let mut next = step(held);
+    while miss(next) * miss(held) > 0.0 {
+        held = next;
+        next = step(held);
+    }
+    if miss(next).abs() < miss(held).abs() {
+        next
+    } else {
+        held
     }
 }
 
