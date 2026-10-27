@@ -175,7 +175,6 @@ fn grown_by_100(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn landing_case(
     shape: &Shape,
     estimate: f32,
@@ -329,7 +328,6 @@ enum Call {
     After,
 }
 
-#[allow(clippy::too_many_arguments)]
 fn count_change_case(
     shape: &Shape,
     estimate: f32,
