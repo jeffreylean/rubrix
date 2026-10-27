@@ -4,9 +4,12 @@
 //! U+FFFD. The diff keeps 3 lines of context.
 //!
 //! ```text
-//! print [--split] [--expand <hunk>:<up|down|all>]... <old> <new>
-//! print [--split] --patch <file>
+//! print [--split] [--no-words] [--expand <hunk>:<up|down|all>]... <old> <new>
+//! print [--split] [--no-words] --patch <file>
 //! ```
+//!
+//! Each diff goes through `realign` before its rows are derived, so
+//! the most similar removed and added lines pair.
 //!
 //! `--split` prints the split layout instead of the stacked one.
 //! `--expand` reveals `Expansion::STEP` lines of the gap above the
@@ -15,7 +18,10 @@
 //! hunk. A larger number, or any `--expand` on identical files, is
 //! a usage error.
 //!
-//! Output has no colour, and none for identical files. Each hunk
+//! Output has no colour, and none for identical files. The changed
+//! words of a paired removed or added line, from `Row::words`, are
+//! underlined with the escapes `ESC[4m` and `ESC[24m`; `--no-words`
+//! leaves them out, and the output is otherwise the same. Each hunk
 //! starts with its `@@ -a,b +c,d @@` header on its own line. With
 //! `w` as the larger of 4 and the digit count of the longer side's
 //! line count, a line number is right-aligned to `w`, and a missing
@@ -84,23 +90,27 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::io::{self, BufWriter, Write};
+use std::ops::Range;
 use std::process::ExitCode;
 
 use rubrix_diff::{
     Expansion, FileChange, FileDiff, Layout, LineRef, Lines, Row,
-    Rows, Side, diff_texts, parse_patch, rows,
+    Rows, Side, diff_texts, parse_patch, realign, rows,
 };
 
 const CONTEXT: u32 = 3;
 const MIN_NUMBER_WIDTH: usize = 4;
 const MAX_LEFT_WIDTH: usize = 60;
 const NO_NEWLINE: &str = "\\ No newline at end of file";
-const USAGE: &str = "usage: print [--split] [--expand \
+const UNDERLINE: &str = "\x1b[4m";
+const NO_UNDERLINE: &str = "\x1b[24m";
+const USAGE: &str = "usage: print [--split] [--no-words] [--expand \
                      <hunk>:<up|down|all>]... <old> <new>\n       \
-                     print [--split] --patch <file>";
+                     print [--split] [--no-words] --patch <file>";
 
 struct Args {
     layout: Layout,
+    words: bool,
     expands: Vec<(u32, Side)>,
     old: String,
     new: String,
@@ -110,11 +120,13 @@ fn parse(
     mut args: impl Iterator<Item = String>,
 ) -> Result<Args, String> {
     let mut layout = Layout::Stacked;
+    let mut words = true;
     let mut expands = Vec::new();
     let mut paths = Vec::new();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--split" => layout = Layout::Split,
+            "--no-words" => words = false,
             "--expand" => {
                 let spec =
                     args.next().ok_or("--expand needs a value")?;
@@ -130,6 +142,7 @@ fn parse(
         .map_err(|_| "expected an old and a new file".to_owned())?;
     Ok(Args {
         layout,
+        words,
         expands,
         old,
         new,
@@ -205,7 +218,8 @@ fn main() -> ExitCode {
             return usage_failure;
         }
     };
-    let diff = diff_texts(&old, &new, CONTEXT);
+    let mut diff = diff_texts(&old, &new, CONTEXT);
+    realign(&mut diff);
     if let Err(problem) = check_expands(&args.expands, &diff) {
         eprintln!("{problem}\n{USAGE}");
         return usage_failure;
@@ -218,7 +232,8 @@ fn main() -> ExitCode {
 
     let mut out = BufWriter::new(io::stdout().lock());
     exit_code(
-        write_rows(&mut out, &diff, &rows).and_then(|()| out.flush()),
+        write_rows(&mut out, &diff, &rows, args.words)
+            .and_then(|()| out.flush()),
     )
 }
 
@@ -235,13 +250,21 @@ fn exit_code(written: io::Result<()>) -> ExitCode {
     }
 }
 
-fn patch_args(args: &[String]) -> Result<(Layout, &str), String> {
+struct PatchArgs<'a> {
+    layout: Layout,
+    words: bool,
+    path: &'a str,
+}
+
+fn patch_args(args: &[String]) -> Result<PatchArgs<'_>, String> {
     let mut layout = Layout::Stacked;
+    let mut words = true;
     let mut path = None;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--split" => layout = Layout::Split,
+            "--no-words" => words = false,
             "--patch" => {
                 path = Some(
                     args.next()
@@ -256,19 +279,24 @@ fn patch_args(args: &[String]) -> Result<(Layout, &str), String> {
             }
         }
     }
-    path.map(|path| (layout, path))
-        .ok_or_else(|| "--patch needs a file".to_owned())
+    let path = path.ok_or("--patch needs a file")?;
+    Ok(PatchArgs {
+        layout,
+        words,
+        path,
+    })
 }
 
 fn print_patch(args: &[String]) -> ExitCode {
     let usage_failure = ExitCode::from(2);
-    let (layout, path) = match patch_args(args) {
-        Ok(parsed) => parsed,
+    let args = match patch_args(args) {
+        Ok(args) => args,
         Err(problem) => {
             eprintln!("{problem}\n{USAGE}");
             return usage_failure;
         }
     };
+    let path = args.path;
     let text = match read(path) {
         Ok(text) => text,
         Err(problem) => {
@@ -276,16 +304,17 @@ fn print_patch(args: &[String]) -> ExitCode {
             return usage_failure;
         }
     };
-    let files = match parse_patch(&text) {
+    let mut files = match parse_patch(&text) {
         Ok(files) => files,
         Err(err) => {
             eprintln!("{path}: {err}");
             return ExitCode::FAILURE;
         }
     };
+    files.iter_mut().for_each(realign);
     let mut out = BufWriter::new(io::stdout().lock());
     exit_code(
-        write_patch(&mut out, &files, layout)
+        write_patch(&mut out, &files, args.layout, args.words)
             .and_then(|()| out.flush()),
     )
 }
@@ -294,6 +323,7 @@ fn write_patch(
     out: &mut impl Write,
     files: &[FileDiff],
     layout: Layout,
+    words: bool,
 ) -> io::Result<()> {
     for (at, file) in files.iter().enumerate() {
         if at > 0 {
@@ -318,7 +348,7 @@ fn write_patch(
             (None, None) => {}
         }
         let rows = rows(file, layout, &Expansion::new());
-        write_rows(out, file, &rows)?;
+        write_rows(out, file, &rows, words)?;
     }
     Ok(())
 }
@@ -349,6 +379,7 @@ fn write_rows(
     out: &mut impl Write,
     diff: &FileDiff,
     rows: &Rows,
+    words: bool,
 ) -> io::Result<()> {
     let text = Text::new(diff);
     let all: Vec<Row> = rows.range(..).collect();
@@ -387,14 +418,20 @@ fn write_rows(
             writeln!(out, "{}", diff.hunks()[next_hunk].header())?;
             next_hunk += 1;
         }
+        let marks = words.then(|| row.words(diff)).flatten();
+        let (old_marks, new_marks) = marks.unwrap_or_default();
+        let marks = Marks {
+            old: &old_marks,
+            new: &new_marks,
+        };
         let line = match (row, rows.layout()) {
             (Row::Gap { hidden, .. }, _) => format!(
                 "{:width$} {:width$}   ... {hidden} unchanged lines",
                 "", ""
             ),
-            (_, Layout::Stacked) => stacked(&text, width, row),
+            (_, Layout::Stacked) => stacked(&text, width, row, marks),
             (_, Layout::Split) => {
-                split(&text, width, left_width, row)
+                split(&text, width, left_width, row, marks)
             }
         };
         writeln!(out, "{line}")?;
@@ -488,13 +525,44 @@ fn number(line: Option<LineRef>, width: usize) -> String {
     format!("{:>width$}", shown.unwrap_or_default())
 }
 
-fn stacked(text: &Text, width: usize, row: &Row) -> String {
+/// The changed byte ranges to underline on each side of a row.
+#[derive(Clone, Copy)]
+struct Marks<'a> {
+    old: &'a [Range<u32>],
+    new: &'a [Range<u32>],
+}
+
+fn underlined(text: &str, marks: &[Range<u32>]) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut at = 0;
+    for mark in marks {
+        let (start, end) = (mark.start as usize, mark.end as usize);
+        out.push_str(&text[at..start]);
+        out.push_str(UNDERLINE);
+        out.push_str(&text[start..end]);
+        out.push_str(NO_UNDERLINE);
+        at = end;
+    }
+    out.push_str(&text[at..]);
+    out
+}
+
+fn stacked(
+    text: &Text,
+    width: usize,
+    row: &Row,
+    marks: Marks,
+) -> String {
     let (old_sign, new_sign) = signs(row);
     let sign = if old_sign == ' ' { new_sign } else { old_sign };
     let shown = match (row.new_line(), row.old_line()) {
-        (Some(line), _) => text.new_text(line),
-        (None, Some(line)) => text.old_text(line),
-        (None, None) => Cow::Borrowed(""),
+        (Some(line), _) => {
+            underlined(&text.new_text(line), marks.new)
+        }
+        (None, Some(line)) => {
+            underlined(&text.old_text(line), marks.old)
+        }
+        (None, None) => String::new(),
     };
     format!(
         "{} {} {sign} {shown}",
@@ -507,6 +575,7 @@ struct Cell<'a> {
     number: Option<LineRef>,
     sign: char,
     text: &'a str,
+    marks: &'a [Range<u32>],
 }
 
 fn split(
@@ -514,6 +583,7 @@ fn split(
     width: usize,
     left_width: usize,
     row: &Row,
+    marks: Marks,
 ) -> String {
     let (old_sign, new_sign) = signs(row);
     let left = row.old_line().map(|line| text.old_text(line));
@@ -525,11 +595,13 @@ fn split(
             number: row.old_line(),
             sign: old_sign,
             text: left.as_deref().unwrap_or(""),
+            marks: marks.old,
         },
         Cell {
             number: row.new_line(),
             sign: new_sign,
             text: right.as_deref().unwrap_or(""),
+            marks: marks.new,
         },
     )
 }
@@ -543,6 +615,7 @@ fn split_marker(
         number: None,
         sign: ' ',
         text: if lacks { NO_NEWLINE } else { "" },
+        marks: &[],
     };
     split_cells(
         width,
@@ -558,14 +631,16 @@ fn split_cells(
     old: Cell,
     new: Cell,
 ) -> String {
+    let pad = left_width.saturating_sub(old.text.chars().count());
     format!(
-        "{} {} {:left_width$} | {} {} {}",
+        "{} {} {}{:pad$} | {} {} {}",
         number(old.number, width),
         old.sign,
-        old.text,
+        underlined(old.text, old.marks),
+        "",
         number(new.number, width),
         new.sign,
-        new.text,
+        underlined(new.text, new.marks),
     )
 }
 
