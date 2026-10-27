@@ -17,12 +17,13 @@ pub mod virtual_list;
 
 const BUTTON_WIDTH: f32 = 140.0;
 
+/// Shows the files of an `open` drive step, or says why not.
+pub type Open = fn(&mut World, &[PathBuf]) -> Result<(), String>;
+
 pub struct Page {
     pub name: &'static str,
     pub build: fn() -> PageView,
-    /// Shows the files of an `open` drive step, or says why not.
-    pub open:
-        Option<fn(&mut World, &[PathBuf]) -> Result<(), String>>,
+    pub open: Option<Open>,
 }
 
 pub const PAGES: &[Page] = &[
