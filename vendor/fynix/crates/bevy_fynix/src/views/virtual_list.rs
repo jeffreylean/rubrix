@@ -110,7 +110,9 @@ impl<R> VirtualListView<R> {
     /// with one bar. Only the [`RowSlot::sideways`] cells of a row
     /// move. The list scrolls as far as the content of the widest
     /// such cell of any row laid out so far overflows its cell, so a
-    /// wide row that scrolls out of sight keeps the range.
+    /// wide row that scrolls out of sight keeps the range. A change
+    /// in the area's width forgets the rows out of sight until they
+    /// show again.
     pub fn sideways(mut self) -> Self {
         self.sideways = true;
         self.frame = self.frame.overflow(Overflow::scroll());
@@ -537,13 +539,13 @@ fn place_rows(
         }
         let mut width = percent(100.0);
         if let Some(widths) = &mut list.widths {
+            let across = area.content_box().width() * scale;
+            widths.measured_across(across);
             for (index, by) in wide.into_iter().flatten() {
                 widths.set(index, by);
             }
             position.x = position.x.clamp(0.0, widths.widest);
-            width =
-                px(area.content_box().width() * scale
-                    + widths.widest);
+            width = px(across + widths.widest);
             let shift = Val2::px(-position.x, 0.0);
             for (cell, _, _, mut moved) in &mut cells {
                 if cell.0.list == entity && moved.translation != shift
@@ -673,9 +675,21 @@ where
 struct Widths {
     each: Vec<f32>,
     widest: f32,
+    /// The area's width when they were measured.
+    across: f32,
 }
 
 impl Widths {
+    /// Forgets every row measured at another width of the area, since
+    /// a row out of sight cannot be measured again.
+    fn measured_across(&mut self, across: f32) {
+        if self.across != across {
+            self.each.fill(0.0);
+            self.widest = 0.0;
+            self.across = across;
+        }
+    }
+
     fn set(&mut self, index: usize, by: f32) {
         let Some(at) = self.each.get_mut(index) else {
             return;

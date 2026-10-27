@@ -40,6 +40,9 @@ struct Count(usize);
 struct Tall(f32);
 
 #[derive(Resource)]
+struct Across(f32);
+
+#[derive(Resource)]
 struct Grown(usize, f32);
 
 #[derive(Component)]
@@ -744,6 +747,7 @@ fn wide(index: usize) -> f32 {
 
 fn sideways_list(app: &mut App) -> Entity {
     app.insert_resource(Count(10_000));
+    app.insert_resource(Across(300.0));
     let row = |slot: RowSlot| {
         let gutter = AnyView::new(|cx| {
             let gutter =
@@ -779,7 +783,7 @@ fn sideways_list(app: &mut App) -> Entity {
             row,
         )
         .sideways(),))
-        .width(px(300.0))
+        .width(resource::<Across, _>(|across| px(across.0)))
         .height(px(VIEW)),
     );
     settle(app);
@@ -912,4 +916,26 @@ fn growing_at_the_bottom_follows_at_fractional_scales() {
     for scale_factor in [1.0, 1.25, 1.5, 2.0] {
         growing_at_the_bottom_at(scale_factor);
     }
+}
+
+#[test]
+fn a_resize_forgets_the_range_of_rows_out_of_sight() {
+    let mut app = laid_out();
+    let area = sideways_list(&mut app);
+    scroll_to(&mut app, area, 5_000);
+    settle(&mut app);
+
+    app.insert_resource(Across(600.0));
+    settle(&mut app);
+    scroll_x(&mut app, area, 10_000.0);
+    let x = app.world().get::<ScrollPosition>(area).unwrap().x;
+    assert_eq!(x, 0.0, "no row in sight overflows");
+
+    scroll_to(&mut app, area, 0);
+    settle(&mut app);
+    scroll_x(&mut app, area, 10_000.0);
+    let long = shows(&mut app, 7);
+    let cell = app.world().get::<ChildOf>(long).unwrap().parent();
+    let cell = app.world().get::<ChildOf>(cell).unwrap().parent();
+    assert_eq!(right(&app, long), right(&app, cell), "the end shows");
 }
