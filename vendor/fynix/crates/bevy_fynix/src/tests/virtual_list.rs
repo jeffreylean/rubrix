@@ -31,11 +31,11 @@ use crate::{
 };
 
 const ESTIMATE: f32 = 20.0;
-const VIEW: f32 = 500.0;
+pub(super) const VIEW: f32 = 500.0;
 const OVERSCAN: f32 = 1000.0;
 
 #[derive(Resource)]
-struct Count(usize);
+pub(super) struct Count(pub(super) usize);
 
 #[derive(Resource)]
 struct Tall(f32);
@@ -44,24 +44,24 @@ struct Tall(f32);
 struct Across(f32);
 
 #[derive(Resource)]
-struct Grown(usize, f32);
+pub(super) struct Grown(pub(super) usize, pub(super) f32);
 
 #[derive(Resource)]
-struct Follow(bool);
+pub(super) struct Follow(pub(super) bool);
 
 #[derive(Resource)]
-struct Sideways(bool);
+pub(super) struct Sideways(pub(super) bool);
 
 #[derive(Component)]
-struct Shows(usize);
+pub(super) struct Shows(pub(super) usize);
 
-type Height = fn(&World, usize) -> f32;
+pub(super) type Height = fn(&World, usize) -> f32;
 
-fn uniform(_: &World, _: usize) -> f32 {
+pub(super) fn uniform(_: &World, _: usize) -> f32 {
     20.0
 }
 
-fn tall_hundredths(_: &World, index: usize) -> f32 {
+pub(super) fn tall_hundredths(_: &World, index: usize) -> f32 {
     if index.is_multiple_of(100) {
         60.0
     } else {
@@ -73,14 +73,16 @@ fn flat(_: &World, _: usize) -> f32 {
     0.0
 }
 
-fn grown(world: &World, index: usize) -> f32 {
+pub(super) fn grown(world: &World, index: usize) -> f32 {
     match world.get_resource::<Grown>() {
         Some(&Grown(at, height)) if at == index => height,
         _ => 20.0,
     }
 }
 
-fn row(height: Height) -> impl Fn(RowSlot) -> AnyView<Bevy, Plain> {
+pub(super) fn row(
+    height: Height,
+) -> impl Fn(RowSlot) -> AnyView<Bevy, Plain> {
     move |slot| {
         AnyView::new(move |cx| {
             let index = slot.index();
@@ -104,7 +106,11 @@ fn row(height: Height) -> impl Fn(RowSlot) -> AnyView<Bevy, Plain> {
     }
 }
 
-fn list(app: &mut App, count: usize, height: Height) -> Entity {
+pub(super) fn list(
+    app: &mut App,
+    count: usize,
+    height: Height,
+) -> Entity {
     list_in(app, count, row(height), px(VIEW))
 }
 
@@ -119,7 +125,7 @@ fn list_in(
     area
 }
 
-fn mounted(
+pub(super) fn mounted(
     app: &mut App,
     count: usize,
     estimate: f32,
@@ -147,24 +153,24 @@ fn mounted(
         .expect("one list")
 }
 
-fn settle(app: &mut App) {
+pub(super) fn settle(app: &mut App) {
     for _ in 0..6 {
         app.update();
     }
 }
 
-fn state(app: &App, area: Entity) -> &VirtualList {
+pub(super) fn state(app: &App, area: Entity) -> &VirtualList {
     app.world().get::<VirtualList>(area).expect("a list")
 }
 
-fn scroll_to(app: &mut App, area: Entity, index: usize) {
+pub(super) fn scroll_to(app: &mut App, area: Entity, index: usize) {
     app.world_mut()
         .get_mut::<VirtualList>(area)
         .expect("a list")
         .scroll_to(index);
 }
 
-fn scroll(app: &App, area: Entity) -> f32 {
+pub(super) fn scroll(app: &App, area: Entity) -> f32 {
     app.world().get::<ScrollPosition>(area).expect("a scroll").y
 }
 
@@ -175,7 +181,7 @@ fn top(app: &App, node: Entity) -> f32 {
         * computed.inverse_scale_factor()
 }
 
-fn height(app: &App, node: Entity) -> f32 {
+pub(super) fn height(app: &App, node: Entity) -> f32 {
     let computed = app.world().get::<ComputedNode>(node).unwrap();
     computed.size().y * computed.inverse_scale_factor()
 }
@@ -250,7 +256,7 @@ fn rows(app: &mut App, area: Entity) -> Vec<(usize, Entity, f32)> {
         .collect()
 }
 
-fn shown_at(
+pub(super) fn shown_at(
     app: &mut App,
     area: Entity,
     index: usize,
@@ -708,7 +714,7 @@ fn an_empty_list_has_no_rows_to_map() {
     assert_eq!(state(&app, area).row_span(0), None);
 }
 
-fn reveal(app: &mut App, area: Entity, index: usize) {
+pub(super) fn reveal(app: &mut App, area: Entity, index: usize) {
     app.world_mut()
         .get_mut::<VirtualList>(area)
         .expect("a list")
@@ -1261,7 +1267,7 @@ fn a_scroll_on_the_frame_after_a_scroll_to_stands() {
     assert_eq!(scroll(&app, area), landed + 100.0);
 }
 
-fn regions(_: &World, index: usize) -> f32 {
+pub(super) fn regions(_: &World, index: usize) -> f32 {
     match index {
         ..3_000 => 20.0,
         3_000..7_000 => 10.0,
@@ -1473,7 +1479,7 @@ fn a_width_change_keeps_a_right_estimate_past_one_huge_row() {
     );
 }
 
-fn at_scale(scale_factor: f32) -> App {
+pub(super) fn at_scale(scale_factor: f32) -> App {
     let mut app = laid_out();
     app.world_mut()
         .query::<&mut Camera>()
@@ -1686,7 +1692,7 @@ fn wraps(world: &World, index: usize) -> f32 {
     }
 }
 
-fn wrapping_list(app: &mut App, sideways: bool) -> Entity {
+pub(super) fn wrapping_list(app: &mut App, sideways: bool) -> Entity {
     app.insert_resource(Count(10_000));
     app.insert_resource(Sideways(sideways));
     mount::<Plain>(
