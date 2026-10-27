@@ -39,6 +39,7 @@ extern crate alloc;
 
 mod expand;
 mod model;
+mod patch;
 mod rows;
 
 use alloc::vec::Vec;
@@ -48,6 +49,7 @@ pub use model::{
     Block, Edit, FileChange, FileDiff, Hunk, Invariant, Lines, Meta,
     PatchBuilder, header_start,
 };
+pub use patch::{PatchError, PatchErrorKind, parse_patch};
 pub use rows::{Anchor, Layout, LineNo, LineRef, Row, Rows, rows};
 use similar::DiffOp;
 

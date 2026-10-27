@@ -1,0 +1,38 @@
+From bca0bf876ec866e8f79d4d15a6d4038e3589761d Mon Sep 17 00:00:00 2001
+From: rubrix <rubrix@example.com>
+Date: Thu, 1 Jan 2026 00:00:00 +0000
+Subject: [PATCH] Edit two files
+
+A body line that is not a diff.
+---
+ docs.md | 2 +-
+ lib.rs  | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/docs.md b/docs.md
+index fa2da6e55caa..5b00a43f7cf2 100644
+--- a/docs.md
++++ b/docs.md
+@@ -1,5 +1,5 @@
+ line 1
+-line 2
++line two
+ line 3
+ line 4
+ line 5
+diff --git a/lib.rs b/lib.rs
+index 613d0cf59bce..846cf49b5776 100644
+--- a/lib.rs
++++ b/lib.rs
+@@ -1,7 +1,7 @@
+ fn main() {
+ line 1
+ line 2
+-line 3
++line three
+ line 4
+ line 5
+ line 6
+-- 
+2.0.0
+

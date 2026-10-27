@@ -1,0 +1,9 @@
+diff --git a/notes.txt b/notes.txt
+index 0bfc124e7004..0d531565c353 100644
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,2 +1,2 @@
+ first
+-second
+\ No newline at end of file
++secondlast

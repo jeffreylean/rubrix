@@ -1,0 +1,14 @@
+diff --git "a/h\303\251llo.txt" "b/h\303\251llo.txt"
+index d66d22773ba1..d5a09df94c94 100644
+--- "a/h\303\251llo.txt"
++++ "b/h\303\251llo.txt"
+@@ -1 +1 @@
+-accent
++brand new
+diff --git a/spaced name.txt b/spaced name.txt
+index 9495c3c5a318..0679b7a52e1e 100644
+--- a/spaced name.txt	
++++ b/spaced name.txt	
+@@ -1 +1 @@
+-space
++spaced out

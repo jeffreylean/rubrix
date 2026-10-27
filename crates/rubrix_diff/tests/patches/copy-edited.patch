@@ -1,0 +1,16 @@
+diff --git a/lib.rs b/util.rs
+similarity index 95%
+copy from lib.rs
+copy to util.rs
+index 613d0cf59bce..846cf49b5776 100644
+--- a/lib.rs
++++ b/util.rs
+@@ -1,7 +1,7 @@
+ fn main() {
+ line 1
+ line 2
+-line 3
++line three
+ line 4
+ line 5
+ line 6

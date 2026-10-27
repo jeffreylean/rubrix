@@ -1,0 +1,19 @@
+--- quilt-old/x.txt	2026-01-01 00:00:00.000000000 +0000
++++ quilt-new/x.txt	2026-01-01 00:00:00.000000000 +0000
+@@ -1,6 +1,6 @@
+ line 1
+ line 2
+-line 3
++line three
+ line 4
+ line 5
+ line 6
+--- quilt-old/y.txt	2026-01-01 00:00:00.000000000 +0000
++++ quilt-new/y.txt	2026-01-01 00:00:00.000000000 +0000
+@@ -2,5 +2,5 @@
+ line 2
+ line 3
+ line 4
+-line 5
++line five
+ line 6
