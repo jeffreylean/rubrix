@@ -1,0 +1,10 @@
+diff --git a/dashes.txt b/dashes.txt
+index a883e286f344..1a64e60023d7 100644
+--- a/dashes.txt
++++ b/dashes.txt
+@@ -2 +2 @@ top
+--- x
++++ y
+@@ -5 +5 @@ mid 2
+-mid 3
++MID 3

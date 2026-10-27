@@ -181,9 +181,10 @@ fn parse_file(
     read_header(input, &mut head);
     let mut builder = PatchBuilder::new();
     let mut hunks = 0;
+    let mut swallowed = None;
     while let Some(line) = input.peek() {
         if line.starts_with("@@ ") {
-            parse_hunk(input, &mut builder)?;
+            swallowed = parse_hunk(input, &mut builder, swallowed)?;
             hunks += 1;
         } else if line.starts_with("diff --git ")
             || starts_plain_file(input)
@@ -405,7 +406,8 @@ fn decode(value: &str) -> String {
 fn parse_hunk(
     input: &mut Input,
     builder: &mut PatchBuilder,
-) -> Result<(), PatchError> {
+    swallowed_before: Option<usize>,
+) -> Result<Option<usize>, PatchError> {
     let start = input.next_line;
     let header = input.next().map(trim_cr).unwrap_or_default();
     let at = |kind| PatchError { line: start, kind };
@@ -415,18 +417,23 @@ fn parse_hunk(
         line,
         kind: PatchErrorKind::Model(invariant),
     };
-    builder
-        .hunk(old_start, new_start, heading)
-        .map_err(|invariant| model(start, invariant))?;
+    builder.hunk(old_start, new_start, heading).map_err(
+        |invariant| match (invariant, swallowed_before) {
+            (Invariant::Overlap { .. }, Some(line)) => PatchError {
+                line,
+                kind: PatchErrorKind::HunkCount,
+            },
+            _ => model(start, invariant),
+        },
+    )?;
 
+    let mut swallowed = false;
     loop {
         let (old_len, new_len) = builder.hunk_lens();
         if old_len >= old_count && new_len >= new_count {
             break;
         }
-        if starts_next_file_hunk(input) {
-            return Err(at(PatchErrorKind::HunkCount));
-        }
+        swallowed |= starts_next_file_hunk(input);
         let here = input.next_line;
         let line =
             input.next().ok_or(at(PatchErrorKind::HunkCount))?;
@@ -469,7 +476,7 @@ fn parse_hunk(
     if input.peek().is_some_and(is_body_line) {
         return Err(at(PatchErrorKind::HunkCount));
     }
-    Ok(())
+    Ok(swallowed.then_some(start))
 }
 
 fn starts_next_file_hunk(input: &Input) -> bool {

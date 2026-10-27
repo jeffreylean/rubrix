@@ -391,6 +391,19 @@ fn errors_name_the_truncated_hunk_of_a_plain_multi_file_patch() {
 }
 
 #[test]
+fn a_hunk_reads_by_its_counts_when_its_lines_look_like_file_headers()
+{
+    let parsed = files("dashes");
+    let [file] = <[FileDiff; 1]>::try_from(parsed).unwrap();
+    assert_eq!(
+        headers(&file),
+        ["@@ -2 +2 @@ top", "@@ -5 +5 @@ mid 2"]
+    );
+    let path = manifest().join("tests/patches/dashes.patch");
+    assert_eq!(counts(&[file]), numstat(&repo(), &path));
+}
+
+#[test]
 fn errors_name_the_line_of_a_bad_hunk_header() {
     let header = |bad: &str| {
         format!(

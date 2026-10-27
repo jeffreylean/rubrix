@@ -166,3 +166,10 @@ printf 'top\n\nMIDDLE\n\nbottom\n' >blank.txt
 git diff --no-color -- blank.txt | sed 's/^ $//' >"$out/blank-context-lf.patch"
 sed 's/$/\r/' "$out/blank-context-lf.patch" >"$out/blank-context-crlf.patch"
 reset
+
+printf 'top\n-- x\nmid 1\nmid 2\nmid 3\nbottom\n' >dashes.txt
+git add dashes.txt
+git commit --quiet -m 'Add dashes.txt'
+printf 'top\n++ y\nmid 1\nmid 2\nMID 3\nbottom\n' >dashes.txt
+git diff --no-color -U0 -- dashes.txt >"$out/dashes.patch"
+reset
