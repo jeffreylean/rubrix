@@ -33,15 +33,12 @@ const OVERSCAN: f32 = 1000.0;
 #[derive(Resource)]
 struct Count(usize);
 
-/// How high the list's column is.
 #[derive(Resource)]
 struct Tall(f32);
 
-/// A row grown to a height of its own.
 #[derive(Resource)]
 struct Grown(usize, f32);
 
-/// The index a row's node shows.
 #[derive(Component)]
 struct Shows(usize);
 
@@ -51,7 +48,6 @@ fn uniform(_: &World, _: usize) -> f32 {
     20.0
 }
 
-/// 60 px for every hundredth row, 20 px for the rest.
 fn tall_hundredths(_: &World, index: usize) -> f32 {
     if index.is_multiple_of(100) {
         60.0
@@ -64,7 +60,6 @@ fn flat(_: &World, _: usize) -> f32 {
     0.0
 }
 
-/// 20 px, and the row [`Grown`] names at its height.
 fn grown(world: &World, index: usize) -> f32 {
     match world.get_resource::<Grown>() {
         Some(&Grown(at, height)) if at == index => height,
@@ -72,7 +67,6 @@ fn grown(world: &World, index: usize) -> f32 {
     }
 }
 
-/// A row as high as `height` says, marked with the index it shows.
 fn row(height: Height) -> impl Fn(RowSlot) -> AnyView<Bevy, Plain> {
     move |slot| {
         AnyView::new(move |cx| {
@@ -97,13 +91,10 @@ fn row(height: Height) -> impl Fn(RowSlot) -> AnyView<Bevy, Plain> {
     }
 }
 
-/// A list of [`Count`] rows in a column `VIEW` high at the top left
-/// of the window, after it settles. Returns the list's scroll area.
 fn list(app: &mut App, count: usize, height: Height) -> Entity {
     list_in(app, count, row(height), px(VIEW))
 }
 
-/// As [`list`], with rows `row` builds, in a column `view` high.
 fn list_in(
     app: &mut App,
     count: usize,
@@ -149,7 +140,6 @@ fn scroll(app: &App, area: Entity) -> f32 {
     app.world().get::<ScrollPosition>(area).expect("a scroll").y
 }
 
-/// Where `node` starts, in logical px down the window.
 fn top(app: &App, node: Entity) -> f32 {
     let computed = app.world().get::<ComputedNode>(node).unwrap();
     let at = app.world().get::<UiGlobalTransform>(node).unwrap();
@@ -157,8 +147,6 @@ fn top(app: &App, node: Entity) -> f32 {
         * computed.inverse_scale_factor()
 }
 
-/// Every row built, by index: its node and how far below the top of
-/// the scroll area it shows.
 fn rows(app: &mut App, area: Entity) -> Vec<(usize, Entity, f32)> {
     let origin = top(app, area);
     let mut built = app
@@ -185,8 +173,6 @@ fn shown_at(
         .map(|(.., top)| top)
 }
 
-/// Asserts that the rows run unbroken from above `from` to below
-/// `to`, in px from the top of the area.
 fn assert_cover(app: &mut App, area: Entity, from: f32, to: f32) {
     let rows = rows(app, area);
     let indices = rows.iter().map(|row| row.0).collect::<Vec<_>>();
@@ -285,8 +271,6 @@ fn a_measured_height_replaces_the_estimate() {
     assert_eq!(shown_at(&mut app, area, 2), Some(80.0));
 }
 
-/// Jumps to the row under a tall one, which nothing has measured, and
-/// checks that it stays at the top while the tall row is measured.
 fn the_first_row_holds_still_while_the_row_above_is_measured_at(
     scale_factor: f32,
 ) {

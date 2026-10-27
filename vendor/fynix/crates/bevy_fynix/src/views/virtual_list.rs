@@ -22,14 +22,15 @@ use crate::tokens::SpacingTokens;
 use crate::views::frame::{Frame, FrameProps};
 use crate::{AnyView, Bevy, Cx, FynixSystems, Styled, View};
 
-/// How far past each edge of the viewport rows stay built, Pierre's
-/// figure. A row is laid out and measured this far before it shows,
-/// and a scroll of 782 px in a frame still lands on built rows.
 const OVERSCAN: f64 = 1000.0;
 
 /// How near its end a list counts as scrolled to it, in logical px.
 /// Bevy rounds the end a wheel can reach to whole physical pixels.
 const AT_END: f64 = 1.0;
+
+/// How much of a row, in logical px, has to show for it to count as
+/// showing, so that a row only rounding shows does not.
+const SHOWN: f64 = 0.5;
 
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(
@@ -38,8 +39,8 @@ pub(crate) fn plugin(app: &mut App) {
     );
 }
 
-/// A column of `count` rows, of which it builds only the ones within
-/// [`OVERSCAN`] of what shows. See [`virtual_list`].
+/// A column of `count` rows, of which it builds only the ones near
+/// what shows. See [`virtual_list`].
 pub struct VirtualListView<R> {
     pub frame: Frame,
     count: Prop<usize>,
@@ -99,13 +100,11 @@ where
     fn build(self, cx: &mut Cx<'_, Bevy, T>) -> Entity {
         let list = cx.build(self.frame);
         let spacer = cx.under(list, Cx::spawn);
+        let count = self.count.get(cx.world).unwrap_or(0);
+        let state = VirtualList::new(self.estimate, count, spacer);
+        let height = state.height();
         let mut area = cx.world.entity_mut(list);
-        area.insert((
-            ScrollGoal::default(),
-            VirtualList::new(self.estimate, spacer),
-        ));
-        // A grown area with its content as its basis grows to fit
-        // it, and then has nothing to scroll.
+        area.insert((ScrollGoal::default(), state));
         area.get_mut::<Node>().expect("a frame node").flex_basis =
             px(0.0);
         cx.effect(list, self.count, |world, list, &count| {
@@ -115,12 +114,6 @@ where
                 state.count = count;
             }
         });
-        // The slots read where to go as they are built, so the rows
-        // are placed before them.
-        let mut state =
-            cx.world.get_mut::<VirtualList>(list).expect("the list");
-        state.place(&[], 0.0, 0.0);
-        let height = state.height();
         *cx.world.get_mut::<Node>(spacer).expect("a node") = Node {
             width: percent(100.0),
             height,
@@ -173,39 +166,32 @@ pub struct VirtualList {
     estimate: f32,
     count: usize,
     heights: Heights,
-    /// The node as high as every row, which is what scrolls.
     spacer: Entity,
     slots: Vec<Placed>,
     spawned: Range<usize>,
     first_visible: usize,
     target: Option<usize>,
-    /// Whether the list keeps its end in sight as it changes.
     pinned: bool,
-    /// Where the last placement scrolled to.
     placed_at: f64,
 }
 
-/// Where one slot is, and the row it shows.
 #[derive(Default)]
 struct Placed {
-    /// `None` until the slot's view is built.
     node: Option<Entity>,
     index: usize,
     top: f32,
 }
 
-/// What a placement asks of the scroll position.
 struct Scroll {
     to: f32,
-    /// Whether it jumps there, dropping where a wheel was heading.
     jump: bool,
 }
 
 impl VirtualList {
-    fn new(estimate: f32, spacer: Entity) -> Self {
-        Self {
+    fn new(estimate: f32, count: usize, spacer: Entity) -> Self {
+        let mut list = Self {
             estimate,
-            count: 0,
+            count,
             heights: Heights::default(),
             spacer,
             slots: Vec::new(),
@@ -214,7 +200,9 @@ impl VirtualList {
             target: None,
             pinned: false,
             placed_at: 0.0,
-        }
+        };
+        list.place(&[], 0.0, 0.0);
+        list
     }
 
     /// Scrolls so that the row `index` is the first to show, at the
@@ -243,16 +231,10 @@ impl VirtualList {
         px(self.heights.total() as f32)
     }
 
-    /// The row `y` px down the list falls in, half a pixel on, so a
-    /// row of which only rounding shows does not count.
     fn shown_at(&self, y: f64) -> usize {
-        self.heights.index_at(y + 0.5)
+        self.heights.index_at(y + SHOWN)
     }
 
-    /// Takes the heights the slots were `measured` at, then places
-    /// the rows for a viewport `view` px high scrolled `scroll` px
-    /// down, keeping the first row that shows where it is, or the end
-    /// in sight if it was.
     fn place(
         &mut self,
         measured: &[(usize, f32)],
@@ -262,21 +244,17 @@ impl VirtualList {
         let view = f64::from(view);
         let scroll = f64::from(scroll);
         let bottom = self.heights.total() - view;
-        // Pinned until a scroll moves up from where it was placed.
         let pinned = bottom > 0.0
             && (scroll >= bottom - AT_END
                 || self.pinned && scroll >= self.placed_at - AT_END);
         let mut anchor = self.shown_at(scroll);
         let mut within = scroll - self.heights.offset(anchor);
-        for &(slot, height) in measured {
+        for &(index, height) in measured {
             // A slot not laid out yet measures 0, as does a row of a
             // hidden list and an empty row. Taken, 0 would put every
             // row inside the overscan.
-            if height > 0.0
-                && let Some(placed) = self.slots.get(slot)
-                && placed.index < self.heights.len()
-            {
-                self.heights.set(placed.index, height);
+            if height > 0.0 {
+                self.heights.set(index, height);
             }
         }
         if self.heights.len() != self.count {
@@ -306,20 +284,14 @@ impl VirtualList {
         }
     }
 
-    /// Hands the rows within [`OVERSCAN`] of the viewport to slots,
-    /// a slot keeping its row while the row stays within it.
     fn fill(&mut self, scroll: f64, view: f64) {
         let count = self.heights.len();
-        // As deep at the top as anywhere, so the first scroll away
-        // from it recycles rows rather than building more.
         let top = (scroll - OVERSCAN).max(0.0);
         let first = self.heights.index_at(top);
         let end =
             (self.heights.index_at(top + view + 2.0 * OVERSCAN) + 1)
                 .min(count);
         let need = end.saturating_sub(first);
-        // Kept past what is needed, unless that is less than half,
-        // so a slot is not built and dropped as rows change height.
         let pool = if self.slots.len() > 2 * need {
             need
         } else {
@@ -353,8 +325,6 @@ impl VirtualList {
     }
 }
 
-/// Places every list's rows for where it is scrolled to, after the
-/// wheel has moved it and before the rows read what to show.
 fn place_rows(
     mut lists: Query<(
         &mut VirtualList,
@@ -370,13 +340,11 @@ fn place_rows(
         let measured = list
             .slots
             .iter()
-            .enumerate()
-            .filter_map(|(slot, placed)| {
+            .filter_map(|placed| {
                 let (node, _) = nodes.get(placed.node?).ok()?;
-                Some((
-                    slot,
-                    node.size().y * node.inverse_scale_factor(),
-                ))
+                let height =
+                    node.size().y * node.inverse_scale_factor();
+                Some((placed.index, height))
             })
             .collect::<Vec<_>>();
         let scroll = list.place(&measured, view, position.y);
@@ -405,9 +373,6 @@ fn place_rows(
     }
 }
 
-/// The node the slots are placed in. Its own height is 0 whatever
-/// the list's, so a change to the list's height leaves the slots'
-/// layouts as they were.
 fn track<T: 'static>() -> AnyView<Bevy, T> {
     AnyView::new(|cx: &mut Cx<'_, Bevy, T>| {
         let node = cx.spawn();
@@ -422,9 +387,6 @@ fn track<T: 'static>() -> AnyView<Bevy, T> {
     })
 }
 
-/// One slot: a node with no element of its own, so no transition in
-/// force can hold it, placed at its row's offset and holding the view
-/// `row` builds for it.
 fn slot_view<T, R>(
     list: Entity,
     slot: usize,
@@ -436,15 +398,11 @@ where
 {
     AnyView::new(move |cx: &mut Cx<'_, Bevy, T>| {
         let node = cx.spawn();
-        let top = cx
-            .world
-            .get_mut::<VirtualList>(list)
-            .and_then(|mut state| {
-                let placed = state.slots.get_mut(slot)?;
-                placed.node = Some(node);
-                Some(placed.top)
-            })
-            .unwrap_or_default();
+        let mut state =
+            cx.world.get_mut::<VirtualList>(list).expect("the list");
+        let placed = &mut state.slots[slot];
+        placed.node = Some(node);
+        let top = placed.top;
         *cx.world.get_mut::<Node>(node).expect("a node") = Node {
             position_type: PositionType::Absolute,
             top: px(top),
@@ -458,9 +416,6 @@ where
     })
 }
 
-/// A signal of what `read` takes from the list `list`, re-read when
-/// that value changes. The list changes every frame it scrolls, so a
-/// check on its change tick would re-read every slot every frame.
 fn follow<T>(
     list: Entity,
     read: impl Fn(Option<&VirtualList>) -> T + Send + Sync + 'static,
@@ -484,18 +439,12 @@ where
     )
 }
 
-/// Row heights in logical pixels, and the offsets they add up to.
 #[derive(Default)]
 struct Heights {
     each: Vec<f32>,
-    /// A Fenwick tree over `each`, 1-based: entry `k` sums the
-    /// `lowest(k)` rows that end with row `k - 1`. The sums are f64,
-    /// so 100,000 of them do not drift, though a node's top is still
-    /// an f32, in steps of 0.125 px past 1,000,000 px.
     tree: Vec<f64>,
 }
 
-/// The lowest set bit of `k`.
 fn lowest(k: usize) -> usize {
     k & k.wrapping_neg()
 }
@@ -509,9 +458,6 @@ impl Heights {
         self.offset(self.len())
     }
 
-    /// `count` rows, the ones past the old end `estimate` high. An
-    /// entry sums only rows before it, so the tree is cut short or
-    /// grown one entry at a time.
     fn resize(&mut self, count: usize, estimate: f32) {
         if self.tree.is_empty() {
             self.tree.push(0.0);
@@ -538,7 +484,6 @@ impl Heights {
         }
     }
 
-    /// The height of the rows before `index`.
     fn offset(&self, index: usize) -> f64 {
         let mut sum = 0.0;
         let mut k = index;
@@ -549,8 +494,6 @@ impl Heights {
         sum
     }
 
-    /// The row `y` falls in: row 0 for a `y` above the list, and the
-    /// last row for one past its end.
     fn index_at(&self, y: f64) -> usize {
         let len = self.len();
         let mut at = 0;

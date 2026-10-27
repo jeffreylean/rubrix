@@ -88,9 +88,6 @@ impl ScrollGoal {
         }
     }
 
-    /// Moves where it is, and where it is headed, by `delta`: for
-    /// content that moved under it, which a wheel still easing would
-    /// otherwise take back.
     pub(crate) fn shift(
         &mut self,
         position: &mut ScrollPosition,

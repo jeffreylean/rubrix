@@ -45,7 +45,6 @@ pub fn plugin(app: &mut App) {
     virtual_list::plugin(app);
 }
 
-/// A button of a page's controls, labelled `text`.
 fn control(
     text: impl Into<Prop<String>>,
     press: impl Fn(&mut World) + Send + Sync + 'static,

@@ -14,7 +14,7 @@ use crate::PageView;
 const ESTIMATE: f32 = 17.0;
 
 #[derive(Resource)]
-pub struct Rows {
+struct Rows {
     count: usize,
     plain: bool,
 }
@@ -66,8 +66,6 @@ fn controls() -> PageView {
     .boxed()
 }
 
-/// The virtual list, or with the plain stack on, a scroll area of a
-/// label per row, built again whenever the count changes.
 fn rows() -> PageView {
     let plain =
         resource::<Rows, _>(|rows| rows.plain.then_some(rows.count));
@@ -93,7 +91,6 @@ fn rows() -> PageView {
     .boxed()
 }
 
-/// `Row <index>`, three lines long for every hundredth row.
 fn text(index: usize) -> String {
     if index.is_multiple_of(100) {
         format!("Row {index}\n  its second line\n  its third line")
