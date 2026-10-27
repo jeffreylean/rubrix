@@ -18,6 +18,7 @@ mod layout;
 mod rich;
 mod structure;
 mod support;
+mod virtual_list;
 
 pub(crate) use support::{
     Plain, app, app_with, hover, key_down, keyboard, kids,

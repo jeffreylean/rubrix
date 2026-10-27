@@ -87,6 +87,20 @@ impl ScrollGoal {
             **position = to;
         }
     }
+
+    /// Moves where it is, and where it is headed, by `delta`: for
+    /// content that moved under it, which a wheel still easing would
+    /// otherwise take back.
+    pub(crate) fn shift(
+        &mut self,
+        position: &mut ScrollPosition,
+        delta: Vec2,
+    ) {
+        **position += delta;
+        if let Some(to) = &mut self.0 {
+            *to += delta;
+        }
+    }
 }
 
 /// How far the content of a node overflows what it has to itself,
@@ -137,7 +151,7 @@ fn on_scroll(
     }
 }
 
-fn ease(
+pub(crate) fn ease(
     time: Res<Time>,
     motion: Res<ScrollMotion>,
     reduced: Res<ReducedMotion>,
@@ -180,6 +194,36 @@ mod tests {
 
     use super::*;
     use crate::tests;
+
+    #[test]
+    fn an_ease_lands_as_far_on_as_its_content_shifted() {
+        let mut app = tests::app();
+        let area = ComputedNode {
+            size: Vec2::splat(100.0),
+            content_size: Vec2::new(100.0, 1_000.0),
+            ..ComputedNode::default()
+        };
+        let mut position = ScrollPosition::default();
+        let mut goal = ScrollGoal::default();
+        goal.scroll_by(
+            &mut position,
+            Vec2::Y * 100.0,
+            Vec2::Y * 900.0,
+            true,
+        );
+        goal.shift(&mut position, Vec2::Y * 40.0);
+        let node = app
+            .world_mut()
+            .spawn((Node::default(), area, position, goal))
+            .id();
+
+        for _ in 0..60 {
+            app.update();
+        }
+        let position =
+            app.world().get::<ScrollPosition>(node).unwrap();
+        assert_eq!(position.y, 140.0);
+    }
 
     #[test]
     fn a_wheel_turns_without_the_input_plugin() {

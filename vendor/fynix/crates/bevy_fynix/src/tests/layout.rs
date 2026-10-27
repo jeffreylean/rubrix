@@ -34,7 +34,7 @@ use crate::{
 
 /// An app that lays its nodes out in a 1000 by 1000 window, 10ms to
 /// an update.
-fn laid_out() -> App {
+pub(super) fn laid_out() -> App {
     let mut app = app_with(Plain::default());
     app.insert_resource(TimeUpdateStrategy::ManualDuration(
         Duration::from_millis(10),
