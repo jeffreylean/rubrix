@@ -1,0 +1,9 @@
+page virtual_list
+wait 120
+move 740 400
+record start jump
+scroll 0 -20000
+wait 8
+record stop
+log rows
+exit

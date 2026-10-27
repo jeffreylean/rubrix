@@ -1,0 +1,10 @@
+page virtual_list
+wait 30
+move 740 400
+scroll 0 -85000
+wait 10
+resize 800 600
+wait 30
+screenshot virtual-list-resize.png
+log rows
+exit

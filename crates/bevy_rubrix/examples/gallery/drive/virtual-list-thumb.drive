@@ -1,0 +1,11 @@
+page virtual_list
+wait 30
+click 438 68
+wait 30
+move 1255 107
+wait 20
+drag 1255 107 1255 437
+wait 10
+screenshot virtual-list-thumb.png
+log rows
+exit

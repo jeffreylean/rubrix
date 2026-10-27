@@ -19,7 +19,7 @@ use bevy::text::{
     UnderlineColor,
 };
 use bevy::time::TimeUpdateStrategy;
-use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin};
+use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin, UiScale};
 use fynix::{Motion, ScopedExt};
 use parley::{Affinity, Cluster, Cursor};
 
@@ -445,6 +445,23 @@ fn a_rich_text_with_no_text_is_one_line_of_its_size_high() {
 }
 
 #[test]
+fn a_blank_line_is_as_high_as_its_first_span_size() {
+    let mut app = laid_out();
+    let blank = mount::<Plain>(
+        app.world_mut(),
+        rich(vec![Span::new("").size(30.0), Span::new("")]),
+    );
+    let worded = mount::<Plain>(
+        app.world_mut(),
+        rich(vec![Span::new("x").size(30.0)]),
+    );
+    app.update();
+    app.update();
+
+    assert_eq!(height(&app, blank), height(&app, worded));
+}
+
+#[test]
 fn every_point_of_a_rich_text_with_no_text_is_byte_0() {
     let mut app = laid_out();
     let empty = mount::<Plain>(app.world_mut(), rich(Vec::new()));
@@ -597,6 +614,29 @@ fn a_huge_blank_line_lays_out_at(scale_factor: f32) {
         .expect("two frames within 30 s");
     let line = 1.2 * (size * scale_factor);
     assert!((shown - line).abs() <= 1.0, "{shown} against {line}");
+}
+
+#[test]
+fn a_blank_line_lays_out_at_a_negative_ui_scale() {
+    let (sent, received) = mpsc::channel();
+    thread::spawn(move || {
+        let mut app = laid_out();
+        app.insert_resource(UiScale(-1.25));
+        let empty = mount::<Plain>(
+            app.world_mut(),
+            rich(Vec::new()).size(296.0),
+        );
+        let span = kids(&app, empty)[0];
+        app.world_mut()
+            .entity_mut(span)
+            .insert(LineHeight::RelativeToFont(1.3));
+        app.update();
+        app.update();
+        let _ = sent.send(());
+    });
+    received
+        .recv_timeout(Duration::from_secs(30))
+        .expect("two frames within 30 s");
 }
 
 #[test]

@@ -64,6 +64,7 @@ use bevy::render::view::screenshot::{
 use bevy::text::{TextColor, TextSpan};
 use bevy::ui::ScrollPosition;
 use bevy::window::{CursorMoved, PrimaryWindow, Window, WindowEvent};
+use bevy_fynix::views::VirtualList;
 
 use crate::pages::PAGES;
 use crate::pages::rich::{Hit, HitLineRoot, LongLineRoot};
@@ -1048,6 +1049,24 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
                 .next()?
                 .present_mode;
             format!("present_mode requested {mode:?}")
+        }
+        "rows" => {
+            match world.query::<&VirtualList>().iter(world).next() {
+                Some(list) => match list.spawned() {
+                    Some(spawned) => format!(
+                        "rows first_visible {} spawned {}..={} rows \
+                         {} total {} following {}",
+                        list.first_visible(),
+                        spawned.start(),
+                        spawned.end(),
+                        list.rows(),
+                        list.count(),
+                        list.following()
+                    ),
+                    None => "rows empty total 0".into(),
+                },
+                None => "rows none".into(),
+            }
         }
         "scroll" => format!("scroll {}", scroll_offset(world)),
         "theme" => {

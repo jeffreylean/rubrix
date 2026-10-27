@@ -12,24 +12,22 @@ use bevy::math::Vec2;
 use bevy::picking::events::PointerPress;
 use bevy::text::FontSource;
 use bevy::ui::{
-    ComputedNode, ComputedUiTargetCamera, FlexWrap, Node,
-    UiGlobalTransform, percent, px,
+    ComputedNode, ComputedUiTargetCamera, UiGlobalTransform, percent,
+    px,
 };
 use bevy_fynix::tokens::{SurfaceTokens, TextTokens, Tone};
 use bevy_fynix::views::{
-    BehaviorExt, FrameProps, LineColor, Span, button, column, ghost,
-    label, parley, rich, rich_layout, rich_point, row, scroll,
+    FrameProps, LineColor, Span, column, label, parley, rich,
+    rich_layout, rich_point, row, scroll,
 };
-use bevy_fynix::{
-    AnyView, Prop, ScopedExt, ViewExt, keyed, resource,
-};
+use bevy_fynix::{AnyView, ViewExt, keyed, resource};
 
+use super::{control, wrapping};
 use crate::{Build, PageView, Palette};
 
 const LONG_SPANS: usize = 200;
 const ROWS: usize = 65;
 const ROW_SPANS: usize = 10;
-const BUTTON_WIDTH: f32 = 140.0;
 
 #[derive(Resource)]
 struct LongLine {
@@ -108,17 +106,6 @@ pub fn build() -> PageView {
     .boxed()
 }
 
-fn control(
-    text: impl Into<Prop<String>>,
-    press: impl Fn(&mut World) + Send + Sync + 'static,
-) -> PageView {
-    button(label(text))
-        .width(px(BUTTON_WIDTH))
-        .rules(ghost)
-        .on_activate(press)
-        .boxed()
-}
-
 fn controls() -> PageView {
     let buttons = row((
         control("recolour", |world| {
@@ -166,17 +153,7 @@ fn controls() -> PageView {
         ),
     ))
     .gap(8.0);
-    // fynix's `Frame` has no wrap prop, so this sets the row's
-    // `Node`.
-    AnyView::new(|cx: &mut Build| {
-        let root = cx.build(buttons);
-        cx.world
-            .get_mut::<Node>(root)
-            .expect("a row node")
-            .flex_wrap = FlexWrap::Wrap;
-        root
-    })
-    .boxed()
+    wrapping(buttons.boxed())
 }
 
 fn hue(palette: Palette, degrees: f32) -> Color {

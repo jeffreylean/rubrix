@@ -1,0 +1,8 @@
+page virtual_list
+wait 30
+move 740 400
+scroll 0 -20000
+wait 0
+screenshot virtual-list-jump.png
+log rows
+exit

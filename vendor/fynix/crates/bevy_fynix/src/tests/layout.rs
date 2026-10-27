@@ -34,7 +34,7 @@ use crate::{
 
 /// An app that lays its nodes out in a 1000 by 1000 window, 10ms to
 /// an update.
-fn laid_out() -> App {
+pub(super) fn laid_out() -> App {
     let mut app = app_with(Plain::default());
     app.insert_resource(TimeUpdateStrategy::ManualDuration(
         Duration::from_millis(10),
@@ -53,8 +53,13 @@ fn laid_out() -> App {
     .init_resource::<bevy::text::RemSize>()
     .add_plugins(UiPlugin)
     // The text and image systems of the plugin have nothing to read
-    // here, and skip their run.
-    .set_error_handler(bevy::ecs::error::ignore);
+    // here, and skip their run. A system that panics hands its panic
+    // to this handler, which goes on with it, so the test fails.
+    .set_error_handler(|mut error, _| {
+        if let Some(panic) = error.take_payload() {
+            std::panic::resume_unwind(panic);
+        }
+    });
     app.world_mut().spawn((
         Camera2d,
         Camera {
