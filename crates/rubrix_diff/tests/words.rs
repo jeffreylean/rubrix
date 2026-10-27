@@ -42,6 +42,41 @@ fn a_changed_word_next_to_punctuation() {
 }
 
 #[test]
+fn a_renamed_receiver_leaves_the_dot_and_method_unmarked() {
+    assert_eq!(
+        changes(
+            "*tally.entry(word).or_insert(0) += 1;",
+            "*word_counts.entry(word).or_insert(0) += 1;"
+        ),
+        (vec!["tally"], vec!["word_counts"])
+    );
+}
+
+#[test]
+fn a_version_bump_marks_only_the_changed_digit() {
+    assert_eq!(
+        changes("version = \"0.4.0\"", "version = \"0.5.0\""),
+        (vec!["4"], vec!["5"])
+    );
+}
+
+#[test]
+fn an_apostrophe_splits_a_word() {
+    assert_eq!(
+        changes("I don't know", "I won't know"),
+        (vec!["don"], vec!["won"])
+    );
+}
+
+#[test]
+fn parentheses_split_a_call_from_its_argument() {
+    assert_eq!(
+        changes("foo(bar)", "foo(baz)"),
+        (vec!["bar"], vec!["baz"])
+    );
+}
+
+#[test]
 fn two_changes_one_space_apart_merge() {
     assert_eq!(
         changes("foo(a b)", "foo(c d)"),
