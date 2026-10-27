@@ -83,10 +83,12 @@ pub struct VirtualListView<R> {
 /// - It builds at most 199 rows, cutting the 1,000 px of overscan on
 ///   each side first. A view more than 199 rows high shows a blank
 ///   band below them.
-/// - Positions are `f32` pixels, as in Bevy's layout. Past 2^24 px,
-///   about 880,000 rows of 19 px, the gaps between rows round to
-///   whole pixels, and seams of up to 2 px show. 100,000 rows of 19
-///   px show none.
+/// - Positions are `f32` pixels, as in Bevy's layout. Past 2^23 px,
+///   about 440,000 rows of 19 px, a
+///   [`scroll_to`](VirtualList::scroll_to) of the last row leaves it
+///   just below the view. Past 2^24 px, about 880,000 rows of 19 px,
+///   seams of 2 to 4 px also show between rows. 100,000 rows of 19 px
+///   and 1,000,000 rows of 20 px show neither.
 pub fn virtual_list<R>(
     count: impl Into<Prop<usize>>,
     estimate: f32,
@@ -124,8 +126,9 @@ impl<R> VirtualListView<R> {
     /// A change in the area's width forgets the rows out of sight
     /// until they show again.
     ///
-    /// Turning it off or on keeps the first visible row and the
-    /// heights laid out, and forgets only how far rows overflow.
+    /// Turning it off or on keeps the first visible row in place and
+    /// forgets how far rows overflow and the heights they were laid
+    /// out at, which wrapping changes.
     pub fn sideways(mut self, on: impl Into<Prop<bool>>) -> Self {
         self.sideways = on.into();
         self
@@ -133,12 +136,12 @@ impl<R> VirtualListView<R> {
 
     /// Keeps the view at the bottom while `on` holds and the view is
     /// at the bottom, as rows are added or grow, including while
-    /// every row fits the view. A scroll up by the user stops it, as
-    /// does a [`scroll_to`](VirtualList::scroll_to) of a row other
-    /// than the last, or a
+    /// every row fits the view. A move that leaves the view above the
+    /// bottom stops it: a scroll up by the user, or a
+    /// [`scroll_to`](VirtualList::scroll_to),
     /// [`scroll_into_view`](VirtualList::scroll_into_view) or
     /// [`scroll_range_into_view`](VirtualList::scroll_range_into_view)
-    /// that ends above the bottom. Moving the view back to the bottom
+    /// that ends above the bottom. A move that ends at the bottom
     /// starts it again.
     pub fn follow_bottom(
         mut self,
@@ -190,6 +193,7 @@ where
                 && state.widths.is_some() != on
             {
                 state.widths = on.then(Widths::default);
+                state.sideways_switched = true;
             }
             if let Some(mut node) = area.get_mut::<Node>() {
                 node.overflow.x = if on {
@@ -319,6 +323,7 @@ pub struct VirtualList {
     pin: Pin,
     placed_at: f32,
     widths: Option<Widths>,
+    sideways_switched: bool,
     /// The area's width when its rows were measured.
     across: f32,
     physical_per_logical: f64,
@@ -330,7 +335,7 @@ enum Target {
     Reveal {
         index: usize,
         from_top: (f32, f32),
-        remeasured: bool,
+        anchor_before: Option<(usize, f64)>,
     },
 }
 
@@ -369,6 +374,7 @@ impl VirtualList {
             pin: Pin::Unpinned,
             placed_at: 0.0,
             widths: None,
+            sideways_switched: false,
             across: 0.0,
             physical_per_logical: 1.0,
         };
@@ -401,7 +407,7 @@ impl VirtualList {
         self.target = Some(Target::Reveal {
             index,
             from_top: (range.start, range.end),
-            remeasured: false,
+            anchor_before: None,
         });
     }
 
@@ -474,7 +480,7 @@ impl VirtualList {
 
     fn place(
         &mut self,
-        measured: &mut [(usize, f32)],
+        mut measured: &mut [(usize, f32)],
         view: f32,
         scroll: f32,
         end: f32,
@@ -494,6 +500,11 @@ impl VirtualList {
         let scroll = f64::from(scroll);
         let mut anchor = self.shown_at(scroll);
         let mut within = scroll - self.heights.offset(anchor);
+        if core::mem::take(&mut self.sideways_switched) {
+            measured = &mut [];
+            self.heights.forget();
+            self.heights.reestimate(self.estimate);
+        }
         for &(index, height) in &*measured {
             self.heights.set(index, height);
         }
@@ -529,16 +540,23 @@ impl VirtualList {
             Some(Target::Reveal {
                 index,
                 from_top,
-                remeasured,
+                anchor_before,
             }) => {
                 let index = index.min(last);
-                if !remeasured && !self.heights.known[index] {
+                let (row, into) =
+                    anchor_before.unwrap_or((anchor, within));
+                if anchor_before.is_none()
+                    && !self.heights.known[index]
+                {
                     self.target = Some(Target::Reveal {
                         index,
                         from_top,
-                        remeasured: true,
+                        anchor_before: Some((row, into)),
                     });
                 }
+                let at = (self.heights.offset(row.min(self.count))
+                    + into)
+                    .clamp(0.0, bottom);
                 let top = self.heights.offset(index);
                 let height = f64::from(self.heights.each[index]);
                 let from = f64::from(from_top.0).clamp(0.0, height);
@@ -550,18 +568,11 @@ impl VirtualList {
         .clamp(0.0, bottom);
         self.pin = match target {
             None if pinned => Pin::AtBottom,
+            None if held && self.follow && at >= bottom => {
+                Pin::AtBottom
+            }
             None if held => Pin::HeldByTarget,
             None => Pin::Unpinned,
-            Some(Target::First(index))
-                if self.follow && self.count > 0 && index >= last =>
-            {
-                Pin::AtBottom
-            }
-            Some(Target::Reveal { .. })
-                if self.follow && to >= bottom =>
-            {
-                Pin::AtBottom
-            }
             Some(_) => Pin::HeldByTarget,
         };
         let jump = target.is_some() && to != at;

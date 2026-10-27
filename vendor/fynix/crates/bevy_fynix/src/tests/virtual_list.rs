@@ -1069,21 +1069,6 @@ fn scroll_to_moves_a_following_list_where_it_says() {
 }
 
 #[test]
-fn scroll_to_the_top_of_a_following_list_that_fits_keeps_it_there() {
-    let mut app = laid_out();
-    app.insert_resource(Follow(true));
-    let area = list(&mut app, 10, uniform);
-    assert!(state(&app, area).following());
-    scroll_to(&mut app, area, 0);
-    settle(&mut app);
-
-    app.world_mut().resource_mut::<Count>().0 = 10_000;
-    settle(&mut app);
-
-    assert_eq!(scroll(&app, area), 0.0);
-}
-
-#[test]
 fn a_following_list_follows_again_back_at_the_bottom() {
     let mut app = laid_out();
     app.insert_resource(Follow(true));
@@ -1505,7 +1490,11 @@ fn an_unmeasured_tall_row_scrolls_in_by_the_least() {
     let area = list(&mut app, 10_000, grown);
     reveal_range(&mut app, area, 5_000, 1_500.0..1_520.0);
     let span = state(&app, area).row_span(5_000).unwrap();
-    assert_eq!(scroll(&app, area), span.top + 1_520.0 - VIEW, "above");
+    assert_eq!(
+        scroll(&app, area),
+        span.top + 1_520.0 - VIEW,
+        "above"
+    );
 
     let mut app = laid_out();
     app.insert_resource(Grown(5_000, 2_000.0));
@@ -1531,7 +1520,11 @@ fn an_unmeasured_tall_row_scrolls_in_by_the_least() {
     scroll_to(&mut app, area, 4_000);
     settle(&mut app);
     reveal_range(&mut app, area, 5_000, 1_000.0..1_000.0);
-    assert_eq!(scroll(&app, area), span.top + 1_000.0 - VIEW, "empty");
+    assert_eq!(
+        scroll(&app, area),
+        span.top + 1_000.0 - VIEW,
+        "empty"
+    );
 }
 
 #[test]
