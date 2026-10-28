@@ -33,7 +33,7 @@ const TAB: usize = 4;
 
 pub(crate) const OVERSCAN: f32 = 400.0;
 
-const SELECTED_ALPHA: f32 = 0.35;
+const SELECTED_ALPHA: f32 = 0.2;
 
 const STREAM_OVERSCAN: f32 = 0.0;
 
@@ -154,13 +154,17 @@ impl CodeSource {
     /// The rows a code view shows for it: a row per line, but none
     /// for the empty line after a final newline. An empty text shows
     /// one row. A streaming source counts the text sent so far, and
-    /// has no row before its first byte.
+    /// has no row before its first byte until it is finished.
     pub fn rows(&self) -> usize {
         match &self.0 {
             Feed::Whole(whole) => whole.rows(),
             Feed::Stream(inbox) => {
                 let sent = inbox.sent();
-                streamed_rows(sent.lines, &sent.text)
+                if sent.finished && sent.text.is_empty() {
+                    1
+                } else {
+                    streamed_rows(sent.lines, &sent.text)
+                }
             }
         }
     }

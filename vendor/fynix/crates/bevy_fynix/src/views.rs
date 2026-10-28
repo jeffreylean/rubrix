@@ -61,8 +61,8 @@ pub(crate) use popup::plugin as popup_plugin;
 pub use popup::{DISMISS, POPUP, Popup, corners, popup};
 pub(crate) use rich::size_line_boxes;
 pub use rich::{
-    LineColor, Look, Rich, RichProps, Span, Spans, rich, rich_layout,
-    rich_point,
+    LineColor, Look, Rich, RichProps, Span, Spans, drawn_layout,
+    rich, rich_layout, rich_point,
 };
 pub use segmented::{Segmented, segmented};
 pub use slider::{Slider, slider};

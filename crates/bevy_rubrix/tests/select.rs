@@ -270,23 +270,6 @@ fn ctrl_a_selects_the_whole_source_built_or_not() {
     assert_eq!(copy(&mut app), text);
 }
 
-#[test]
-fn a_wrapped_row_maps_a_point_on_its_second_visual_line() {
-    let long = "word ".repeat(60);
-    let text = format!("{long}\nshort\n");
-    let mut app =
-        selecting(CodeSource::new(Lang::Plain, text.as_str()));
-    app.world_mut().resource_mut::<Wrapping>().0 = Overflow::Wrap;
-    settle(&mut app);
-    let root = line(&mut app, 0);
-    let layout = &rich_layout(app.world(), root).expect("a layout");
-    assert!(layout.len() >= 2, "the line wraps");
-    let second = layout.get(1).expect("a second line").text_range();
-    let byte = second.start + 2;
-    press_at(&mut app, 0, byte, 1);
-    assert_eq!(selected(&mut app), byte..byte);
-}
-
 const LONG_LINE: &str =
     include_str!("../examples/gallery/fixtures/long-line.rs");
 

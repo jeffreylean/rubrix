@@ -21,12 +21,12 @@ use bevy::picking::events::{
     PointerDrag, PointerDragEnd, PointerPress, PointerRelease,
 };
 use bevy::picking::pointer::PointerButton;
-use bevy::text::ComputedTextBlock;
+use bevy::text::{ComputedTextBlock, TextLayout};
 use bevy::ui::{
     BackgroundColor, ComputedNode, Display, Node, PositionType,
     ScrollPosition, UiGlobalTransform, px,
 };
-use bevy_fynix::views::{VirtualList, rich_point};
+use bevy_fynix::views::{VirtualList, drawn_layout, rich_point};
 use parley::{Affinity, Cursor, Selection};
 
 use crate::code_view::{CodeDoc, CodeLine, OVERSCAN, Shown};
@@ -118,6 +118,7 @@ pub(crate) struct Hits<'w, 's> {
             &'static ComputedNode,
             &'static UiGlobalTransform,
             &'static ComputedTextBlock,
+            &'static TextLayout,
         ),
     >,
     cameras: Query<'w, 's, &'static Camera>,
@@ -189,15 +190,15 @@ impl Hits<'_, '_> {
             .lines
             .iter()
             .find(|(line, ..)| **line == CodeLine { view, row });
-        let Some((_, node, transform, block)) = shown else {
+        let Some((_, node, transform, block, text)) = shown else {
             return start;
         };
         let Some(point) = rich_point(node, transform, camera, at)
         else {
             return start;
         };
-        let cursor =
-            Cursor::from_point(block.buffer(), point.x, point.y);
+        let layout = drawn_layout(block, text, node);
+        let cursor = Cursor::from_point(&layout, point.x, point.y);
         let line = doc.line(row).unwrap_or_default();
         start + Shown::new(line).source(cursor.index())
     }
@@ -457,6 +458,7 @@ pub(crate) fn draw(
         &CodeLine,
         &ComputedNode,
         &ComputedTextBlock,
+        &TextLayout,
         &mut SelectionRects,
         &ChildOf,
     )>,
@@ -465,7 +467,7 @@ pub(crate) fn draw(
     mut rects: Query<&mut Node, Without<Layer>>,
     mut commands: Commands,
 ) {
-    for (line, node, block, mut drawn, cell) in &mut lines {
+    for (line, node, block, text, mut drawn, cell) in &mut lines {
         let boxes = views
             .get(line.view)
             .ok()
@@ -478,10 +480,10 @@ pub(crate) fn draw(
                     return None;
                 }
                 let shown = Shown::new(doc.line(line.row)?);
-                let layout = block.buffer();
+                let layout = drawn_layout(block, text, node);
                 let at = |byte: usize, affinity| {
                     Cursor::from_byte_index(
-                        layout,
+                        &layout,
                         shown.shown(byte - bytes.start),
                         affinity,
                     )
@@ -492,7 +494,7 @@ pub(crate) fn draw(
                         at(from, Affinity::Downstream),
                         at(to, Affinity::Upstream),
                     )
-                    .geometry(layout)
+                    .geometry(&layout)
                     .into_iter()
                     .map(|(rect, _)| {
                         [rect.x0, rect.y0, rect.x1, rect.y1]

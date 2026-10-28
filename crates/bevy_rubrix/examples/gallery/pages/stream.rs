@@ -33,6 +33,7 @@ struct Streaming {
     name: String,
     text: Arc<str>,
     sent: usize,
+    finished: bool,
     rate: usize,
     paused: bool,
     stream: CodeStream,
@@ -40,13 +41,18 @@ struct Streaming {
 }
 
 impl Streaming {
-    fn new(name: &str, text: Arc<str>, rate: usize) -> Streaming {
-        let first = text.lines().next().unwrap_or_default();
-        let stream = CodeSource::streaming(Lang::detect(name, first));
+    fn new(
+        name: &str,
+        lang: Lang,
+        text: Arc<str>,
+        rate: usize,
+    ) -> Streaming {
+        let stream = CodeSource::streaming(lang);
         Streaming {
             name: name.to_owned(),
             text,
             sent: 0,
+            finished: false,
             rate,
             paused: false,
             source: stream.source(),
@@ -56,8 +62,12 @@ impl Streaming {
 
     fn restart(&mut self) {
         let paused = self.paused;
-        *self =
-            Streaming::new(&self.name, self.text.clone(), self.rate);
+        *self = Streaming::new(
+            &self.name,
+            self.source.lang(),
+            self.text.clone(),
+            self.rate,
+        );
         self.paused = paused;
     }
 
@@ -71,7 +81,12 @@ impl Streaming {
 
 impl Default for Streaming {
     fn default() -> Self {
-        Streaming::new("large.rs.txt", LARGE_RS.into(), FIRST_RATE)
+        Streaming::new(
+            "large.rs.txt",
+            Lang::Rust,
+            LARGE_RS.into(),
+            FIRST_RATE,
+        )
     }
 }
 
@@ -95,11 +110,11 @@ pub fn plugin(app: &mut App) {
 
 fn send(selected: Res<Selected>, mut streaming: ResMut<Streaming>) {
     let shown = PAGES[selected.0].name == "stream";
-    let left = streaming.text.len() - streaming.sent;
-    if !shown || streaming.paused || left == 0 {
+    if !shown || streaming.paused || streaming.finished {
         return;
     }
     let streaming = &mut *streaming;
+    let left = streaming.text.len() - streaming.sent;
     let mut end = streaming.sent + streaming.rate.min(left);
     while !streaming.text.is_char_boundary(end) {
         end += 1;
@@ -108,6 +123,7 @@ fn send(selected: Res<Selected>, mut streaming: ResMut<Streaming>) {
     streaming.sent = end;
     if end == streaming.text.len() {
         streaming.stream.finish();
+        streaming.finished = true;
     }
 }
 
@@ -164,6 +180,7 @@ fn controls() -> PageView {
             let rate = world.resource::<Streaming>().rate;
             world.insert_resource(Streaming::new(
                 "large.rs.txt repeated",
+                Lang::Rust,
                 stress().into(),
                 rate,
             ));
@@ -179,7 +196,14 @@ pub fn open(
 ) -> Result<(), String> {
     let (name, text) = read("stream", paths)?;
     let rate = world.resource::<Streaming>().rate;
-    world.insert_resource(Streaming::new(&name, text.into(), rate));
+    let first = text.lines().next().unwrap_or_default();
+    let lang = Lang::detect(&name, first);
+    world.insert_resource(Streaming::new(
+        &name,
+        lang,
+        text.into(),
+        rate,
+    ));
     Ok(())
 }
 

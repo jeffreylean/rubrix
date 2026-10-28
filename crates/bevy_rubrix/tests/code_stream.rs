@@ -229,3 +229,17 @@ fn a_stream_faster_than_the_view_follows_to_its_last_line() {
     assert!(state.following());
     assert_eq!(*state.spawned().expect("rows").end(), rows - 1);
 }
+
+#[test]
+fn a_finished_empty_stream_counts_the_one_row_its_view_shows() {
+    let (mut app, stream) = streaming(Lang::Rust);
+    assert_eq!(stream.source().rows(), 0, "no row before a byte");
+    stream.finish();
+    app.update();
+    assert_eq!(doc(&mut app).rows(), 1);
+    assert_eq!(stream.source().rows(), doc(&mut app).rows());
+    assert_eq!(
+        stream.source().rows(),
+        CodeSource::new(Lang::Rust, "").rows()
+    );
+}

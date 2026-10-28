@@ -321,7 +321,7 @@ fn rich_layout_maps_every_character_boundary_to_a_point_and_back() {
     let root = mixed(&mut app);
 
     let full = MIXED.concat();
-    let layout = rich_layout(app.world(), root).expect("a layout");
+    let layout = &rich_layout(app.world(), root).expect("a layout");
     assert_eq!(layout.len(), 1, "one line");
     let mut last = f64::MIN;
     let mut checked = 0;
@@ -364,7 +364,7 @@ fn cursor_at(
         &camera,
         at,
     )?;
-    let layout = rich_layout(world, root)?;
+    let layout = &rich_layout(world, root)?;
     Some(Cursor::from_point(layout, point.x, point.y))
 }
 
@@ -373,7 +373,7 @@ fn rich_layout_point_of_a_window_position_is_the_byte_under_it() {
     let mut app = laid_out();
     let root = mixed(&mut app);
     let world = app.world();
-    let layout = rich_layout(world, root).expect("a layout");
+    let layout = &rich_layout(world, root).expect("a layout");
     let node = world.get::<ComputedNode>(root).unwrap();
     let corner =
         world.get::<UiGlobalTransform>(root).unwrap().translation
@@ -472,7 +472,7 @@ fn every_point_of_a_rich_text_with_no_text_is_byte_0() {
 
     for root in [empty, blanks] {
         let layout =
-            rich_layout(app.world(), root).expect("a layout");
+            &rich_layout(app.world(), root).expect("a layout");
         let points =
             [(0.0, 0.0), (10_000.0, 1.0), (10_000.0, 10_000.0)];
         for (x, y) in points {
