@@ -1,8 +1,11 @@
 page code
 wait 120
+frames start
+wait 60
 press 235 279
 move 700 799
 wait 321
+frames stop select-drag.csv
 log rows
 move 1250 432
 wait 5

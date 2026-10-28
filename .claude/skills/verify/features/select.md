@@ -39,7 +39,7 @@ The scripts are `drive/select-*.drive`, written by `gen_drives.py`. Each opens t
 
 ## Perf
 
-Run `select-autoscroll.drive` and `select-all.drive` with `RUBRIX_NO_VSYNC=1` in `--release` with `frames start` and `frames stop` added around the held drag and around `key ctrl+c`, then `frame-stats.sh`.
+Run `select-autoscroll.drive` and `select-all.drive` with `RUBRIX_NO_VSYNC=1` in `--release`, alone, five times. `frame-stats.sh` on `select-drag.csv` gives the drag frames, after a 60-frame wait it drops. The copy of the whole file, 10,372 lines, is frame 61 of `select-copy.csv`, the frame `key ctrl+c` lands in, or the largest of frames 60 to 63.
 
 ## Gotchas
 
