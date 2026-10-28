@@ -1,6 +1,8 @@
 mod support;
 
 use bevy::app::App;
+use bevy::asset::Handle;
+use bevy::color::Alpha;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::Children;
 use bevy::ui::widget::{ImageNode, Text};
@@ -19,7 +21,10 @@ fn hatched(app: &App, root: Entity) -> [bool; 2] {
     let mut texts = 0;
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
-        if world.get::<ImageNode>(node).is_some() {
+        if world.get::<ImageNode>(node).is_some_and(|image| {
+            image.image != Handle::default()
+                && !image.color.is_fully_transparent()
+        }) {
             sides[texts / 2] = true;
         }
         if world.get::<Text>(node).is_some() {
