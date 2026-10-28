@@ -319,6 +319,7 @@ fn a_copy_across_a_header_takes_no_header_text() {
 fn rows_that_change_drop_the_selection() {
     let mut app = laid_out(one_change(), 600.0, 400.0);
     select_lines(&mut app, 1, 3);
+    assert_eq!(copy(&mut app), "a\nb\nB");
     set(&mut app, |showing| showing.compact = true);
     assert_eq!(copy(&mut app), "");
 }
