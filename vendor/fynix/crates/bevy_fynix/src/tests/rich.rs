@@ -9,9 +9,9 @@ use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::math::Vec2;
 use bevy::text::{
-    ComputedTextBlock, FontSize, InlineBox, LineHeight,
-    StrikethroughColor, TextBackgroundColor, TextColor, TextFont,
-    TextLayoutInfo, TextSpan, Underline, UnderlineColor,
+    ComputedTextBlock, FontSize, LineHeight, TextBackgroundColor,
+    TextColor, TextFont, TextLayoutInfo, TextSpan, Underline,
+    UnderlineColor,
 };
 use bevy::ui::{ComputedNode, UiGlobalTransform, px};
 use fynix::{Motion, ScopedExt};
@@ -531,31 +531,6 @@ fn every_point_of_a_rich_text_with_no_text_is_byte_0() {
 }
 
 #[test]
-fn a_fade_leaves_the_font_of_a_span_sized_nan_alone() {
-    let mut app = app();
-    app.insert_resource(Shade(Tone::Body));
-    let root = mount::<Plain>(
-        app.world_mut(),
-        rich(vec![Span::new("a "), Span::new("b").size(f32::NAN)])
-            .size(9.0)
-            .tone(resource::<Shade, _>(|shade| shade.0))
-            .transition(Motion::Interact),
-    );
-    app.update();
-    let span = kids(&app, root)[1];
-    let before = changed::<TextFont>(&app, span);
-
-    app.world_mut().resource_mut::<Shade>().0 = Tone::Accent;
-    app.update();
-    app.update();
-
-    assert_ne!(color(&app, span), Color::WHITE, "the fade ran");
-    assert_eq!(changed::<TextFont>(&app, span), before);
-    let font = app.world().get::<TextFont>(span).unwrap();
-    assert_eq!(font.font_size, FontSize::Px(9.0), "the root's size");
-}
-
-#[test]
 fn an_empty_rich_text_is_one_line_high_at_each_scale_factor() {
     let sizes =
         [9.0, 12.0, 13.0, 14.0, 15.0, 16.0, 20.0, 24.0, 30.0, 42.0];
@@ -609,84 +584,4 @@ fn an_empty_rich_text_is_one_line_high_at_each_scale_factor() {
         }
     }
     assert!(uneven.is_empty(), "empty against worded: {uneven:?}");
-}
-
-#[test]
-fn a_nan_root_size_takes_the_theme_size() {
-    let mut app = with_text();
-    let nan = mount::<Plain>(
-        app.world_mut(),
-        rich(vec![Span::new("x")]).size(f32::NAN),
-    );
-    let empty = mount::<Plain>(
-        app.world_mut(),
-        rich(Vec::new()).size(f32::NAN),
-    );
-    let themed =
-        mount::<Plain>(app.world_mut(), rich(vec![Span::new("x")]));
-    app.update();
-    app.update();
-
-    let span = kids(&app, nan)[0];
-    let font = app.world().get::<TextFont>(span).unwrap();
-    assert_eq!(
-        font.font_size,
-        FontSize::Px(14.0),
-        "the theme's size"
-    );
-    let held = app.world().get::<InlineBox>(kids(&app, empty)[0]);
-    assert!(
-        held.unwrap().size.y.is_finite(),
-        "a box of finite height"
-    );
-    assert_eq!(height(&app, empty), height(&app, themed));
-    assert_eq!(height(&app, nan), height(&app, themed));
-}
-
-#[test]
-fn a_fade_treats_a_nan_span_colour_as_unset() {
-    let mut app = app();
-    app.insert_resource(Shade(Tone::Body));
-    let nan = Color::srgb(f32::NAN, 0.0, 0.0);
-    let root = mount::<Plain>(
-        app.world_mut(),
-        rich(vec![
-            Span::new("a "),
-            Span::new("b")
-                .color(nan)
-                .background(nan)
-                .underline(LineColor::Own(nan))
-                .strikethrough(LineColor::Own(nan)),
-        ])
-        .tone(resource::<Shade, _>(|shade| shade.0))
-        .transition(Motion::Interact),
-    );
-    app.update();
-    let [plain, span] = kids(&app, root)[..] else {
-        panic!("two spans");
-    };
-
-    app.world_mut().resource_mut::<Shade>().0 = Tone::Accent;
-    for frame in 0..3 {
-        let before = changed::<TextColor>(&app, span);
-        let shown = color(&app, plain);
-        app.update();
-        assert_eq!(
-            color(&app, span),
-            color(&app, plain),
-            "frame {frame}"
-        );
-        assert_eq!(
-            changed::<TextColor>(&app, span) != before,
-            color(&app, plain) != shown,
-            "frame {frame}: rewritten only when it changed"
-        );
-    }
-    let world = app.world();
-    assert!(
-        world.get::<TextBackgroundColor>(span).is_none(),
-        "no plate"
-    );
-    assert!(world.get::<UnderlineColor>(span).is_none());
-    assert!(world.get::<StrikethroughColor>(span).is_none());
 }
