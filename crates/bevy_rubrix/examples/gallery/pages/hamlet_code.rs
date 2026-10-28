@@ -9,10 +9,10 @@ use bevy::ecs::system::ResMut;
 use bevy::ecs::world::World;
 use bevy::text::{FontSize, FontSource, TextFont};
 use bevy::ui::{
-    ComputedNode, Node, OverflowAxis, UiGlobalTransform, UiRect,
-    UiSystems, percent, px,
+    ComputedNode, Node, OverflowAxis, UiGlobalTransform, UiSystems,
+    percent, px,
 };
-use bevy_fynix::tokens::{SpacingTokens, SurfaceTokens, Tone};
+use bevy_fynix::tokens::Tone;
 use bevy_fynix::views::{FrameProps, VirtualList, column, label};
 use bevy_fynix::{AnyView, ViewExt, keyed, resource};
 use bevy_rubrix::{
@@ -20,10 +20,9 @@ use bevy_rubrix::{
     Overflow, code_view,
 };
 
-use super::{FitRows, blank_rows, control, find_under};
+use super::hamlet_rich::CODE_SIZE;
+use super::{FitRows, blank_rows, control, find_under, plated};
 use crate::{Build, PageView};
-
-const CODE_SIZE: f32 = 13.0;
 
 const CAPTION_SIZE: f32 = 11.0;
 
@@ -193,7 +192,7 @@ fn plate(
 ) -> PageView {
     AnyView::new(move |cx: &mut Build| {
         let theme = cx.theme();
-        cx.build(
+        cx.build(plated(
             column((
                 column((label(lang)
                     .size(CAPTION_SIZE)
@@ -206,14 +205,10 @@ fn plate(
                 .with((FitRows, marker)),
             ))
             .gap(4.0)
-            .padding(UiRect::axes(px(10.0), px(8.0)))
             .min_width(px(0.0))
-            .shrink(0.0)
-            .fill(theme.fill())
-            .border(1.0)
-            .border_color(theme.hover())
-            .radius(theme.radius()),
-        )
+            .shrink(0.0),
+            theme,
+        ))
     })
     .boxed()
 }

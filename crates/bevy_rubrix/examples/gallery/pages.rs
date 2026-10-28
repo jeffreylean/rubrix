@@ -11,8 +11,10 @@ use bevy::ecs::system::{Query, ResMut};
 use bevy::ecs::world::World;
 use bevy::text::TextLayoutInfo;
 use bevy::ui::{
-    ComputedNode, FlexWrap, Node, UiGlobalTransform, UiSystems, px,
+    ComputedNode, FlexWrap, Node, UiGlobalTransform, UiRect,
+    UiSystems, px,
 };
+use bevy_fynix::tokens::{SpacingTokens, SurfaceTokens};
 use bevy_fynix::views::{
     BehaviorExt, FrameProps, VirtualList, button, ghost, label,
 };
@@ -205,6 +207,16 @@ pub fn blank_rows(world: &World, list: Entity) -> usize {
         })
         .collect::<std::collections::BTreeSet<_>>();
     (first..=last).filter(|row| !drawn.contains(row)).count()
+}
+
+/// Hamlet's plate around a code or diff block: 10 by 8 px in, on the
+/// theme's fill, with a 1 px border.
+pub fn plated<V: FrameProps>(view: V, theme: &Palette) -> V {
+    view.padding(UiRect::axes(px(10.0), px(8.0)))
+        .fill(theme.fill())
+        .border(1.0)
+        .border_color(theme.hover())
+        .radius(theme.radius())
 }
 
 pub fn descendants_in_order(

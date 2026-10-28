@@ -4,8 +4,8 @@ use bevy::ecs::entity::Entity;
 use bevy::ecs::query::With;
 use bevy::ecs::world::World;
 use bevy::text::{TextColor, TextSpan};
-use bevy::ui::{BackgroundColor, UiRect, percent, px};
-use bevy_fynix::tokens::{SpacingTokens, SurfaceTokens, Tone};
+use bevy::ui::{BackgroundColor, percent, px};
+use bevy_fynix::tokens::Tone;
 use bevy_fynix::views::{
     FrameProps, VirtualList, column, label, row, scroll,
 };
@@ -14,7 +14,7 @@ use bevy_rubrix::{
     DiffDoc, DiffRow, DiffRowAt, DiffSource, SyntaxTokens, diff_view,
 };
 
-use super::{FitRows, descendants_in_order, find_under};
+use super::{FitRows, descendants_in_order, find_under, plated};
 use crate::{Build, Mode, PageView};
 
 const LIMIT: u32 = 16;
@@ -60,22 +60,18 @@ pub fn build() -> PageView {
 fn plate(source: DiffSource, marker: impl Component) -> PageView {
     AnyView::new(move |cx: &mut Build| {
         let theme = cx.theme();
-        cx.build(
+        cx.build(plated(
             column((column((diff_view(source)
                 .compact(true)
                 .limit(Some(LIMIT))
                 .row_colours(true),))
             .min_height(px(0.0))
             .with((FitRows, marker)),))
-            .padding(UiRect::axes(px(10.0), px(8.0)))
             .grow(1.0)
             .width(px(0.0))
-            .min_width(px(0.0))
-            .fill(theme.fill())
-            .border(1.0)
-            .border_color(theme.hover())
-            .radius(theme.radius()),
-        )
+            .min_width(px(0.0)),
+            theme,
+        ))
     })
     .boxed()
 }
