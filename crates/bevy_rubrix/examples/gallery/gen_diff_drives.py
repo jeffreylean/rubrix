@@ -102,6 +102,18 @@ write(
     "exit",
 )
 write(
+    "diff-copy-compact",
+    opened("forty-old.txt", "forty-new.txt"),
+    COMPACT,
+    SETTLE,
+    "drag 221 159 700 193",
+    "key ctrl+c",
+    "clipboard",
+    "wait 30",
+    "screenshot r15-copy.png",
+    "exit",
+)
+write(
     "diff-stress",
     "page diff",
     "wait 30",
@@ -146,6 +158,18 @@ write(
     "screenshot r16-last.png",
     "log diff",
     "expect diff first 9520 header 92 crates/bevy_fynix/src/views/menu.rs",
+    "exit",
+)
+write(
+    "diff-copy-side",
+    opened("realign-old.rs", "realign-new.rs"),
+    LAYOUT,
+    SETTLE,
+    "drag 230 176 1000 210",
+    "key ctrl+c",
+    "clipboard",
+    "wait 30",
+    "screenshot r16-copy-side.png",
     "exit",
 )
 write(

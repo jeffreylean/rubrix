@@ -12,6 +12,7 @@ The diff page shows a diff in `diff_view`: a header row per file, then its rows,
 - `diff-compact` draws stacked rows with no gutter, a `+ `, `- `, or two-space prefix, and wrapped lines, and shows 16 line rows and a `... M more lines` button.
 - `diff-split` shows old lines on the left and new lines on the right, with a hatched cell for a side that has no line.
 - `diff-switch` keeps the first visible source line at the top when the layout changes.
+- `diff-copy` selects as the code view does, and `Ctrl+C` copies the selected lines joined by newlines. A compact line keeps its prefix, and header and gap rows add nothing. In split rows a selection stays on the side its press landed on.
 - `diff-stress` shows `bench/patch/stress.patch.txt`, 100,522 lines in 726 files.
 
 ## How to get to it (user POV)
@@ -36,7 +37,7 @@ R15 lanes:
 - **Words.** Run `.../diff-words.drive`. `r15-words.png` shows only `sum` and `subtotal` in the stronger tint.
 - **Headers.** Run `.../diff-headers.drive`. `r15-headers.png` shows `src/old_name.rs → src/new_name.rs`, `mode 100644 → 100755`, and `binary`, with rows only under `src/lib.rs`.
 - **Compact.** Run `.../diff-compact.drive`. `expect diff rows 18 compact` passes, a header, 16 rows, and the button. `r15-compact.png` shows `- ` prefixes and `... 24 more lines`. After the click, `expect diff rows 41 compact` passes.
-- **Copy.** Not built yet. It needs R14's selection.
+- **Copy.** Run `.../diff-copy-compact.drive`. It opens `forty-old.txt` and `forty-new.txt`, turns on compact, and drags from the start of the first line to past the end of the third. `clipboard` prints `- old line 1`, `- old line 2` and `- old line 3` on three lines, and `r15-copy.png` shows the three rows selected.
 - **100,000 lines.** Run `.../diff-stress.drive`. `log rows` prints `rows 52`, below 200, near row 50,000, and `r15-stress.png` shows rows with no blank band.
 
 R16 lanes:
@@ -48,7 +49,7 @@ R16 lanes:
 - **Sideways.** Run `.../diff-hscroll.drive`. `log rows` ends with `x 400`, and `r16-hscroll.png` shows both sides moved by the same amount with both gutters in place.
 - **Wrap.** Run `.../diff-wrap.drive`. `r16-wrap.png` shows a row as tall as the wrapped new line, and `}` below it on both sides.
 - **Switch.** Run `.../diff-switch.drive`. Both `log diff` lines name the same line, as `line 32 old 1478 new 1676`.
-- **Copy one side.** Not built yet. It needs R14's selection.
+- **Copy one side.** Run `.../diff-copy-side.drive`. It opens `realign-old.rs` and `realign-new.rs` in split rows and drags from the old gutter of line 2 to the new side of the fourth row. `clipboard` prints old lines 2 to 4, from `    let started` to `started.elapsed());`, and no new line. `r16-copy-side.png` shows the selection on the left side only.
 - **Expand in split.** Run `.../diff-split-expand.drive`. `log diff` prints `rows 114`, and `r16-expand.png` shows the revealed lines on both sides with matching numbers.
 - **100,000 lines split.** Run `.../diff-split-stress.drive`. `log rows` prints `rows 52`, below 200, and `r16-stress.png` shows rows with no blank band.
 
@@ -69,4 +70,4 @@ Run `.../diff-review-record.drive` for R15 and `.../diff-split-review-record.dri
 - The buttons sit at y 68, at x 290, 438, 586, 734, 882, and 1030. A click leaves the pointer there, so move it back over the view before a scroll.
 - Opening a diff or pressing a diff button builds a new list at the first row, with every file expanded and every gap collapsed.
 - Pressing `100k patch` parses and highlights 100,522 lines in one frame.
-- The copy lanes wait for R14's selection.
+- Any change to the rows, such as a collapse, a reveal, a layout or compact switch, or a new diff, drops the selection.

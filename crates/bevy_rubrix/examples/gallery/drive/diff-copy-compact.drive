@@ -1,0 +1,12 @@
+page diff
+wait 30
+open ../fixtures/diff/forty-old.txt ../fixtures/diff/forty-new.txt
+wait 120
+click 1030 68
+wait 120
+drag 221 159 700 193
+key ctrl+c
+clipboard
+wait 30
+screenshot r15-copy.png
+exit
