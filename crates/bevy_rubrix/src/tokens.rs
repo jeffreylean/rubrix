@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bevy::color::Color;
+use bevy::color::{Alpha, Color, Laba, Luminance, Mix};
 use bevy::text::{FontSource, FontStyle, FontWeight};
 use bevy_fynix::tokens::{TextTokens, Tone};
 use bevy_fynix::views::Look;
@@ -65,6 +65,31 @@ pub trait SyntaxTokens: TextTokens {
     fn code_font(&self) -> FontSource {
         FontSource::Handle(CODE_FONT)
     }
+
+    /// The colour a diff tints added lines and words with. Pierre's
+    /// green by default, a lighter one when [`Tone::Body`] is light,
+    /// as on a dark theme.
+    fn addition(&self) -> Color {
+        pick(self, 0x5ECC71, 0x0DBE4E)
+    }
+
+    /// The colour a diff tints removed lines and words with. Pierre's
+    /// red by default, picked as [`addition`](Self::addition) is.
+    fn deletion(&self) -> Color {
+        pick(self, 0xFF6762, 0xFF2E3F)
+    }
+}
+
+/// `dark` on a theme whose body text is light, else `light`.
+fn pick<T: TextTokens + ?Sized>(
+    theme: &T,
+    dark: u32,
+    light: u32,
+) -> Color {
+    let on_dark = theme.tone(Tone::Body).luminance() >= 0.5;
+    let [_, r, g, b] =
+        if on_dark { dark } else { light }.to_be_bytes();
+    Color::srgb_u8(r, g, b)
 }
 
 /// [`SyntaxTokens::style`]'s default. Root kinds take a tone:
@@ -114,6 +139,31 @@ pub fn resolve<T: SyntaxTokens + ?Sized>(
         at = key.parent();
     }
     (theme.tone(Tone::Body), face.unwrap_or_default())
+}
+
+/// The fill of a changed row and the stronger fill of its changed
+/// words, as Pierre's `style.css` mixes them. The row mixes `base`
+/// into `background` in Lab, 20% on a dark background and 12% on a
+/// light one. The words take `base` at alpha 0.2 or 0.15, over the
+/// row.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Tint {
+    pub(crate) row: Color,
+    pub(crate) word: Color,
+}
+
+impl Tint {
+    pub(crate) fn new(background: Color, base: Color) -> Tint {
+        let dark = background.luminance() < 0.5;
+        let (share, alpha) =
+            if dark { (0.2, 0.2) } else { (0.12, 0.15) };
+        let row =
+            Laba::from(background).mix(&Laba::from(base), share);
+        Tint {
+            row: row.into(),
+            word: base.with_alpha(alpha),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -247,6 +297,49 @@ mod tests {
             resolve(&theme, Kind::VariableParameter),
             (BODY, italic())
         );
+    }
+
+    fn srgb(color: Color) -> [u8; 4] {
+        let rgba = color.to_srgba();
+        [rgba.red, rgba.green, rgba.blue, rgba.alpha]
+            .map(|channel| (channel * 255.0).round() as u8)
+    }
+
+    /// The expected values come from a CIE Lab (D65) mix computed
+    /// apart from Bevy's.
+    #[test]
+    fn add_and_delete_rows_mix_the_background_with_their_colour() {
+        struct Body(Color);
+        impl TextTokens for Body {
+            fn tone(&self, _: Tone) -> Color {
+                self.0
+            }
+
+            fn body_size(&self) -> f32 {
+                14.0
+            }
+
+            fn small_size(&self) -> f32 {
+                11.0
+            }
+        }
+        impl SyntaxTokens for Body {}
+        let (dark, light) = (Body(Color::WHITE), Body(Color::BLACK));
+
+        let panel = Color::srgb_u8(0x1E, 0x1E, 0x22);
+        let add = Tint::new(panel, dark.addition());
+        let delete = Tint::new(panel, dark.deletion());
+        assert_eq!(srgb(add.row), [45, 61, 49, 255]);
+        assert_eq!(srgb(delete.row), [72, 45, 46, 255]);
+        assert_eq!(srgb(add.word), [0x5E, 0xCC, 0x71, 51]);
+        assert_eq!(srgb(delete.word), [0xFF, 0x67, 0x62, 51]);
+
+        let panel = Color::srgb_u8(0xF5, 0xF5, 0xF7);
+        let add = Tint::new(panel, light.addition());
+        let delete = Tint::new(panel, light.deletion());
+        assert_eq!(srgb(add.row), [224, 239, 226, 255]);
+        assert_eq!(srgb(delete.row), [253, 225, 223, 255]);
+        assert_eq!(srgb(add.word), [0x0D, 0xBE, 0x4E, 38]);
     }
 
     #[test]
