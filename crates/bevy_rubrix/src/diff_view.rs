@@ -6,11 +6,12 @@ use bevy::color::{Alpha, Color};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::system::ResMut;
-use bevy::ecs::world::{Mut, World};
+use bevy::ecs::world::{EntityWorldMut, Mut, World};
 use bevy::image::{Image, ImageSampler};
 use bevy::text::FontSource;
 use bevy::ui::widget::{ImageNode, NodeImageMode};
 use bevy::ui::{AlignItems, Display, JustifyContent, percent, px};
+use bevy_fynix::patch::Paint;
 use bevy_fynix::tokens::{
     MotionTokens, SpacingTokens, SurfaceTokens, Tone,
 };
@@ -228,7 +229,7 @@ fn digits(number: u32) -> usize {
 ///
 /// A new source builds the rows again, with every file expanded and
 /// every gap collapsed, and shows its first row. Its colours come
-/// from the theme when it is lists_built.
+/// from the theme when it is built.
 pub fn diff_view(source: impl Into<Prop<DiffSource>>) -> DiffView {
     DiffView {
         source: source.into(),
@@ -983,22 +984,34 @@ where
         cx.effect(node, empty.into(), move |world, node, &empty| {
             let mut node = world.entity_mut(node);
             if empty {
-                node.insert(ImageNode {
-                    image: HATCH,
-                    color: hatch,
-                    image_mode: NodeImageMode::Tiled {
-                        tile_x: true,
-                        tile_y: true,
-                        stretch_value: 1.0,
-                    },
-                    ..ImageNode::default()
-                });
+                show_hatch(&mut node, hatch);
             } else {
                 node.remove::<ImageNode>();
             }
         });
         node
     })
+}
+
+/// Tiles the hatch over `cell` in `colour`, through the cell's
+/// [`Paint`] tint as well, which each fill change repaints its image
+/// from.
+fn show_hatch(cell: &mut EntityWorldMut, colour: Color) {
+    let mut paint = cell.get::<Paint>().copied().unwrap_or_default();
+    paint.tint = Some(colour);
+    cell.insert((
+        paint,
+        ImageNode {
+            image: HATCH,
+            color: colour,
+            image_mode: NodeImageMode::Tiled {
+                tile_x: true,
+                tile_y: true,
+                stretch_value: 1.0,
+            },
+            ..ImageNode::default()
+        },
+    ));
 }
 
 fn line_of(row: Row, lane: Lane) -> Option<LineRef> {
