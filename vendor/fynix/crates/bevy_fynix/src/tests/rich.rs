@@ -226,9 +226,13 @@ fn a_theme_fade_changes_every_span_colour() {
     assert_eq!(color(&app, spans[2]), orange);
 }
 
+#[derive(Resource)]
+struct Opacity(f32);
+
 #[test]
 fn opacity_fades_every_span_and_its_plate() {
     let mut app = app();
+    app.insert_resource(Opacity(0.25));
     let own = Color::srgb(0.0, 0.0, 1.0);
     let plate = Color::srgb(0.2, 0.2, 0.2);
     let root = mount::<Plain>(
@@ -237,14 +241,34 @@ fn opacity_fades_every_span_and_its_plate() {
             Span::new("a "),
             Span::new("b ").color(own).background(plate),
         ])
-        .opacity(0.25),
+        .opacity(resource::<Opacity, _>(|opacity| opacity.0)),
     );
+    app.update();
     let spans = kids(&app, root);
+    let assert_faded = |app: &App, alpha: f32, when: &str| {
+        assert_eq!(
+            color(app, spans[0]),
+            Color::WHITE.with_alpha(alpha),
+            "{when}"
+        );
+        assert_eq!(
+            color(app, spans[1]),
+            own.with_alpha(alpha),
+            "{when}"
+        );
+        let background =
+            app.world().get::<TextBackgroundColor>(spans[1]);
+        assert_eq!(
+            background.unwrap().0,
+            plate.with_alpha(alpha),
+            "{when}"
+        );
+    };
 
-    assert_eq!(color(&app, spans[0]), Color::WHITE.with_alpha(0.25));
-    assert_eq!(color(&app, spans[1]), own.with_alpha(0.25));
-    let background = app.world().get::<TextBackgroundColor>(spans[1]);
-    assert_eq!(background.unwrap().0, plate.with_alpha(0.25));
+    assert_faded(&app, 0.25, "as built");
+    app.world_mut().resource_mut::<Opacity>().0 = 0.5;
+    app.update();
+    assert_faded(&app, 0.5, "faded again once built");
 }
 
 #[test]
