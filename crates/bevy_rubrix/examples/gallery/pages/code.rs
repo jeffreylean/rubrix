@@ -156,7 +156,6 @@ pub(super) fn read(
     read_file(path)
 }
 
-/// The name and text of the file at `path`.
 pub(super) fn read_file(
     path: &Path,
 ) -> Result<(String, String), String> {

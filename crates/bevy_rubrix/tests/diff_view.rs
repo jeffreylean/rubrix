@@ -278,11 +278,6 @@ fn one_change() -> DiffSource {
     DiffSource::texts("letters.txt", "a\nb\nc\n", "a\nB\nc\n")
 }
 
-fn line_text(app: &mut App, index: usize) -> Entity {
-    let slot = slot(app, index);
-    *rich_texts(app, slot).last().expect("a line")
-}
-
 fn select_lines(app: &mut App, from: usize, to: usize) {
     let first = line_text(app, from);
     let at = point_in(app, first, 0);

@@ -588,7 +588,6 @@ where
     }
 }
 
-/// A column that fills what its parent leaves it.
 pub(crate) fn filling() -> Stack<()> {
     column(()).grow(1.0).min_width(px(0.0)).min_height(px(0.0))
 }
@@ -726,7 +725,6 @@ struct Read {
     committed: bool,
 }
 
-/// How many digits `number` takes to write.
 pub(crate) fn digits(number: usize) -> usize {
     number.checked_ilog10().map_or(1, |log| log as usize + 1)
 }

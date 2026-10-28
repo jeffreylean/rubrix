@@ -67,8 +67,6 @@ enum Grain {
     Line,
 }
 
-/// Which text of a row a selection is in: the one text of a code row
-/// or a stacked diff row, or a side of a split diff row.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Column {
     #[default]
@@ -103,7 +101,6 @@ impl<At: Copy + Ord + Send + Sync + 'static> CodeSelection<At> {
         *self = CodeSelection::default();
     }
 
-    /// The range, while `doc` has the rows it was made on.
     fn live<D: Selectable<At = At>>(
         &self,
         doc: &D,
@@ -119,10 +116,8 @@ pub(crate) trait Selectable: Component + Sized {
     /// A place in the text, which orders by row first.
     type At: Copy + Ord + Default + Debug + Send + Sync + 'static;
 
-    /// The tag on each row's rich text.
     type Line: Component;
 
-    /// The view, row and column a tagged text shows.
     fn line_of(line: &Self::Line) -> (Entity, usize, Column);
 
     fn list(&self) -> Option<Entity>;
@@ -130,18 +125,13 @@ pub(crate) trait Selectable: Component + Sized {
     /// Changes whenever the rows do, which drops what was selected.
     fn revision(&self) -> u64;
 
-    /// The column a press lands in, `across` of the way from the
-    /// list's left edge to its right.
     fn column(&self, across: f32) -> Column;
 
-    /// Row `row`'s text in `column`, `None` for a row without one.
     fn text(&self, column: Column, row: usize)
     -> Option<RowText<'_>>;
 
-    /// The place of byte `byte` of row `row`'s text.
     fn at(&self, row: usize, byte: usize) -> Self::At;
 
-    /// The bytes of row `row`'s text in `column` that `range` covers.
     fn on_row(
         &self,
         column: Column,
@@ -149,15 +139,11 @@ pub(crate) trait Selectable: Component + Sized {
         range: &Range<Self::At>,
     ) -> Range<usize>;
 
-    /// From the first place to the last.
     fn all(&self) -> Range<Self::At>;
 
-    /// The text of `column` that `range` covers.
     fn copy(&self, column: Column, range: Range<Self::At>) -> String;
 }
 
-/// A row's text as a selection reads it: `lead`, drawn as it is, then
-/// `line`, drawn with each tab as spaces.
 pub(crate) struct RowText<'a> {
     pub(crate) lead: &'static str,
     pub(crate) line: &'a str,
@@ -168,7 +154,6 @@ impl RowText<'_> {
         self.lead.len() + self.line.len()
     }
 
-    /// The byte drawn at byte `drawn` of the row's layout.
     fn source(&self, drawn: usize) -> usize {
         let lead = self.lead.len();
         if drawn < lead {
@@ -178,7 +163,6 @@ impl RowText<'_> {
         }
     }
 
-    /// Where byte `byte` is drawn in the row's layout.
     fn drawn(&self, byte: usize) -> usize {
         let lead = self.lead.len();
         if byte < lead {
@@ -197,7 +181,6 @@ impl RowText<'_> {
         lead + word.start..lead + word.end
     }
 
-    /// Adds bytes `bytes` of the text to `out`.
     pub(crate) fn push(&self, bytes: Range<usize>, out: &mut String) {
         let lead = self.lead.len();
         out.push_str(
@@ -210,13 +193,10 @@ impl RowText<'_> {
     }
 }
 
-/// The colour a selection draws behind its text.
 pub(crate) fn selected_colour(theme: &impl TextTokens) -> Color {
     theme.tone(Tone::Accent).with_alpha(SELECTED_ALPHA)
 }
 
-/// Lets a view's root select: a selection, the observers that make
-/// it, and a mark for the keys to find it by.
 pub(crate) fn attach<D: Selectable>(view: &mut EntityWorldMut) {
     view.insert((CodeSelection::<D::At>::default(), Selects))
         .observe(press::<D>)
@@ -225,8 +205,6 @@ pub(crate) fn attach<D: Selectable>(view: &mut EntityWorldMut) {
         .observe(drag_end::<D::At>);
 }
 
-/// Builds `text` as a row's rich text that a selection draws behind,
-/// tagged with `tag` of the row it shows.
 pub(crate) fn selectable<T, L>(
     text: impl View<Bevy, T> + 'static,
     slot: RowSlot,
@@ -247,8 +225,6 @@ where
     })
 }
 
-/// Inserts `tag` of the row `slot` shows on `node`, again each time
-/// the slot shows another row.
 pub(crate) fn tag_row<T: 'static, L: Component>(
     cx: &mut Cx<'_, Bevy, T>,
     node: Entity,
@@ -278,7 +254,6 @@ pub(crate) struct SelectionRects {
     layer: Option<Entity>,
 }
 
-/// On the root of every view that selects.
 #[derive(Component)]
 pub(crate) struct Selects;
 
@@ -364,7 +339,6 @@ impl<D: Selectable> Hits<'_, '_, D> {
         )
     }
 
-    /// The byte of row `row`'s text in `column` drawn under `at`.
     fn byte(
         &self,
         view: Entity,
@@ -667,7 +641,6 @@ pub(crate) fn keys<D: Selectable>(
     commands.trigger(CodeCopied { entity: view, text });
 }
 
-/// A row's rich text, as [`draw`] reads it.
 type Drawn<'a, L> = (
     &'a L,
     &'a ComputedNode,

@@ -571,7 +571,6 @@ impl DiffDoc {
     }
 }
 
-/// A place in a diff view's text: byte `byte` of row `row`'s text.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord,
 )]
@@ -580,8 +579,6 @@ pub(crate) struct Spot {
     byte: usize,
 }
 
-/// On the rich text of each line row of a diff view, a side's in a
-/// split row: the view's root, the row's index, and the column.
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DiffLine {
     view: Entity,
@@ -589,13 +586,15 @@ pub(crate) struct DiffLine {
     column: Column,
 }
 
-/// The bytes of the text of row `row`, `len` bytes long, that
-/// `range` covers, for a row inside it.
 fn covered(
     row: usize,
-    len: usize,
     range: &Range<Spot>,
+    len: impl FnOnce() -> usize,
 ) -> Range<usize> {
+    if row < range.start.row || row > range.end.row {
+        return 0..0;
+    }
+    let len = len();
     let from = if row == range.start.row {
         range.start.byte.min(len)
     } else {
@@ -609,9 +608,6 @@ fn covered(
     from..to.max(from)
 }
 
-/// A selection takes a line row's text: in compact rows with its
-/// prefix, in split rows from its column's side. Header, gap and
-/// `more` rows, and a split side with no line, have none.
 impl Selectable for DiffDoc {
     type At = Spot;
     type Line = DiffLine;
@@ -664,11 +660,9 @@ impl Selectable for DiffDoc {
         row: usize,
         range: &Range<Spot>,
     ) -> Range<usize> {
-        if row < range.start.row || row > range.end.row {
-            return 0..0;
-        }
-        let len = self.text(column, row).map_or(0, |text| text.len());
-        covered(row, len, range)
+        covered(row, range, || {
+            self.text(column, row).map_or(0, |text| text.len())
+        })
     }
 
     fn all(&self) -> Range<Spot> {
@@ -687,7 +681,7 @@ impl Selectable for DiffDoc {
             if at > 0 {
                 out.push('\n');
             }
-            text.push(covered(row, text.len(), &range), &mut out);
+            text.push(covered(row, &range, || text.len()), &mut out);
         }
         out
     }
@@ -1163,8 +1157,6 @@ fn number(line: Option<LineRef>, width: usize) -> String {
     }
 }
 
-/// The side a stacked row's line is on, the line, and the prefix a
-/// compact row writes before it. `None` for a gap row.
 fn stacked_line(row: Row) -> Option<(Lane, LineRef, &'static str)> {
     match row {
         Row::Deletion { old } => Some((Lane::Old, old, "- ")),

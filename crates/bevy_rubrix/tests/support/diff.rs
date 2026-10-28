@@ -110,8 +110,6 @@ pub fn showing(source: DiffSource) -> App {
     app
 }
 
-/// A diff view of `source`, laid out in a `width` by `height` box,
-/// that keeps what it copies in [`Copied`].
 pub fn laid_out(source: DiffSource, width: f32, height: f32) -> App {
     let mut app = plain(source);
     lay_out(&mut app, 1.0);
@@ -152,9 +150,28 @@ fn view() -> DiffView {
         .overflow(Overflow::Scroll)
 }
 
-/// The rich texts under `root`, in order: in a split row, the old
-/// gutter, the old line, the new gutter and the new line.
-pub fn rich_texts(app: &App, root: Entity) -> Vec<Entity> {
+pub struct Sides {
+    pub old: Entity,
+    pub new: Entity,
+}
+
+/// The line texts of row `index`'s old and new cells, in split rows.
+pub fn sides(app: &mut App, index: usize) -> Sides {
+    let slot = slot(app, index);
+    let texts = rich_texts(app, slot);
+    let [_, old, _, new] = texts[..] else {
+        panic!("row {index} is a split line row");
+    };
+    Sides { old, new }
+}
+
+/// The line text of row `index`, in stacked rows.
+pub fn line_text(app: &mut App, index: usize) -> Entity {
+    let slot = slot(app, index);
+    *rich_texts(app, slot).last().expect("a line")
+}
+
+fn rich_texts(app: &App, root: Entity) -> Vec<Entity> {
     let world = app.world();
     descendants(app, root)
         .into_iter()
