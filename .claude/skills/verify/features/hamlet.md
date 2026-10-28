@@ -36,6 +36,8 @@ The script visits each page by a click on the page list, and checks:
 
 Each Hamlet page's visit is timed from 70 frames before the click to 120 frames after it, into `first-paint-<page>.csv`. `frame-stats.sh` drops the first 60 frames, so its `max` is the frame of the page switch.
 
+`scripts/cold-fonts.sh <out dir> [runs]` checks the same switches with the fonts out of the page cache, as on the first visit after a boot or a build. Before each run, 4 by default, it saves `date`, `uptime` and `pgrep -a cargo` to `pre.txt` and drops every file under `/usr/share/fonts` from the page cache with `posix_fadvise`, which needs no root. Then it runs `acceptance.sh` and prints each Hamlet page's switch time. It exits 0 only when every switch in every run is 16.7 ms or less. Run it alone, as `acceptance.sh`.
+
 `drive/hamlet-review-record.drive` records about 30 s of the four pages into `review/` for `video.sh`.
 
 ## Log topics

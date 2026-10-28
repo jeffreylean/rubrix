@@ -19,13 +19,22 @@ use bevy::ecs::entity::Entity;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::schedule::common_conditions::{not, resource_exists};
-use bevy::ecs::system::{Commands, ResMut};
+use bevy::ecs::schedule::common_conditions::{
+    any_with_component, not, resource_exists,
+};
+use bevy::ecs::system::{Commands, Query, ResMut};
 use bevy::ecs::world::World;
 use bevy::math::{UVec2, Vec2};
-use bevy::text::Font;
+use bevy::text::{
+    Font, FontSize, FontSource, FontStyle, FontWeight, TextColor,
+    TextFont, TextLayoutInfo, TextSpan,
+};
 use bevy::time::{Real, Time};
-use bevy::ui::{JustifyContent, ScrollPosition, UiRect, percent, px};
+use bevy::ui::widget::Text;
+use bevy::ui::{
+    JustifyContent, Node, PositionType, ScrollPosition, UiRect,
+    percent, px,
+};
 use bevy::window::{
     PresentMode, PrimaryWindow, Window, WindowPlugin,
     WindowResolution,
@@ -57,6 +66,14 @@ const WINDOW_WAIT: Duration = Duration::from_secs(5);
 
 const FONT: &[u8] =
     include_bytes!("../../assets/fonts/JetBrainsMonoNL-Regular.ttf");
+
+/// The sans faces the Hamlet pages draw, as size, weight and style.
+const SANS_FACES: [(f32, FontWeight, FontStyle); 4] = [
+    (14.0, FontWeight::NORMAL, FontStyle::Normal),
+    (14.0, FontWeight::BOLD, FontStyle::Normal),
+    (14.0, FontWeight::NORMAL, FontStyle::Italic),
+    (20.0, FontWeight::BOLD, FontStyle::Normal),
+];
 
 pub type Build<'a> = Cx<'a, Bevy, Palette>;
 
@@ -273,10 +290,13 @@ fn main() -> AppExit {
         RubrixPlugin,
         ShellPlugin,
     ))
-    .add_systems(Startup, setup)
+    .add_systems(Startup, (setup, warm_fonts))
     .add_systems(
         Update,
-        mount_when_sized.run_if(not(resource_exists::<Ready>)),
+        (
+            mount_when_sized.run_if(not(resource_exists::<Ready>)),
+            drop_warm_fonts.run_if(any_with_component::<WarmFonts>),
+        ),
     );
     if let Some(drive) = drive {
         app.add_plugins(drive);
@@ -328,6 +348,55 @@ fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
         .insert(AssetId::default(), Font::from_bytes(FONT.to_vec()))
         .expect("the default font handle accepts a font");
     commands.spawn(Camera2d);
+}
+
+/// Text in each of [`SANS_FACES`], drawn in no colour until it is
+/// laid out.
+#[derive(Component)]
+struct WarmFonts;
+
+/// Fontconfig maps each sans face from disk, and the frame that first
+/// lays one out reads it and rasterizes its glyphs, 10 to 17 ms when
+/// the file is out of the page cache. Laying them out at startup
+/// keeps that out of the first page switch.
+fn warm_fonts(mut commands: Commands) {
+    let glyphs = (' '..='~').collect::<String>();
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                ..Default::default()
+            },
+            Text::default(),
+            TextColor(Color::NONE),
+            WarmFonts,
+        ))
+        .with_children(|text| {
+            for (size, weight, style) in SANS_FACES {
+                text.spawn((
+                    TextSpan::new(glyphs.clone()),
+                    TextFont {
+                        font: FontSource::sans_serif(),
+                        font_size: FontSize::Px(size),
+                        weight,
+                        style,
+                        ..Default::default()
+                    },
+                    TextColor(Color::NONE),
+                ));
+            }
+        });
+}
+
+fn drop_warm_fonts(
+    mut commands: Commands,
+    texts: Query<(Entity, &TextLayoutInfo), With<WarmFonts>>,
+) {
+    for (text, layout) in &texts {
+        if !layout.glyphs.is_empty() {
+            commands.entity(text).despawn();
+        }
+    }
 }
 
 fn mount_when_sized(world: &mut World) {
