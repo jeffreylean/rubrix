@@ -49,6 +49,10 @@ wait 30
 screenshot hamlet-diff-more.png
 log diff-more
 expect diff-more lines 40 more none rows 41 built 41
+move 1003 400
+scroll 0 -200
+wait 30
+screenshot hamlet-diff-more-end.png
 click 100 377
 wait 120
 screenshot stress.png
