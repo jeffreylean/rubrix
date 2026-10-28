@@ -11,11 +11,11 @@ use bevy::camera::{
 };
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::hierarchy::ChildOf;
+use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::system::{Query, Single};
+use bevy::ecs::system::Query;
 use bevy::ecs::world::World;
 use bevy::input::mouse::MouseScrollUnit;
 use bevy::input::touch::TouchPhase;
@@ -35,7 +35,7 @@ use crate::views::{
     row as hrow, virtual_list,
 };
 use crate::{
-    AnyView, Bevy, Prop, ViewExt, derived, every_frame, mount,
+    AnyView, Bevy, Prop, ViewExt, derived, every_frame, keyed, mount,
     resource,
 };
 
@@ -1900,45 +1900,73 @@ fn a_wheel_flung_to_the_end_follows_the_rows_arriving() {
 struct FitsRows;
 
 fn fit_rows(
-    list: Single<&VirtualList>,
-    mut fits: Query<&mut Node, With<FitsRows>>,
+    mut fits: Query<(&mut Node, &Children), With<FitsRows>>,
+    lists: Query<&VirtualList>,
 ) {
-    let rows = list
-        .count()
-        .checked_sub(1)
-        .and_then(|last| list.row_span(last))
-        .map_or(0.0, |last| last.top + last.height);
-    for mut node in &mut fits {
+    for (mut node, children) in &mut fits {
+        let Some(list) =
+            children.iter().find_map(|&child| lists.get(child).ok())
+        else {
+            continue;
+        };
+        let rows = list
+            .count()
+            .checked_sub(1)
+            .and_then(|last| list.row_span(last))
+            .map_or(0.0, |last| last.top + last.height);
         node.height = px(rows.ceil());
     }
+}
+
+fn fitted(app: &mut App) {
+    app.add_systems(PostUpdate, fit_rows.before(UiSystems::Layout));
+}
+
+fn fitted_list() -> AnyView<Bevy, Plain> {
+    column((virtual_list(
+        resource::<Count, _>(|count| count.0),
+        15.6,
+        row(|_, _| 15.6),
+    )
+    .overscan(0.0)
+    .follow_bottom(true),))
+    .width(px(300.0))
+    .with(FitsRows)
+    .boxed()
+}
+
+fn lists(app: &mut App) -> Vec<Entity> {
+    app.world_mut()
+        .query_filtered::<Entity, With<VirtualList>>()
+        .iter(app.world())
+        .collect()
+}
+
+fn built_under(app: &mut App, area: Entity) -> Vec<usize> {
+    let world = app.world_mut();
+    let mut built = world
+        .query::<(Entity, &Shows)>()
+        .iter(world)
+        .filter(|&(node, _)| {
+            core::iter::successors(Some(node), |&node| {
+                world.get::<ChildOf>(node).map(ChildOf::parent)
+            })
+            .any(|above| above == area)
+        })
+        .map(|(_, shows)| shows.0)
+        .collect::<Vec<_>>();
+    built.sort_unstable();
+    built
 }
 
 #[test]
 fn a_following_list_its_parent_fits_draws_every_row_as_it_grows() {
     for scale_factor in [1.0, 1.25, 2.0] {
         let mut app = at_scale(scale_factor);
-        app.add_systems(
-            PostUpdate,
-            fit_rows.before(UiSystems::Layout),
-        );
+        fitted(&mut app);
         app.insert_resource(Count(0));
-        mount::<Plain>(
-            app.world_mut(),
-            column((virtual_list(
-                resource::<Count, _>(|count| count.0),
-                15.6,
-                row(|_, _| 15.6),
-            )
-            .overscan(0.0)
-            .follow_bottom(true),))
-            .width(px(300.0))
-            .with(FitsRows),
-        );
-        let area = app
-            .world_mut()
-            .query_filtered::<Entity, With<VirtualList>>()
-            .single(app.world())
-            .expect("one list");
+        mount::<Plain>(app.world_mut(), fitted_list());
+        let area = lists(&mut app)[0];
         settle(&mut app);
         for added in [1, 2, 1, 1, 3, 1, 2, 1] {
             app.world_mut().resource_mut::<Count>().0 += added;
@@ -1955,5 +1983,72 @@ fn a_following_list_its_parent_fits_draws_every_row_as_it_grows() {
                 height(&app, area)
             );
         }
+    }
+}
+
+#[derive(Resource, Clone, Copy, PartialEq)]
+struct Pass(u32);
+
+fn assert_builds_every_row(app: &mut App, area: Entity, at: &str) {
+    let count = app.world().resource::<Count>().0;
+    assert_eq!(
+        built_under(app, area),
+        (0..count).collect::<Vec<_>>(),
+        "{at}, {count} rows in {} px",
+        height(app, area)
+    );
+}
+
+#[test]
+fn a_list_its_parent_fits_draws_every_row_on_its_first_two_frames() {
+    for scale_factor in [1.0, 1.25, 2.0] {
+        let mut app = at_scale(scale_factor);
+        fitted(&mut app);
+        app.insert_resource(Count(17));
+        app.insert_resource(Pass(0));
+        mount::<Plain>(
+            app.world_mut(),
+            keyed(resource::<Pass, _>(|pass| *pass), |_| {
+                fitted_list()
+            })
+            .within(column(())),
+        );
+        let mut before = Vec::new();
+        for pass in 0..3 {
+            if pass > 0 {
+                before = lists(&mut app);
+                app.world_mut().resource_mut::<Count>().0 = 17;
+                app.world_mut().resource_mut::<Pass>().0 = pass;
+            }
+            app.update();
+            let area = lists(&mut app)
+                .into_iter()
+                .find(|list| !before.contains(list))
+                .expect("a list built this frame");
+            let at = format!("{scale_factor}x, build {pass}");
+            assert_builds_every_row(&mut app, area, &at);
+            app.world_mut().resource_mut::<Count>().0 = 19;
+            app.update();
+            assert_builds_every_row(&mut app, area, &at);
+        }
+    }
+}
+
+#[test]
+fn a_list_its_parent_fits_laid_out_empty_draws_the_rows_it_gets() {
+    for scale_factor in [1.0, 1.25, 2.0] {
+        let mut app = at_scale(scale_factor);
+        fitted(&mut app);
+        app.insert_resource(Count(0));
+        mount::<Plain>(app.world_mut(), fitted_list());
+        settle(&mut app);
+        let area = lists(&mut app)[0];
+        app.world_mut().resource_mut::<Count>().0 = 17;
+        app.update();
+        assert_builds_every_row(
+            &mut app,
+            area,
+            &format!("{scale_factor}x"),
+        );
     }
 }
