@@ -12,6 +12,7 @@ use crate::{Build, PageView};
 
 mod about;
 mod code;
+mod diff;
 pub mod rich;
 pub mod virtual_list;
 
@@ -46,12 +47,18 @@ pub const PAGES: &[Page] = &[
         build: code::build,
         open: Some(code::open),
     },
+    Page {
+        name: "diff",
+        build: diff::build,
+        open: Some(diff::open),
+    },
 ];
 
 pub fn plugin(app: &mut App) {
     rich::plugin(app);
     virtual_list::plugin(app);
     code::plugin(app);
+    diff::plugin(app);
 }
 
 fn control(
