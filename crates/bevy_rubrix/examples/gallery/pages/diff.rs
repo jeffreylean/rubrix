@@ -1,5 +1,4 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use bevy::app::App;
 use bevy::ecs::resource::Resource;
@@ -10,6 +9,7 @@ use bevy_fynix::views::{FrameProps, column, label, row};
 use bevy_fynix::{ViewExt, resource};
 use bevy_rubrix::{DiffSource, Layout, Overflow, diff_view};
 
+use super::code::read_file;
 use super::{control, wrapping};
 use crate::PageView;
 
@@ -163,50 +163,27 @@ fn with_review_edits(text: &str) -> String {
     out
 }
 
-fn read(path: &Path) -> Result<String, String> {
-    let bytes = fs::read(path).map_err(|error| {
-        format!("cannot read {}: {error}", path.display())
-    })?;
-    let text = String::from_utf8_lossy(&bytes).into_owned();
-    if text.len() >= u32::MAX as usize {
-        return Err(format!("{} is 4 GiB or more", path.display()));
-    }
-    Ok(text)
-}
-
-fn name(path: &Path) -> String {
-    path.file_name().map_or_else(
-        || path.display().to_string(),
-        |name| name.to_string_lossy().into_owned(),
-    )
-}
-
 pub fn open(
     world: &mut World,
     paths: &[PathBuf],
 ) -> Result<(), String> {
     match paths {
         [path] => {
+            let (name, text) = read_file(path)?;
             let source =
-                DiffSource::patch(&read(path)?).map_err(|error| {
+                DiffSource::patch(&text).map_err(|error| {
                     format!(
                         "cannot parse {}: {error:?}",
                         path.display()
                     )
                 })?;
-            show(world, &name(path), source);
+            show(world, &name, source);
         }
         [old, new] => {
-            let source = DiffSource::texts(
-                &name(new),
-                &read(old)?,
-                &read(new)?,
-            );
-            show(
-                world,
-                &format!("{} → {}", name(old), name(new)),
-                source,
-            );
+            let (old_name, old) = read_file(old)?;
+            let (new_name, new) = read_file(new)?;
+            let source = DiffSource::texts(&new_name, &old, &new);
+            show(world, &format!("{old_name} → {new_name}"), source);
         }
         _ => {
             return Err(format!(
