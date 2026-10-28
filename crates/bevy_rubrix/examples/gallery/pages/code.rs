@@ -34,10 +34,14 @@ impl Default for CodeFile {
     fn default() -> Self {
         Self {
             name: "large.rs.txt".into(),
-            source: CodeSource::new(Lang::Rust, LARGE_RS),
+            source: large_rs(),
             overflow: Overflow::Scroll,
         }
     }
+}
+
+fn large_rs() -> CodeSource {
+    CodeSource::new(Lang::Rust, LARGE_RS)
 }
 
 pub fn plugin(app: &mut App) {
@@ -86,11 +90,7 @@ pub fn build() -> PageView {
 fn controls() -> PageView {
     let buttons = row((
         control("large.rs", |world| {
-            show(
-                world,
-                "large.rs.txt",
-                CodeSource::new(Lang::Rust, LARGE_RS),
-            );
+            show(world, "large.rs.txt", large_rs());
         }),
         control("large.ts", |world| {
             let source = CodeSource::new(Lang::TypeScript, LARGE_TS);
