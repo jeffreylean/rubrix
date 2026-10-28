@@ -1,14 +1,17 @@
+use core::ops::Range;
 use std::borrow::Cow;
 use std::mem;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use bevy::color::{Alpha, Color};
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::system::Query;
 use bevy::ecs::world::World;
+use bevy::picking::Pickable;
 use bevy::text::FontSource;
-use bevy::ui::{AlignItems, UiRect, px};
+use bevy::ui::{AlignItems, Node, PositionType, UiRect, px};
 use bevy_fynix::tokens::{SpacingTokens, Tone};
 use bevy_fynix::views::{
     FrameProps, RowSlot, Span, Stack, column, rich, row, virtual_list,
@@ -21,6 +24,7 @@ use rubrix_highlight::{
     Highlights, Lang, Run, Stream, highlight, spans,
 };
 
+use crate::select::{self, CodeSelection, Highlight};
 use crate::tokens::{Styles, SyntaxTokens};
 
 /// Bevy's line height, as a factor of the font size.
@@ -29,6 +33,10 @@ const LINE_HEIGHT: f32 = 1.2;
 const TAB: usize = 4;
 
 const OVERSCAN: f32 = 400.0;
+
+const SELECTED_ALPHA: f32 = 0.35;
+
+const STREAM_OVERSCAN: f32 = 0.0;
 
 /// A text and its highlights, or a stream of text still arriving.
 ///
@@ -265,6 +273,7 @@ pub struct CodeDoc {
     overflow: Overflow,
     revision: u64,
     edits: u64,
+    list: Option<Entity>,
 }
 
 enum Text {
@@ -336,6 +345,7 @@ impl CodeDoc {
             overflow: Overflow::default(),
             revision: 0,
             edits: 0,
+            list: None,
         }
     }
 
@@ -402,6 +412,35 @@ impl CodeDoc {
         self.revision += 1;
     }
 
+    /// The byte range of row `row`'s text in [`CodeDoc::text`],
+    /// without its line ending. Empty past the last row.
+    pub fn line_range(&self, row: usize) -> Range<usize> {
+        let Some(line) = self.line(row) else {
+            let end = self.text().len();
+            return end..end;
+        };
+        let start = match &self.text {
+            Text::Whole(whole) => {
+                whole.highlights.line_range(row as u32).start
+            }
+            Text::Growing(growing) => growing.start(row),
+        };
+        start..start + line.len()
+    }
+
+    /// The whole text, as far as this view has shown it.
+    pub fn text(&self) -> &str {
+        match &self.text {
+            Text::Whole(whole) => &whole.text,
+            Text::Growing(growing) => &growing.text,
+        }
+    }
+
+    /// The list of the document shown now.
+    pub(crate) fn list(&self) -> Option<Entity> {
+        self.list
+    }
+
     fn streamed(&self) -> bool {
         matches!(self.source.0, Feed::Stream(_))
     }
@@ -456,6 +495,7 @@ struct RowStyle {
     font: FontSource,
     size: f32,
     gap: f32,
+    selected: Color,
 }
 
 impl<T> View<Bevy, T> for CodeView
@@ -469,16 +509,28 @@ where
             font: theme.code_font(),
             size: theme.body_size(),
             gap: theme.gap(),
+            selected: theme
+                .tone(Tone::Accent)
+                .with_alpha(SELECTED_ALPHA),
         };
         let root = cx.build(filling());
         cx.world
             .entity_mut(root)
-            .insert(CodeDoc::new(&CodeSource::empty()));
+            .insert((
+                CodeDoc::new(&CodeSource::empty()),
+                CodeSelection::default(),
+            ))
+            .observe(select::press)
+            .observe(select::drag)
+            .observe(select::release);
         cx.effect(root, self.source, |world, root, source| {
-            world
-                .get_mut::<CodeDoc>(root)
+            let mut view = world.entity_mut(root);
+            view.get_mut::<CodeDoc>()
                 .expect("a code view")
                 .show(source);
+            view.get_mut::<CodeSelection>()
+                .expect("a code view")
+                .clear();
         });
         cx.effect(root, self.overflow, |world, root, &overflow| {
             world
@@ -518,14 +570,24 @@ where
         let sideways = component::<CodeDoc, bool>(root, |doc| {
             doc.is_none_or(|doc| doc.overflow == Overflow::Scroll)
         });
-        cx.build(
+        let streamed = cx
+            .world
+            .get::<CodeDoc>(root)
+            .is_some_and(CodeDoc::streamed);
+        let overscan =
+            if streamed { STREAM_OVERSCAN } else { OVERSCAN };
+        let list = cx.build(
             virtual_list(count, estimate, move |slot| {
                 code_row(root, slot, &style)
             })
-            .overscan(OVERSCAN)
+            .overscan(overscan)
             .follow_bottom(follow)
             .sideways(sideways),
-        )
+        );
+        if let Some(mut doc) = cx.world.get_mut::<CodeDoc>(root) {
+            doc.list = Some(list);
+        }
+        list
     })
 }
 
@@ -558,8 +620,24 @@ where
     .wrap(component::<CodeDoc, bool>(root, |doc| {
         doc.is_some_and(|doc| doc.overflow == Overflow::Wrap)
     }));
+    let color = style.selected;
     let text = AnyView::new(move |cx: &mut Cx<'_, Bevy, T>| {
-        let node = cx.build(line);
+        let cell = cx.spawn();
+        *cx.world.get_mut::<Node>(cell).expect("a node") = Node {
+            flex_grow: 1.0,
+            min_width: px(0.0),
+            ..Node::default()
+        };
+        let layer = cx.under(cell, Cx::spawn);
+        let node = cx.under(cell, |cx| cx.build(line));
+        cx.world.entity_mut(layer).insert((
+            Node {
+                position_type: PositionType::Absolute,
+                ..Node::default()
+            },
+            Pickable::IGNORE,
+            Highlight { text: node, color },
+        ));
         cx.effect(
             node,
             slot.index().into(),
@@ -569,7 +647,7 @@ where
                     .insert(CodeLine { view: root, row });
             },
         );
-        node
+        cell
     });
     row((gutter, slot.sideways(text)))
         .align(AlignItems::FlexStart)
@@ -688,6 +766,24 @@ impl<'a> Shown<'a> {
         &self.text
     }
 
+    /// The source byte of a shown byte. A byte inside a tab's spaces
+    /// is the tab's start, or its end past its middle.
+    pub(crate) fn source(&self, shown_byte: usize) -> usize {
+        let mut extra = 0;
+        for tab in &self.tabs {
+            let at = tab.byte + extra;
+            if shown_byte < at {
+                break;
+            }
+            if shown_byte < at + tab.spaces {
+                return tab.byte
+                    + usize::from(shown_byte - at > tab.spaces / 2);
+            }
+            extra += tab.spaces - 1;
+        }
+        shown_byte - extra
+    }
+
     pub(crate) fn shown(&self, source_byte: usize) -> usize {
         source_byte
             + self
@@ -742,6 +838,15 @@ mod tests {
         assert_eq!(shown.shown(3), 6);
         assert_eq!(shown.shown(4), 8);
         assert_eq!(shown.shown(5), 9);
+    }
+
+    #[test]
+    fn a_shown_byte_maps_back_to_its_source_byte() {
+        let shown = Shown::new("\tab\tc");
+        let back =
+            (0..=9).map(|at| shown.source(at)).collect::<Vec<_>>();
+        assert_eq!(back, [0, 0, 0, 1, 1, 2, 3, 4, 4, 5]);
+        assert_eq!(Shown::new("a 日").source(5), 5);
     }
 
     #[test]

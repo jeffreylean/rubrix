@@ -1,17 +1,24 @@
 //! Code, diff and file-tree UI kit for Bevy, built on fynix.
 
 mod code_view;
+mod select;
 mod tokens;
 
-use bevy::app::{App, Plugin, PreUpdate, Startup};
+use bevy::app::{
+    App, Plugin, PostUpdate, PreUpdate, Startup, Update,
+};
 use bevy::asset::{Assets, Handle, uuid_handle};
+use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::ResMut;
+use bevy::picking::PickingSystems;
 use bevy::text::Font;
+use bevy::ui::UiSystems;
 pub use code_view::{
     CodeDoc, CodeLine, CodeSource, CodeStream, CodeView, Overflow,
     code_view,
 };
 pub use rubrix_highlight::{Kind, Lang, Run};
+pub use select::{CodeCopied, CodeSelection};
 pub use tokens::{
     Face, SyntaxStyle, SyntaxTokens, default_style, resolve,
 };
@@ -30,8 +37,19 @@ pub struct RubrixPlugin;
 
 impl Plugin for RubrixPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, load_code_font)
-            .add_systems(PreUpdate, code_view::take_sent);
+        app.init_resource::<select::Pressed>()
+            .add_systems(Startup, load_code_font)
+            .add_systems(
+                PreUpdate,
+                (code_view::take_sent, select::follow_drags)
+                    .chain()
+                    .after(PickingSystems::Last),
+            )
+            .add_systems(Update, select::keys)
+            .add_systems(
+                PostUpdate,
+                select::draw.after(UiSystems::PostLayout),
+            );
     }
 }
 

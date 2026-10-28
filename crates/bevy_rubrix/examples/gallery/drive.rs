@@ -9,8 +9,9 @@
 //! exit with code 2 and print its number. Steps:
 //!
 //! - `page <name>`, `wait <frames>`, `exit`
-//! - `move <x> <y>`, `click <x> <y> [double|triple]`, `drag <x0> <y0>
-//!   <x1> <y1>`, `scroll <dx> <dy>`, `wheel <dx> <dy>`
+//! - `move <x> <y>`, `click <x> <y> [double|triple|shift]`, `drag
+//!   <x0> <y0> <x1> <y1>`, `press <x> <y>`, `release`, `scroll <dx>
+//!   <dy>`, `wheel <dx> <dy>`
 //! - `key <combo>` such as `ctrl+a`, and `type <text>`
 //! - `screenshot <path>`, `record start <dir>`, `record stop`
 //! - `frames start`, `frames stop <csv>`
@@ -71,7 +72,7 @@ use bevy::text::{TextColor, TextSpan};
 use bevy::ui::ScrollPosition;
 use bevy::window::{CursorMoved, PrimaryWindow, Window, WindowEvent};
 use bevy_fynix::views::VirtualList;
-use bevy_rubrix::{CodeDoc, CodeLine};
+use bevy_rubrix::{CodeDoc, CodeLine, CodeSelection};
 use rubrix_highlight::spans;
 
 use crate::pages::rich::{Hit, HitLineRoot, LongLineRoot};
@@ -108,6 +109,9 @@ pub enum Step {
     Wait(u32),
     Move(Vec2),
     Click { at: Vec2, count: u8 },
+    ShiftClick(Vec2),
+    Press(Vec2),
+    Release,
     Drag { from: Vec2, to: Vec2 },
     Scroll(Vec2),
     Wheel(Vec2),
@@ -132,7 +136,9 @@ impl Step {
             Self::Page(_) => "page",
             Self::Wait(_) => "wait",
             Self::Move(_) => "move",
-            Self::Click { .. } => "click",
+            Self::Click { .. } | Self::ShiftClick(_) => "click",
+            Self::Press(_) => "press",
+            Self::Release => "release",
             Self::Drag { .. } => "drag",
             Self::Scroll(_) => "scroll",
             Self::Wheel(_) => "wheel",
@@ -199,17 +205,29 @@ fn parse_line(text: &str) -> Result<Option<Step>, String> {
             Step::Move(Vec2::new(number(x)?, number(y)?))
         }
         "click" => {
-            let usage = "click <x> <y> [double|triple]";
+            let usage = "click <x> <y> [double|triple|shift]";
             let (x, y, count) = match words[..] {
                 [x, y] => (x, y, 1),
                 [x, y, "double"] => (x, y, 2),
                 [x, y, "triple"] => (x, y, 3),
+                [x, y, "shift"] => {
+                    let at = Vec2::new(number(x)?, number(y)?);
+                    return Ok(Some(Step::ShiftClick(at)));
+                }
                 _ => return Err(format!("usage: {usage}")),
             };
             Step::Click {
                 at: Vec2::new(number(x)?, number(y)?),
                 count,
             }
+        }
+        "press" => {
+            let [x, y] = exact(&words, "press <x> <y>")?;
+            Step::Press(Vec2::new(number(x)?, number(y)?))
+        }
+        "release" => {
+            exact::<0>(&words, "release")?;
+            Step::Release
         }
         "drag" => {
             let [x0, y0, x1, y1] =
@@ -708,6 +726,40 @@ impl Drive {
                 }
                 self.put_in(world, frames, name);
             }
+            Step::ShiftClick(at) => {
+                let shift = Press {
+                    code: KeyCode::ShiftLeft,
+                    key: Key::Shift,
+                    text: None,
+                };
+                let frames = VecDeque::from([
+                    vec![
+                        Input::Key(
+                            shift.clone(),
+                            ButtonState::Pressed,
+                        ),
+                        Input::Move(at),
+                    ],
+                    vec![Input::Button(ButtonState::Pressed)],
+                    vec![Input::Button(ButtonState::Released)],
+                    vec![Input::Key(shift, ButtonState::Released)],
+                ]);
+                self.put_in(world, frames, name);
+            }
+            Step::Press(at) => self.put_in(
+                world,
+                [
+                    vec![Input::Move(at)],
+                    vec![Input::Button(ButtonState::Pressed)],
+                ]
+                .into(),
+                name,
+            ),
+            Step::Release => self.put_in(
+                world,
+                [vec![Input::Button(ButtonState::Released)]].into(),
+                name,
+            ),
             Step::Drag { from, to } => {
                 let mut frames = VecDeque::from([
                     vec![Input::Move(from)],
@@ -1138,6 +1190,7 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
         }
         "scroll" => format!("scroll {}", scroll_offset(world)),
         "stream" => pages::stream::log(world),
+        "selection" => selection(world),
         "theme" => {
             format!("theme {}", world.resource::<Mode>().0.name())
         }
@@ -1175,6 +1228,28 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
             runs(world, line)
         }
     })
+}
+
+/// `selection anchor <a>..<b> focus <c>..<d> range <s>..<e> length
+/// <n>` for the first code view, or `selection none` with none.
+fn selection(world: &mut World) -> String {
+    let Some(selection) =
+        world.query::<&CodeSelection>().iter(world).next()
+    else {
+        return "selection none".into();
+    };
+    let (anchor, focus, range) =
+        (selection.anchor(), selection.focus(), selection.range());
+    format!(
+        "selection anchor {}..{} focus {}..{} range {}..{} length {}",
+        anchor.start,
+        anchor.end,
+        focus.start,
+        focus.end,
+        range.start,
+        range.end,
+        range.len()
+    )
 }
 
 fn runs(world: &mut World, line_number: usize) -> String {
@@ -1309,6 +1384,9 @@ move 1.5 20
 click 10 20
 click 10 20 double
 click 10 20 triple
+click 10 20 shift
+press 5 6
+release
 drag 1 2 3 4
 scroll 0 -400
 wheel 0 -3
@@ -1345,6 +1423,9 @@ exit
                     at: Vec2::new(10.0, 20.0),
                     count: 3
                 },
+                Step::ShiftClick(Vec2::new(10.0, 20.0)),
+                Step::Press(Vec2::new(5.0, 6.0)),
+                Step::Release,
                 Step::Drag {
                     from: Vec2::new(1.0, 2.0),
                     to: Vec2::new(3.0, 4.0)

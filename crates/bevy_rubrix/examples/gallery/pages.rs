@@ -1,14 +1,17 @@
 use std::path::PathBuf;
 
 use bevy::app::App;
+use bevy::ecs::observer::On;
+use bevy::ecs::system::ResMut;
 use bevy::ecs::world::World;
 use bevy::ui::{FlexWrap, Node, px};
 use bevy_fynix::views::{
     BehaviorExt, FrameProps, button, ghost, label,
 };
 use bevy_fynix::{AnyView, Prop, ScopedExt, ViewExt};
+use bevy_rubrix::CodeCopied;
 
-use crate::{Build, PageView};
+use crate::{Build, Copied, PageView};
 
 mod about;
 mod code;
@@ -59,6 +62,11 @@ pub fn plugin(app: &mut App) {
     virtual_list::plugin(app);
     code::plugin(app);
     stream::plugin(app);
+    app.add_observer(
+        |copied: On<CodeCopied>, mut last: ResMut<Copied>| {
+            last.0 = Some(copied.text.clone());
+        },
+    );
 }
 
 fn control(

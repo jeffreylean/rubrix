@@ -15,7 +15,7 @@ const LARGE_RS: &str =
 fn streaming(lang: Lang) -> (App, CodeStream) {
     let stream = CodeSource::streaming(lang);
     let mut app = laid_out();
-    mount_view(&mut app, stream.source(), 600.0, 400.0);
+    mount_view(&mut app, stream.source(), 600.0, 900.0);
     (app, stream)
 }
 
@@ -159,8 +159,8 @@ fn entities(app: &mut App) -> Vec<(usize, Entity, Vec<Entity>)> {
 #[test]
 fn earlier_rows_keep_their_entities_across_100_pushes() {
     let (mut app, stream) = streaming(Lang::Rust);
-    let text = &LARGE_RS[..1_200];
-    let (first, rest) = text.split_at(600);
+    let text = &LARGE_RS[..1_000];
+    let (first, rest) = text.split_at(400);
     stream.push(first);
     app.update();
     app.update();

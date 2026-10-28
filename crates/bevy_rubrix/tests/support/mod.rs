@@ -80,8 +80,7 @@ pub fn colour(kind: Kind) -> Color {
     resolve(&Distinct, kind).0
 }
 
-/// A headless app with no layout.
-pub fn app() -> App {
+fn plain() -> App {
     let mut app = App::new();
     app.add_plugins((
         TimePlugin,
@@ -92,15 +91,21 @@ pub fn app() -> App {
     .insert_resource(TimeUpdateStrategy::ManualDuration(
         Duration::from_millis(50),
     ));
+    app
+}
+
+/// A headless app with no layout.
+pub fn app() -> App {
+    let mut app = plain();
     // The first update only starts the clock.
     app.update();
     app
 }
 
-/// A headless app that lays out and shapes text, in a 1000 by 1000
-/// physical px window at `scale_factor`.
+/// A headless app that lays out and shapes text in the bundled code
+/// font, in a 1000 by 1000 physical px window at `scale_factor`.
 pub fn laid_out_at(scale_factor: f32) -> App {
-    let mut app = app();
+    let mut app = plain();
     app.add_plugins((
         bevy::asset::AssetPlugin::default(),
         bevy::transform::TransformPlugin,
@@ -125,6 +130,7 @@ pub fn laid_out_at(scale_factor: f32) -> App {
             ..Default::default()
         },
     ));
+    app.update();
     app
 }
 
