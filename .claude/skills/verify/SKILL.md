@@ -37,24 +37,27 @@ Scripts for each check are in `crates/bevy_rubrix/examples/gallery/drive/`. One 
 
 ```
 page <name>        wait <frames>        exit
-move <x> <y>       click <x> <y> [double|triple]       drag <x0> <y0> <x1> <y1>
-scroll <dx> <dy>   key <combo>          type <text>
+move <x> <y>       click <x> <y> [double|triple|shift] drag <x0> <y0> <x1> <y1>
+press <x> <y>      release              scroll <dx> <dy>     wheel <dx> <dy>
+key <combo>        type <text>
 screenshot <path>  log <topic>          expect <topic> <text>        clipboard
 frames start       frames stop <csv>    record start <dir>           record stop
 resize <w> <h>     open <path>...
 ```
 
-- Positions are logical pixels. `scroll 0 -400` scrolls the page down. The pointer starts in the middle of the page area, at 740 400.
+- Positions are logical pixels. `scroll 0 -400` scrolls the page down. `scroll` turns in pixels, as a trackpad does, and lands at once. `wheel 0 -3` turns 3 notches of a mouse wheel, which ease there.
+- `press` moves the pointer and holds the button down until `release`, so a script can `move` and `wait` while it is held. `click <x> <y> shift` holds shift for the click. The pointer starts in the middle of the page area, at 740 400.
 - A `scroll` goes to whatever is under the pointer. After a `click` on the page list or the theme toggle the pointer stays there, and a `scroll` does nothing until a `move` puts it back on the page, such as `move 740 400`.
 - After a `page` change or a click on the page list, `wait 120` before a `screenshot`. The highlight on the list entry fades between colors, and a shot taken 10 to 30 frames in shows the colors in between. Wait 30 frames before the first screenshot of a run, since the first frames can be black.
 - Stable handles, at 1280 by 800. The page list entry `about` is at 100 62. The theme toggle is at 100 771. They move when `resize` changes the window.
 - `resize <w> <h>` asks Hyprland for the size, and prints `ok` once the window reports it. Without Hyprland, or when the window does not take the size within 2 seconds, it exits with code 2 and names the size the window has.
 - The theme toggle builds the page again and puts each scroll offset back, so a page keeps its scroll through a toggle.
-- `log` topics are `entities`, `page`, `present_mode`, `scroll`, `theme`, `rows`, `spans`, `hit`, and `runs <line>`. Each prints one line such as `page about`.
+- `log` topics are `entities`, `page`, `present_mode`, `scroll`, `theme`, `rows`, `spans`, `hit`, `runs <line>`, `stream`, and `selection`. Each prints one line such as `page about`.
   - `present_mode` prints the mode the window asked for, as `present_mode requested AutoNoVsync`, not the mode the driver settled on.
   - `scroll` prints the offset of the first scroll area on the current page, in pixels.
   - `rows` reads the first virtual list: `rows first_visible <n> spawned <a>..=<b> rows <slots> total <count> following <bool> x <px>`, where `x` is its sideways offset. It prints `rows empty total 0` for a list with no rows and `rows none` with no list.
   - `spans` lists the spans of the rich page's long line, `spans <n>: <id> "<text>" <hex>, ...`. `hit` prints the byte and character under the last press on its hit line, `hit 15 'ö'`, or `hit none`.
+  - `stream` and `selection` read the first code view, as `features/stream.md` and `features/select.md` describe.
   - `runs <line>` reads the code page's line, counted from 1: `runs <line>: <a>..<b> <kind>, ... | shown "<text>" <hex>, ...`. The part before `|` is the runs the line was lexed into, in bytes of the line, or `empty` for an empty line. The part after is each span its row shows, or `not shown` while no row is built for it. Past the last line it prints `runs <line> none`.
 - `expect <topic> <text>` prints `accept: <topic> pass` when the topic's line holds the text, else `accept: <topic> fail`. A topic that takes a line number takes it before the text: `expect runs 75 comment` checks `runs 75` for `comment`.
 - `open <path>` gives a file to the page on show. A relative path is read from the drive script's directory, so `open ../fixtures/notes.xyz` in a script in `drive/` opens `examples/gallery/fixtures/notes.xyz`. It exits with code 2 when the page takes no files or cannot read the file.

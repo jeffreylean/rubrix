@@ -6,6 +6,7 @@ A drive script is a text file of steps that the gallery runs one per line, with 
 
 - `drive-parse` rejects a bad line with exit code 2 and its number.
 - `drive-input` runs `click`, `scroll`, `key` and `type` and prints `ok` for each.
+- `drive-hold` holds the button from `press` to `release`, holds shift for `click <x> <y> shift`, and turns a notched wheel for `wheel <dx> <dy>`.
 - `drive-frames` writes a frame-time CSV that `frame-stats.sh` summarises.
 - `drive-record` writes one PNG per frame that `video.sh` turns into an mp4.
 - `drive-vsync` prints `AutoNoVsync` when `RUBRIX_NO_VSYNC=1`, and exits with code 2 for any value but `0` or `1`.
@@ -20,7 +21,8 @@ A drive script is a text file of steps that the gallery runs one per line, with 
 ## Driving it with launch.sh
 
 - **Bad line.** Run `.../bad-script.drive`. The log says `drive: line 3: unknown step` and `exit=2`. No window opens.
-- **Keys.** Run `.../keys.drive`. Every step prints `ok`, and `clipboard` prints `clipboard: (nothing copied)` because no page copies text yet.
+- **Keys.** Run `.../keys.drive`. Every step prints `ok`, and `clipboard` prints `clipboard: (nothing copied)` because the `about` page has no text to copy.
+- **Hold and wheel.** Run `cargo test -p bevy_rubrix --example gallery drive::tests`. `every_step_parses` and `a_wheel_turns_in_lines_and_eases_there` pass. `select-autoscroll.drive` and `select-extend.drive` drive `press`, `release` and `click shift` on the code page.
 - **Frames.** Run `.../frames.drive`, then `frame-stats.sh <out>/frames.csv`. It prints `median=`, `p95=` and `max=`.
 - **Record.** Run `.../record.drive`, then `video.sh <out>/video <out>/video.mp4`. `ffprobe -count_frames` reports at least 60 frames.
 - **No vsync.** Run `RUBRIX_NO_VSYNC=1 launch.sh .../novsync.drive <out>`. It prints `present_mode requested AutoNoVsync`. With `RUBRIX_NO_VSYNC=true` the gallery prints `RUBRIX_NO_VSYNC must be unset, 0 or 1` and exits with code 2.
