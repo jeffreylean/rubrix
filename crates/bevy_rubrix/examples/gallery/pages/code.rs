@@ -143,7 +143,6 @@ pub fn open(
     Ok(())
 }
 
-/// The name and text of the one file in `paths`, which `page` opens.
 pub(super) fn read(
     page: &str,
     paths: &[PathBuf],

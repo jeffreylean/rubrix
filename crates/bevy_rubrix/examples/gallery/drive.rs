@@ -25,8 +25,8 @@
 //! Positions are logical pixels in the window. A scroll `dy` below
 //! zero moves the content up, so the page scrolls down. A `scroll`
 //! turns in pixels, as a trackpad does, and a `wheel` in lines, the
-//! notches of a mouse wheel, which ease. Every step
-//! prints `drive: <step> ok` when it is done.
+//! notches of a mouse wheel, which ease. Every step prints
+//! `drive: <step> ok` when it is done.
 //!
 //! A scroll goes to what is under the pointer, so a `click` on the
 //! page list leaves the pointer there until a `move` takes it back.
@@ -1230,8 +1230,6 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
     })
 }
 
-/// `selection anchor <a>..<b> focus <c>..<d> range <s>..<e> length
-/// <n>` for the first code view, or `selection none` with none.
 fn selection(world: &mut World) -> String {
     let Some(selection) =
         world.query::<&CodeSelection>().iter(world).next()

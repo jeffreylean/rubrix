@@ -67,12 +67,23 @@ pub fn wheel(
 #[require(ScrollPosition)]
 pub struct ScrollGoal(Option<Heading>);
 
-/// Where a wheel sent an area, and on which axes that was its end,
-/// which it follows if the content grows on the way there.
 #[derive(Clone, Copy, Debug)]
 struct Heading {
     to: Vec2,
     to_end: BVec2,
+}
+
+impl Heading {
+    /// Where the ease measures what is left from, and where it is
+    /// headed now that the content overflows by `overflow`. An axis
+    /// headed for its end measures from the end as it was and heads
+    /// for the end as it is, so content that grows on the way never
+    /// widens the gap.
+    fn ends_for(&self, overflow: Vec2) -> (Vec2, Vec2) {
+        let from =
+            Vec2::select(self.to_end, self.to, self.to.min(overflow));
+        (from, Vec2::select(self.to_end, overflow, from))
+    }
 }
 
 impl ScrollGoal {
@@ -184,17 +195,7 @@ pub(crate) fn ease(
         let Some(heading) = &mut goal.0 else {
             continue;
         };
-        // The content may have shrunk since the wheel turned. An axis
-        // headed for its end moves on with it as content arrives,
-        // keeping only what was left of the way, so that growth never
-        // widens the gap and the ease lands on the end itself.
-        let overflow = overflow(computed);
-        let from = Vec2::select(
-            heading.to_end,
-            heading.to,
-            heading.to.min(overflow),
-        );
-        let to = Vec2::select(heading.to_end, overflow, from);
+        let (from, to) = heading.ends_for(overflow(computed));
         let left = from - **position;
         if left.abs().max_element() < 0.5 || share >= 1.0 {
             **position = to;

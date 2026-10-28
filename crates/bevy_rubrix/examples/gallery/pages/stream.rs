@@ -28,7 +28,6 @@ const RATES: [(usize, &str); 4] = [
 
 const FIRST_RATE: usize = 64;
 
-/// The file the page streams, and how far it has sent it.
 #[derive(Resource)]
 struct Streaming {
     name: String,
@@ -55,8 +54,6 @@ impl Streaming {
         }
     }
 
-    /// Starts again from the first byte, at the same rate, and
-    /// paused if it was.
     fn restart(&mut self) {
         let paused = self.paused;
         *self =
@@ -78,7 +75,6 @@ impl Default for Streaming {
     }
 }
 
-/// Row text roots spawned, for the `stream` log topic.
 #[derive(Resource, Default)]
 struct Respawned {
     spawned: usize,
@@ -97,7 +93,6 @@ pub fn plugin(app: &mut App) {
         .add_systems(First, send);
 }
 
-/// Sends the next chunk while the page shows.
 fn send(selected: Res<Selected>, mut streaming: ResMut<Streaming>) {
     let shown = PAGES[selected.0].name == "stream";
     let left = streaming.text.len() - streaming.sent;
@@ -188,10 +183,6 @@ pub fn open(
     Ok(())
 }
 
-/// `stream committed <n> provisional "<line>" respawned <n> sent
-/// <bytes>/<bytes>`: the first code view's committed lines and its
-/// unfinished last line, or `provisional none`, the row text roots
-/// spawned since the last `stream` log, and the bytes sent.
 pub fn log(world: &mut World) -> String {
     let doc = world.query::<&CodeDoc>().iter(world).next();
     let (committed, provisional) = doc.map_or((0, None), |doc| {

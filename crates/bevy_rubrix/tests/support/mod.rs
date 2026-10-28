@@ -1,7 +1,3 @@
-//! What the code view tests share: a theme whose colours tell the
-//! root kinds apart, headless apps with and without layout, and the
-//! lookups of what the view shows.
-
 #![allow(dead_code, reason = "each test crate uses its own part")]
 
 use core::time::Duration;
@@ -94,7 +90,6 @@ fn plain() -> App {
     app
 }
 
-/// A headless app with no layout.
 pub fn app() -> App {
     let mut app = plain();
     // The first update only starts the clock.
@@ -102,8 +97,6 @@ pub fn app() -> App {
     app
 }
 
-/// A headless app that lays out and shapes text in the bundled code
-/// font, in a 1000 by 1000 physical px window at `scale_factor`.
 pub fn laid_out_at(scale_factor: f32) -> App {
     let mut app = plain();
     app.add_plugins((
@@ -144,8 +137,6 @@ pub struct Showing(pub CodeSource);
 #[derive(Resource)]
 pub struct Wrapping(pub Overflow);
 
-/// Mounts a code view of the [`Showing`] source, `width` by `height`
-/// logical px, and updates once.
 pub fn mount_view(
     app: &mut App,
     source: CodeSource,
@@ -215,7 +206,6 @@ pub fn text_of(app: &App, root: Entity) -> String {
         .collect()
 }
 
-/// Each built row's text root, by row.
 pub fn lines(app: &mut App) -> Vec<(usize, Entity)> {
     let mut lines = app
         .world_mut()
@@ -235,7 +225,6 @@ pub fn line(app: &mut App, row: usize) -> Entity {
         .1
 }
 
-/// The spans of row `row`'s text, which has to be built.
 pub fn row_spans(app: &mut App, row: usize) -> Vec<(String, Color)> {
     let root = line(app, row);
     spans_of(app, root)

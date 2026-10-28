@@ -37,7 +37,7 @@ pub struct RubrixPlugin;
 
 impl Plugin for RubrixPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<select::Pressed>()
+        app.init_resource::<select::KeyTarget>()
             .add_systems(Startup, load_code_font)
             .add_systems(
                 PreUpdate,

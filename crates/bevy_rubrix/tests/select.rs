@@ -47,8 +47,6 @@ fn settle(app: &mut App) {
     }
 }
 
-/// The window point of byte `byte` of row `row`'s shown text, just
-/// right of the caret before it.
 fn point_of(app: &mut App, row: usize, byte: usize) -> Vec2 {
     let root = line(app, row);
     let world = app.world();
@@ -80,8 +78,6 @@ fn pointer(at: Vec2) -> Pointer {
     Pointer::new(PointerId::Mouse, location)
 }
 
-/// Clicks the `count`th time in a row at byte `byte` of row `row`,
-/// on its text.
 fn press_at(app: &mut App, row: usize, byte: usize, count: u8) {
     hold_at(app, row, byte, count);
     let on = line(app, row);
@@ -95,7 +91,6 @@ fn press_at(app: &mut App, row: usize, byte: usize, count: u8) {
     app.update();
 }
 
-/// Presses at byte `byte` of row `row` and keeps the button down.
 fn hold_at(app: &mut App, row: usize, byte: usize, count: u8) {
     let at = point_of(app, row, byte);
     let on = line(app, row);
@@ -119,7 +114,6 @@ fn shift(app: &mut App, held: bool) {
     }
 }
 
-/// Presses `Ctrl` and `key` together, as one frame of input.
 fn ctrl(app: &mut App, key: KeyCode, letter: &str) {
     let send = |app: &mut App, key_code, logical_key, state| {
         app.world_mut().write_message(KeyboardInput {

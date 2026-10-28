@@ -19,7 +19,6 @@ fn streaming(lang: Lang) -> (App, CodeStream) {
     (app, stream)
 }
 
-/// Every row's text and runs, as the view's document holds them.
 fn rows(app: &mut App) -> Vec<(String, Vec<(usize, Kind)>)> {
     let doc = doc(app);
     (0..doc.rows())
@@ -141,7 +140,6 @@ fn a_string_closed_on_the_next_line_ends_there() {
     );
 }
 
-/// Each built row's text root and its span entities.
 fn entities(app: &mut App) -> Vec<(usize, Entity, Vec<Entity>)> {
     lines(app)
         .into_iter()

@@ -1,10 +1,3 @@
-//! Selecting and copying the text of a code view.
-//!
-//! A selection is byte offsets into the view's text, never an entity,
-//! so rows that scroll away and come back as other rows leave it as
-//! it is. Rows only map a pointer to an offset, and an offset range
-//! to the rectangles drawn behind their text.
-
 use core::ops::Range;
 
 use bevy::camera::Camera;
@@ -13,8 +6,9 @@ use bevy::color::Color;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::event::EntityEvent;
-use bevy::ecs::hierarchy::Children;
+use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::observer::On;
+use bevy::ecs::query::Without;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{
     Commands, ParamSet, Query, Res, ResMut, SystemParam,
@@ -35,12 +29,11 @@ use bevy::ui::{
 use bevy_fynix::views::parley::{Affinity, Cursor, Selection};
 use bevy_fynix::views::{VirtualList, rich_point};
 
-use crate::code_view::{CodeDoc, CodeLine, Shown};
+use crate::code_view::{CodeDoc, CodeLine, OVERSCAN, Shown};
 
-/// How far one frame of a drag past the view's edge scrolls, at most,
-/// in logical px. Below the code view's overscan, so the row a step
-/// brings to the edge is already built and laid out.
-const MAX_STEP: f32 = 380.0;
+/// Below a whole text's overscan, so the row a drag step brings to
+/// the edge is already built and laid out.
+const MAX_STEP: f32 = OVERSCAN - 20.0;
 
 /// What is selected in a code view, on the view's root entity: byte
 /// offsets into [`CodeDoc::text`]. A new source clears it.
@@ -49,11 +42,9 @@ pub struct CodeSelection {
     anchor: Range<usize>,
     focus: Range<usize>,
     grain: Grain,
-    /// The pointer, in logical window px, while its button is held.
     drag: Option<Vec2>,
 }
 
-/// What a press selects: a char boundary, a word, or a line.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Grain {
     #[default]
@@ -95,18 +86,15 @@ pub struct CodeCopied {
     pub text: String,
 }
 
-/// The code view pressed last, which takes `Ctrl+A` and `Ctrl+C`.
 #[derive(Resource, Default)]
-pub(crate) struct Pressed(Option<Entity>);
+pub(crate) struct KeyTarget(Option<Entity>);
 
-/// The rectangles behind a row's text, and the text they go behind.
 #[derive(Component)]
-pub(crate) struct Highlight {
+pub(crate) struct SelectionRects {
     pub(crate) text: Entity,
     pub(crate) color: Color,
 }
 
-/// Where a point falls in a code view.
 #[derive(SystemParam)]
 pub(crate) struct Hits<'w, 's> {
     lists: Query<
@@ -132,14 +120,9 @@ pub(crate) struct Hits<'w, 's> {
     cameras: Query<'w, 's, &'static Camera>,
 }
 
-/// A pointer over a code view's list.
 struct Over {
-    /// The row under it, with the pointer held inside the view.
     row: usize,
-    /// The pointer, moved inside the view, in logical window px.
     inside: Vec2,
-    /// How far the pointer is above (below 0) or below (above 0)
-    /// the view, in logical px.
     past: f32,
     view: f32,
     scroll: f32,
@@ -171,8 +154,7 @@ impl Hits<'_, '_> {
         })
     }
 
-    /// Whether `at` is on the list's bars rather than its rows.
-    fn on_bars(&self, list: Entity, at: Vec2) -> bool {
+    fn on_scrollbars(&self, list: Entity, at: Vec2) -> bool {
         let Some(camera) = self.cameras.iter().next() else {
             return false;
         };
@@ -189,8 +171,6 @@ impl Hits<'_, '_> {
         )
     }
 
-    /// The byte of `doc`'s text nearest `at` in row `row`, which is
-    /// the row's start while the row is not built.
     fn byte(
         &self,
         view: Entity,
@@ -220,7 +200,6 @@ impl Hits<'_, '_> {
     }
 }
 
-/// What a press of `grain` at `byte` of row `row` covers.
 fn unit(
     doc: &CodeDoc,
     row: usize,
@@ -239,9 +218,13 @@ fn unit(
     }
 }
 
-/// The word of `line` around byte `at`: a run of letters, digits and
-/// `_`, a run of whitespace, or one other char. At the end of the
-/// line it is the word before.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Chars {
+    Word,
+    Space,
+    Other,
+}
+
 pub(crate) fn word_at(line: &str, at: usize) -> Range<usize> {
     let Some((start, first)) = line[at..]
         .chars()
@@ -253,15 +236,15 @@ pub(crate) fn word_at(line: &str, at: usize) -> Range<usize> {
     };
     let kind = |c: char| {
         if c.is_alphanumeric() || c == '_' {
-            1
+            Chars::Word
         } else if c.is_whitespace() {
-            2
+            Chars::Space
         } else {
-            0
+            Chars::Other
         }
     };
     let class = kind(first);
-    if class == 0 {
+    if class == Chars::Other {
         return start..start + first.len_utf8();
     }
     let end = line[start..]
@@ -288,7 +271,7 @@ pub(crate) fn press(
     mut views: Query<(&CodeDoc, &mut CodeSelection)>,
     hits: Hits,
     keys: Option<Res<ButtonInput<KeyCode>>>,
-    mut pressed: ResMut<Pressed>,
+    mut pressed: ResMut<KeyTarget>,
 ) {
     if press.button != PointerButton::Primary {
         return;
@@ -302,7 +285,7 @@ pub(crate) fn press(
     let Some(list) = doc.list() else {
         return;
     };
-    if hits.on_bars(list, at) {
+    if hits.on_scrollbars(list, at) {
         return;
     }
     let Some(over) = hits.over(list, at) else {
@@ -351,9 +334,6 @@ pub(crate) fn release(
     }
 }
 
-/// Moves the focus of each selection whose pointer is held to the
-/// byte under it, and scrolls while it is past the view's top or
-/// bottom edge.
 pub(crate) fn follow_drags(
     mut views: Query<(Entity, &CodeDoc, &mut CodeSelection)>,
     mut lists: ParamSet<(Hits, Query<&mut VirtualList>)>,
@@ -380,8 +360,6 @@ pub(crate) fn follow_drags(
     }
 }
 
-/// Scrolls `list` by one drag step toward the edge the pointer is
-/// past, unless it is already at that end.
 fn reveal_past(list: &mut VirtualList, over: &Over) {
     let step = over.past.abs().min(MAX_STEP);
     let target = if over.past > 0.0 {
@@ -414,12 +392,10 @@ fn reveal_past(list: &mut VirtualList, over: &Over) {
     list.scroll_range_into_view(row, range);
 }
 
-/// `Ctrl+A` selects the whole text of the code view pressed last, or
-/// of the only one, and `Ctrl+C` copies its selection.
 pub(crate) fn keys(
     keys: Option<Res<ButtonInput<KeyCode>>>,
     mut views: Query<(Entity, &CodeDoc, &mut CodeSelection)>,
-    pressed: Res<Pressed>,
+    pressed: Res<KeyTarget>,
     clipboard: Option<ResMut<Clipboard>>,
     mut commands: Commands,
 ) {
@@ -456,23 +432,28 @@ pub(crate) fn keys(
     if copy && !selection.range().is_empty() {
         let text = doc.text()[selection.range()].to_owned();
         if let Some(mut clipboard) = clipboard {
-            // An app with no system clipboard still gets the event.
             let _ = clipboard.set_text(text.as_str());
         }
         commands.trigger(CodeCopied { entity: view, text });
     }
 }
 
-/// Places each row's selection rectangles behind its text, from the
-/// layout Bevy gave the text this frame.
 pub(crate) fn draw(
-    layers: Query<(Entity, &Highlight, Option<&Children>)>,
+    mut layers: Query<(
+        Entity,
+        &SelectionRects,
+        &mut Node,
+        Option<&Children>,
+    )>,
     lines: Query<(&CodeLine, &ComputedNode, &ComputedTextBlock)>,
     views: Query<(&CodeDoc, &CodeSelection)>,
-    mut rects: Query<(&mut Node, &mut BackgroundColor)>,
+    mut rects: Query<
+        (&mut Node, &mut BackgroundColor),
+        Without<SelectionRects>,
+    >,
     mut commands: Commands,
 ) {
-    for (layer, highlight, children) in &layers {
+    for (layer, highlight, mut shown, children) in &mut layers {
         let boxes = lines
             .get(highlight.text)
             .ok()
@@ -510,6 +491,14 @@ pub(crate) fn draw(
                 )
             })
             .unwrap_or_default();
+        let display = if boxes.is_empty() {
+            Display::None
+        } else {
+            Display::Flex
+        };
+        if shown.display != display {
+            shown.display = display;
+        }
         let kids = children.map_or(&[][..], |kids| &kids[..]);
         for (index, [x0, y0, x1, y1]) in
             boxes.iter().copied().enumerate()
@@ -536,7 +525,7 @@ pub(crate) fn draw(
                         placed,
                         BackgroundColor(highlight.color),
                         Pickable::IGNORE,
-                        bevy::ecs::hierarchy::ChildOf(layer),
+                        ChildOf(layer),
                     ));
                 }
             }

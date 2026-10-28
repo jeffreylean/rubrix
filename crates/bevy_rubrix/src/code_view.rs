@@ -11,7 +11,7 @@ use bevy::ecs::system::Query;
 use bevy::ecs::world::World;
 use bevy::picking::Pickable;
 use bevy::text::FontSource;
-use bevy::ui::{AlignItems, Node, PositionType, UiRect, px};
+use bevy::ui::{AlignItems, Display, Node, PositionType, UiRect, px};
 use bevy_fynix::tokens::{SpacingTokens, Tone};
 use bevy_fynix::views::{
     FrameProps, RowSlot, Span, Stack, column, rich, row, virtual_list,
@@ -24,7 +24,7 @@ use rubrix_highlight::{
     Highlights, Lang, Run, Stream, highlight, spans,
 };
 
-use crate::select::{self, CodeSelection, Highlight};
+use crate::select::{self, CodeSelection, SelectionRects};
 use crate::tokens::{Styles, SyntaxTokens};
 
 /// Bevy's line height, as a factor of the font size.
@@ -32,7 +32,7 @@ const LINE_HEIGHT: f32 = 1.2;
 
 const TAB: usize = 4;
 
-const OVERSCAN: f32 = 400.0;
+pub(crate) const OVERSCAN: f32 = 400.0;
 
 const SELECTED_ALPHA: f32 = 0.35;
 
@@ -58,8 +58,21 @@ struct Whole {
     highlights: Highlights,
 }
 
-/// What a [`CodeStream`] sent, which every view of its source copies
-/// from at its own pace.
+impl Whole {
+    fn rows(&self) -> usize {
+        self.highlights.line_count() as usize
+            - usize::from(self.text.ends_with('\n'))
+    }
+}
+
+fn streamed_rows(lines: usize, text: &str) -> usize {
+    if text.is_empty() {
+        0
+    } else {
+        lines + 1 - usize::from(text.ends_with('\n'))
+    }
+}
+
 struct Inbox {
     lang: Lang,
     sent: Mutex<Sent>,
@@ -145,18 +158,10 @@ impl CodeSource {
     /// has no row before its first byte.
     pub fn rows(&self) -> usize {
         match &self.0 {
-            Feed::Whole(whole) => {
-                whole.highlights.line_count() as usize
-                    - usize::from(whole.text.ends_with('\n'))
-            }
+            Feed::Whole(whole) => whole.rows(),
             Feed::Stream(inbox) => {
                 let sent = inbox.sent();
-                if sent.text.is_empty() {
-                    0
-                } else {
-                    sent.lines + 1
-                        - usize::from(sent.text.ends_with('\n'))
-                }
+                streamed_rows(sent.lines, &sent.text)
             }
         }
     }
@@ -281,13 +286,10 @@ enum Text {
     Growing(Box<Growing>),
 }
 
-/// A streaming source's text as far as this view has copied it.
 struct Growing {
     text: String,
-    /// The byte of each committed line's `\n`.
-    ends: Vec<usize>,
+    newlines: Vec<usize>,
     stream: Stream,
-    /// The runs of the unfinished last line.
     partial: Vec<Run>,
 }
 
@@ -295,7 +297,7 @@ impl Growing {
     fn new(lang: Lang) -> Growing {
         Growing {
             text: String::new(),
-            ends: Vec::new(),
+            newlines: Vec::new(),
             stream: Stream::new(lang),
             partial: Vec::new(),
         }
@@ -305,7 +307,7 @@ impl Growing {
         let base = self.text.len();
         self.text.push_str(chunk);
         self.stream.push(chunk);
-        self.ends.extend(
+        self.newlines.extend(
             chunk.match_indices('\n').map(|(at, _)| base + at),
         );
         self.partial = self.stream.partial();
@@ -321,12 +323,16 @@ impl Growing {
     }
 
     fn start(&self, row: usize) -> usize {
-        row.checked_sub(1).map_or(0, |above| self.ends[above] + 1)
+        row.checked_sub(1)
+            .map_or(0, |above| self.newlines[above] + 1)
     }
 
     fn line(&self, row: usize) -> &str {
-        let end =
-            self.ends.get(row).copied().unwrap_or(self.text.len());
+        let end = self
+            .newlines
+            .get(row)
+            .copied()
+            .unwrap_or(self.text.len());
         let line = &self.text[self.start(row)..end];
         line.strip_suffix('\r').unwrap_or(line)
     }
@@ -354,14 +360,9 @@ impl CodeDoc {
     /// byte, so its view starts at the bottom and follows it.
     pub fn rows(&self) -> usize {
         match &self.text {
-            Text::Whole(whole) => {
-                whole.highlights.line_count() as usize
-                    - usize::from(whole.text.ends_with('\n'))
-            }
-            Text::Growing(growing) if growing.text.is_empty() => 0,
+            Text::Whole(whole) => whole.rows(),
             Text::Growing(growing) => {
-                growing.ends.len() + 1
-                    - usize::from(growing.text.ends_with('\n'))
+                streamed_rows(growing.newlines.len(), &growing.text)
             }
         }
     }
@@ -371,7 +372,7 @@ impl CodeDoc {
     pub fn committed(&self) -> usize {
         match &self.text {
             Text::Whole(_) => self.rows(),
-            Text::Growing(growing) => growing.ends.len(),
+            Text::Growing(growing) => growing.newlines.len(),
         }
     }
 
@@ -397,14 +398,15 @@ impl CodeDoc {
             Text::Whole(whole) => {
                 whole.highlights.stored_runs(row as u32)
             }
-            Text::Growing(growing) if row < growing.ends.len() => {
+            Text::Growing(growing)
+                if row < growing.newlines.len() =>
+            {
                 growing.stream.runs(row as u32)
             }
             Text::Growing(growing) => &growing.partial,
         }
     }
 
-    /// Shows `source` from its first line, in a new list.
     fn show(&mut self, source: &CodeSource) {
         let shown = CodeDoc::new(source);
         self.source = shown.source;
@@ -436,7 +438,6 @@ impl CodeDoc {
         }
     }
 
-    /// The list of the document shown now.
     pub(crate) fn list(&self) -> Option<Entity> {
         self.list
     }
@@ -445,8 +446,6 @@ impl CodeDoc {
         matches!(self.source.0, Feed::Stream(_))
     }
 
-    /// Copies what the source sent since the last call, and returns
-    /// whether there was any.
     fn take_sent(&mut self) -> bool {
         let (Feed::Stream(inbox), Text::Growing(growing)) =
             (&self.source.0, &mut self.text)
@@ -470,8 +469,6 @@ impl CodeDoc {
     }
 }
 
-/// Copies what each streaming source sent into the views showing it,
-/// before the lists read their counts.
 pub(crate) fn take_sent(mut docs: Query<&mut CodeDoc>) {
     for mut doc in &mut docs {
         if doc.streamed() && doc.bypass_change_detection().take_sent()
@@ -633,10 +630,11 @@ where
         cx.world.entity_mut(layer).insert((
             Node {
                 position_type: PositionType::Absolute,
+                display: Display::None,
                 ..Node::default()
             },
             Pickable::IGNORE,
-            Highlight { text: node, color },
+            SelectionRects { text: node, color },
         ));
         cx.effect(
             node,
@@ -655,8 +653,6 @@ where
         .boxed()
 }
 
-/// The row's number, padded to the widest number. It is re-read
-/// when the slot moves or the widest number gains a digit.
 fn gutter(root: Entity, slot: RowSlot) -> Signal<Vec<Span>> {
     let width = move |world: &World| {
         world
@@ -677,9 +673,6 @@ fn gutter(root: Entity, slot: RowSlot) -> Signal<Vec<Span>> {
     })
 }
 
-/// The spans `show` makes of the row. It is re-read when the slot
-/// moves, or when a streaming source adds text while the row shows
-/// a line that is not yet committed, so a committed row is read once.
 fn line(
     root: Entity,
     slot: RowSlot,
@@ -713,7 +706,6 @@ fn line(
     })
 }
 
-/// What a row's last read saw.
 #[derive(Clone, Copy)]
 struct Read {
     edits: Option<u64>,
@@ -766,8 +758,6 @@ impl<'a> Shown<'a> {
         &self.text
     }
 
-    /// The source byte of a shown byte. A byte inside a tab's spaces
-    /// is the tab's start, or its end past its middle.
     pub(crate) fn source(&self, shown_byte: usize) -> usize {
         let mut extra = 0;
         for tab in &self.tabs {

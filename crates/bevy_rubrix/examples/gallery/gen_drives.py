@@ -443,11 +443,9 @@ code(
 )
 
 
-# The stream page shares the code page's layout above the view.
 ONE_B, SIXTY_FOUR_B, FOUR_KIB, SIXTY_FOUR_KIB, PAUSE, RESTART, STREAM_100K = [
     f"click {x} 68" for x in (290, 438, 586, 734, 882, 1030, 1178)
 ]
-# Line n of a view scrolled to the top shows at y = LINE_1 + (n - 1) * ROW.
 LINE_1 = 126
 TEXT_X = 271
 GUTTER_X = 235
@@ -616,8 +614,6 @@ select(
     "wait 30",
     "screenshot r14-drag.png",
 )
-# A held drag 19 px below the view scrolls 19 px a frame, so line 400
-# reaches the middle of the view after AUTOSCROLL_FRAMES frames.
 AUTOSCROLL_FRAMES = 321
 select(
     "autoscroll",
