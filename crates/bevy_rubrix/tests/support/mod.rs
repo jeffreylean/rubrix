@@ -140,18 +140,16 @@ pub fn set(app: &mut App, change: impl FnOnce(&mut Showing)) {
 }
 
 pub fn doc(app: &mut App) -> &DiffDoc {
-    let doc = app
-        .world_mut()
+    app.world_mut()
         .query::<&DiffDoc>()
         .single(app.world())
-        .expect("one diff view");
-    doc
+        .expect("one diff view")
 }
 
 pub fn list(app: &mut App) -> &mut VirtualList {
     let list = app
         .world_mut()
-        .query::<(bevy::ecs::entity::Entity, &VirtualList)>()
+        .query::<(Entity, &VirtualList)>()
         .single(app.world())
         .expect("one list")
         .0;

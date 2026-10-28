@@ -32,7 +32,8 @@ fn hatched(app: &App, root: Entity) -> Vec<bool> {
 
 #[test]
 fn each_spawned_row_matches_the_split_row_for_its_index() {
-    let source = DiffSource::patch(LARGE_PATCH).expect("the patch parses");
+    let source =
+        DiffSource::patch(LARGE_PATCH).expect("the patch parses");
     let want = expected(&source, Layout::Split, &[]);
     let files = source.files().collect::<Vec<_>>();
     let mut app = split(source.clone());
@@ -51,10 +52,19 @@ fn each_spawned_row_matches_the_split_row_for_its_index() {
         let diff = files[file];
         let shown = texts(&app, root);
         let number = |line: Option<rubrix_diff::LineRef>| {
-            line.map(|line| line.number.to_string()).unwrap_or_default()
+            line.map(|line| line.number.to_string())
+                .unwrap_or_default()
         };
-        assert_eq!(shown[0].trim(), number(row.old_line()), "row {index}");
-        assert_eq!(shown[2].trim(), number(row.new_line()), "row {index}");
+        assert_eq!(
+            shown[0].trim(),
+            number(row.old_line()),
+            "row {index}"
+        );
+        assert_eq!(
+            shown[2].trim(),
+            number(row.new_line()),
+            "row {index}"
+        );
         assert_eq!(shown[1], old_text(diff, row).unwrap_or_default());
         assert_eq!(shown[3], new_text(diff, row).unwrap_or_default());
         assert_eq!(
@@ -68,7 +78,8 @@ fn each_spawned_row_matches_the_split_row_for_its_index() {
 
 #[test]
 fn a_realigned_block_pairs_the_similar_lines() {
-    let old = "top\nfirst removed\nlet total = count + 1;\nlast removed\nend\n";
+    let old = "top\nfirst removed\nlet total = count + 1;\nlast \
+               removed\nend\n";
     let new = "top\nlet total = count + 2;\nend\n";
     let mut app = split(DiffSource::texts("total.rs", old, new));
     let rows = (2..5)
@@ -109,7 +120,8 @@ fn keeps(
 
 #[test]
 fn switching_layouts_keeps_the_first_visible_source_line() {
-    let source = DiffSource::patch(LARGE_PATCH).expect("the patch parses");
+    let source =
+        DiffSource::patch(LARGE_PATCH).expect("the patch parses");
     let mut app = showing(source);
     for row in [3_000, 3_004, 7_321] {
         set(&mut app, |showing| showing.layout = Layout::Stacked);
@@ -117,7 +129,10 @@ fn switching_layouts_keeps_the_first_visible_source_line() {
         let stacked = first_lines(&mut app);
         set(&mut app, |showing| showing.layout = Layout::Split);
         let split = first_lines(&mut app);
-        assert!(keeps(stacked, split), "row {row}: {stacked:?} {split:?}");
+        assert!(
+            keeps(stacked, split),
+            "row {row}: {stacked:?} {split:?}"
+        );
         set(&mut app, |showing| showing.layout = Layout::Stacked);
         let back = first_lines(&mut app);
         assert!(keeps(split, back), "row {row}: {split:?} {back:?}");

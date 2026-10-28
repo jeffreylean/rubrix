@@ -6,7 +6,7 @@ use bevy::color::{Alpha, Color};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::system::ResMut;
-use bevy::ecs::world::World;
+use bevy::ecs::world::{Mut, World};
 use bevy::image::{Image, ImageSampler};
 use bevy::text::FontSource;
 use bevy::ui::widget::{ImageNode, NodeImageMode};
@@ -702,10 +702,7 @@ where
     }
 }
 
-fn doc_mut(
-    world: &mut World,
-    root: Entity,
-) -> bevy::ecs::world::Mut<'_, DiffDoc> {
+fn doc_mut(world: &mut World, root: Entity) -> Mut<'_, DiffDoc> {
     world.get_mut::<DiffDoc>(root).expect("a diff view")
 }
 
@@ -827,6 +824,23 @@ fn code(spans: Signal<Vec<Span>>, style: &RowStyle) -> Rich {
     rich(spans).font(style.font.clone()).size(style.size)
 }
 
+/// The line numbers of a row, faint and still while the text beside
+/// them scrolls sideways.
+fn gutter(
+    numbers: Signal<String>,
+    style: &RowStyle,
+) -> Stack<(Rich,)> {
+    let numbers =
+        rich(numbers.map(|numbers| vec![Span::new(numbers)]))
+            .font(style.font.clone())
+            .size(style.size)
+            .tone(Tone::Faint)
+            .wrap(false);
+    row((numbers,))
+        .shrink(0.0)
+        .padding(UiRect::right(px(style.gap)))
+}
+
 fn wraps(root: Entity) -> Signal<bool> {
     component::<DiffDoc, bool>(root, |doc| {
         doc.is_some_and(|doc| doc.overflow() == Overflow::Wrap)
@@ -863,23 +877,15 @@ where
     if compact {
         return row((text,)).gap(0.0).fill(fill).boxed();
     }
-    let number = code(
-        at(root, slot, |doc, index| {
-            doc.body(index).map_or_else(Vec::new, |(file, row)| {
-                let width = file.digits;
-                let old = number(row.old_line(), width);
-                let new = number(row.new_line(), width);
-                vec![Span::new(format!("{old} {new}"))]
-            })
-        }),
-        style,
-    )
-    .tone(Tone::Faint)
-    .wrap(false);
-    let gutter = row((number,))
-        .shrink(0.0)
-        .padding(UiRect::right(px(style.gap)));
-    row((gutter, text))
+    let numbers = at(root, slot, |doc, index| {
+        doc.body(index).map_or_else(String::new, |(file, row)| {
+            let width = file.digits;
+            let old = number(row.old_line(), width);
+            let new = number(row.new_line(), width);
+            format!("{old} {new}")
+        })
+    });
+    row((gutter(numbers, style), text))
         .align(AlignItems::FlexStart)
         .gap(0.0)
         .fill(fill)
@@ -911,21 +917,11 @@ fn side<T>(
 where
     T: Tokens,
 {
-    let number = code(
-        at(root, slot, move |doc, index| {
-            doc.body(index).map_or_else(Vec::new, |(file, row)| {
-                let line = line_of(row, lane);
-                let number = number(line, file.digits);
-                vec![Span::new(number)]
-            })
-        }),
-        style,
-    )
-    .tone(Tone::Faint)
-    .wrap(false);
-    let gutter = row((number,))
-        .shrink(0.0)
-        .padding(UiRect::right(px(style.gap)));
+    let numbers = at(root, slot, move |doc, index| {
+        doc.body(index).map_or_else(String::new, |(file, row)| {
+            number(line_of(row, lane), file.digits)
+        })
+    });
     let spans = style.clone();
     let text = code(
         at(root, slot, move |doc, index| {
@@ -950,13 +946,14 @@ where
             _ => Color::NONE,
         }
     });
-    let cell = row((gutter, slot.sideways(text.boxed())))
-        .align(AlignItems::FlexStart)
-        .gap(0.0)
-        .grow(1.0)
-        .width(px(0.0))
-        .min_width(px(0.0))
-        .fill(fill);
+    let cell =
+        row((gutter(numbers, style), slot.sideways(text.boxed())))
+            .align(AlignItems::FlexStart)
+            .gap(0.0)
+            .grow(1.0)
+            .width(px(0.0))
+            .min_width(px(0.0))
+            .fill(fill);
     let hatch = style.faint.with_alpha(HATCH_ALPHA);
     let empty = at(root, slot, move |doc, index| {
         doc.body(index).is_some_and(|(_, row)| {

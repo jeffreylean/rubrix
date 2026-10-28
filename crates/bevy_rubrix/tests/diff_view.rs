@@ -1,7 +1,11 @@
 mod support;
 
+use bevy::app::App;
 use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::ChildOf;
+use bevy::ecs::query::With;
 use bevy::ui::{Display, Node};
+use bevy::ui_widgets::Button;
 use bevy_rubrix::{DiffRow, DiffSource, Layout, Row, Side};
 use rubrix_diff::Expansion;
 use support::*;
@@ -16,7 +20,7 @@ fn gap_pair() -> DiffSource {
 
 /// Checks that every built slot shows the row `want` holds at its
 /// index, numbers and text included.
-fn assert_slots_show(app: &mut bevy::app::App, want: &[DiffRow]) {
+fn assert_slots_show(app: &mut App, want: &[DiffRow]) {
     let source = doc(app).source().clone();
     let files = source.files().collect::<Vec<_>>();
     let built = slots(app);
@@ -66,7 +70,7 @@ fn spawned_rows_match_the_rows_of_each_file() {
     assert_slots_show(&mut app, &want);
 }
 
-fn gap_slot(app: &mut bevy::app::App, hunk: u32) -> Entity {
+fn gap_slot(app: &mut App, hunk: u32) -> Entity {
     let index = (0..doc(app).len())
         .find(|&index| {
             matches!(
@@ -185,10 +189,10 @@ fn a_patch_source_has_no_expand_buttons() {
     assert_eq!(buttons(&mut app, gap), [Display::Flex; 3]);
 }
 
-fn buttons(app: &mut bevy::app::App, root: Entity) -> Vec<Display> {
+fn buttons(app: &mut App, root: Entity) -> Vec<Display> {
     let world = app.world_mut();
-    let mut found = world
-        .query_filtered::<(Entity, &Node), bevy::ecs::query::With<bevy::ui_widgets::Button>>();
+    let mut found =
+        world.query_filtered::<(Entity, &Node), With<Button>>();
     found
         .iter(world)
         .filter(|&(button, _)| {
@@ -197,7 +201,7 @@ fn buttons(app: &mut bevy::app::App, root: Entity) -> Vec<Display> {
                 if at == root {
                     return true;
                 }
-                match world.get::<bevy::ecs::hierarchy::ChildOf>(at) {
+                match world.get::<ChildOf>(at) {
                     Some(parent) => at = parent.parent(),
                     None => return false,
                 }
