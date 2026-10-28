@@ -1,6 +1,6 @@
 # Benchmark report
 
-This report puts each `rubrix_bench` number next to the number Pierre's Highlights README publishes for the same tier. It was written for R17, the last PR of wave 1, at commit `8cecded`.
+This report puts each `rubrix_bench` number next to the number Pierre's Highlights README publishes for the same tier. It was written for R17, the last PR of wave 1, at commit `8cecded`. The bench crate and fixtures did not change after that commit, so the numbers hold for the PR's head.
 
 The two machines and runtimes differ, so a row compares tiers, not implementations. Pierre ran Bun 1.4.0 with a Wasm build on an Apple M4 Pro, and its timings include JavaScript objects or HTML that `rubrix_highlight` never builds. Read a gap as a scale check, not as a speedup.
 
@@ -8,7 +8,7 @@ The two machines and runtimes differ, so a row compares tiers, not implementatio
 
 - rubrix: an AMD Ryzen AI 7 PRO 350 with an AMD Radeon 860M iGPU, 16 logical CPUs (8 cores), 54 GiB RAM, Linux 7.2.11 (Omarchy 4.0.6). rustc 1.97.1, release profile.
 - Pierre: an Apple M4 Pro, 14 cores, 48 GiB RAM, macOS 27.0.1, Bun 1.4.0, results dated 2026-10-05 in `packages/highlights/benchmark/README.md` at Pierre `f6cccd8a`.
-- Each binary ran three times, in rounds of all six binaries, on its own with no cargo, gallery or other build running. The load average before each run was 1.06 to 1.24 on 16 CPUs. Every run exited 0. Each table gives the median of the three runs, and its range column the lowest and highest of the three.
+- Each binary ran three times, on its own with no cargo, gallery or other build running. Five binaries ran in three rounds of all five, and `stream` then ran three times on its own. The load average before each run was 1.06 to 1.24 on 16 CPUs. Every run exited 0. Each table gives the median of the three runs, and its range column the lowest and highest of the three.
 - `rubrix_bench` times a case as Pierre's `benchmark/measure.ts` does: a 200 ms warm-up that sizes batches to about 5 ms, then a 1.5 s budget of at least 20 batches. Each sample is one batch's mean time per call, and a case's number is the median of its samples. The live-editing cases time one call per sample, as `measure.ts` does with `{ batch: false }`.
 - The TypeScript and JSONC tiers are Pierre's own fixtures, byte for byte. The other tiers are rubrix's generated fixtures and the vendored fynix (see each `bench/fixtures/<lang>/ATTRIBUTION.md`). Running `gen_go`, `gen_python`, `gen_shell`, `gen_toml` and `gen_yaml` at this commit left every fixture unchanged.
 
@@ -72,7 +72,7 @@ cargo run --release -p rubrix_bench --bin words
 
 ## Streaming
 
-`stream` feeds each file to a new `Stream` in the chunk count Pierre's streaming table gives its TypeScript tier of the same size: 1, 8 and 130. Pierre cuts chunks of 4,096 UTF-16 code units. Ratio is streaming time over one-shot time in the same run.
+`stream` feeds each file to a new `Stream` in the chunk count Pierre's streaming table gives its TypeScript tier of the same size: 1, 8 and 130. Pierre cuts chunks of 4,096 UTF-16 code units, so its JSONC rows use 1, 9 and 74 chunks where these rows use 1, 8 and 130. Ratio is streaming time over one-shot time in the same run.
 
 | File | Chunks | rubrix µs/call | rubrix MiB/s | range MiB/s | ratio | Pierre, same file |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
