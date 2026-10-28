@@ -517,6 +517,19 @@ fn growing_from_no_rows_follows_the_bottom() {
 }
 
 #[test]
+fn a_list_built_following_follows_rows_added_before_its_first_update()
+{
+    let mut app = laid_out();
+    app.insert_resource(Follow(true));
+    let area = mounted(&mut app, 0, ESTIMATE, row(uniform), px(VIEW));
+    app.world_mut().resource_mut::<Count>().0 = 300;
+    settle(&mut app);
+
+    assert!(state(&app, area).following());
+    assert_eq!(shown_at(&mut app, area, 299), Some(VIEW - 20.0));
+}
+
+#[test]
 fn growing_while_scrolled_up_from_the_bottom_keeps_the_view() {
     let mut app = laid_out();
     let area = list(&mut app, 1_000, uniform);

@@ -188,10 +188,12 @@ where
         let list = cx.build(self.frame);
         let spacer = cx.under(list, Cx::spawn);
         let count = self.count.get(cx.world).unwrap_or(0);
+        let follows = self.follow.get(cx.world).unwrap_or(false);
         let state = VirtualList::new(
             self.estimate,
             self.overscan,
             count,
+            follows,
             spacer,
         );
         let height = state.height();
@@ -397,6 +399,7 @@ impl VirtualList {
         estimate: f32,
         overscan: f32,
         count: usize,
+        follow: bool,
         spacer: Entity,
     ) -> Self {
         let mut list = Self {
@@ -409,7 +412,7 @@ impl VirtualList {
             spawned: 0..0,
             first_visible: 0,
             anchor: Anchor::FirstRow,
-            follow: false,
+            follow,
             placed_at: 0.0,
             widths: None,
             sideways_switched: false,
