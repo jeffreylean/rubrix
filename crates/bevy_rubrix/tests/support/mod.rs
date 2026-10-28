@@ -22,9 +22,12 @@ use bevy::input::{ButtonInput, ButtonState};
 use bevy::math::{UVec2, Vec2};
 use bevy::picking::backend::HitData;
 use bevy::picking::events::{
-    Pointer, PointerDrag, PointerPress, PointerRelease,
+    Pointer, PointerDrag, PointerDragEnd, PointerPress,
+    PointerRelease,
 };
-use bevy::picking::pointer::{Location, PointerButton, PointerId};
+use bevy::picking::pointer::{
+    Location, PointerAction, PointerButton, PointerId, PointerInput,
+};
 use bevy::text::{TextColor, TextSpan};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin, px};
@@ -145,6 +148,7 @@ pub fn lay_out(app: &mut App, scale_factor: f32) {
             ..Default::default()
         },
     ));
+    app.world_mut().spawn(PointerId::Mouse);
     app.update();
 }
 
@@ -292,18 +296,40 @@ pub fn point_in(app: &App, root: Entity, byte: usize) -> Vec2 {
         )
 }
 
-pub fn pointer(at: Vec2) -> Pointer {
-    let location = Location {
+fn location(at: Vec2) -> Location {
+    Location {
         target: NormalizedRenderTarget::None {
             width: WINDOW,
             height: WINDOW,
         },
         position: at,
-    };
-    Pointer::new(PointerId::Mouse, location)
+    }
+}
+
+pub fn pointer(at: Vec2) -> Pointer {
+    Pointer::new(PointerId::Mouse, location(at))
+}
+
+/// Moves the mouse pointer, the way Bevy's input does before it
+/// routes the event to a pressed or hovered entity.
+fn input(app: &mut App, at: Vec2, action: Option<PointerAction>) {
+    let actions =
+        [Some(PointerAction::Move { delta: Vec2::ZERO }), action];
+    for action in actions.into_iter().flatten() {
+        app.world_mut().write_message(PointerInput::new(
+            PointerId::Mouse,
+            location(at),
+            action,
+        ));
+    }
 }
 
 pub fn hold_on(app: &mut App, on: Entity, at: Vec2, count: u8) {
+    input(
+        app,
+        at,
+        Some(PointerAction::Press(PointerButton::Primary)),
+    );
     app.world_mut().trigger(PointerPress {
         entity: on,
         pointer: pointer(at),
@@ -315,6 +341,11 @@ pub fn hold_on(app: &mut App, on: Entity, at: Vec2, count: u8) {
 }
 
 pub fn release_on(app: &mut App, on: Entity, at: Vec2) {
+    input(
+        app,
+        at,
+        Some(PointerAction::Release(PointerButton::Primary)),
+    );
     app.world_mut().trigger(PointerRelease {
         entity: on,
         pointer: pointer(at),
@@ -329,13 +360,33 @@ pub fn press_on(app: &mut App, on: Entity, at: Vec2, count: u8) {
     release_on(app, on, at);
 }
 
+/// Bevy sends a drag to the entity first pressed, wherever the
+/// pointer is, even when that entity is gone.
 pub fn drag_on(app: &mut App, on: Entity, from: Vec2, at: Vec2) {
+    input(app, at, None);
     app.world_mut().trigger(PointerDrag {
         entity: on,
         pointer: pointer(at),
         button: PointerButton::Primary,
         distance: at - from,
         delta: at - from,
+    });
+    app.update();
+}
+
+/// A release over nothing, which ends the drag on the entity first
+/// pressed and sends no release.
+pub fn drag_end_on(app: &mut App, on: Entity, from: Vec2, at: Vec2) {
+    input(
+        app,
+        at,
+        Some(PointerAction::Release(PointerButton::Primary)),
+    );
+    app.world_mut().trigger(PointerDragEnd {
+        entity: on,
+        pointer: pointer(at),
+        button: PointerButton::Primary,
+        distance: at - from,
     });
     app.update();
 }

@@ -7,16 +7,14 @@ use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::input::keyboard::KeyCode;
 use bevy::math::{Rect, Vec2};
-use bevy::picking::events::{PointerDrag, PointerDragEnd};
-use bevy::picking::pointer::PointerButton;
 use bevy::text::TextLayoutInfo;
 use bevy::ui::{ComputedNode, Display, Node, UiGlobalTransform};
 use bevy_fynix::views::VirtualList;
 use bevy_rubrix::{CodeSelection, CodeSource, Lang, Overflow};
 use support::{
-    Wrapping, copy, corner, ctrl, doc, hold_on, keep_copies,
-    laid_out, line, list, list_state, mount_view, point_in, pointer,
-    press_on, shift, spans_of, view,
+    Wrapping, copy, corner, ctrl, doc, drag_end_on, drag_on, hold_on,
+    keep_copies, laid_out, line, list, list_state, mount_view,
+    point_in, press_on, shift, spans_of, view,
 };
 
 fn selecting(source: CodeSource) -> App {
@@ -333,13 +331,8 @@ fn a_drag_below_a_following_stream_keeps_it_following() {
     hold_at(&mut app, last, 2, 1);
     let below = point_of(&mut app, last, 2) + Vec2::new(0.0, 200.0);
     let on = line(&mut app, last);
-    app.world_mut().trigger(PointerDrag {
-        entity: on,
-        pointer: pointer(below),
-        button: PointerButton::Primary,
-        distance: Vec2::new(0.0, 200.0),
-        delta: Vec2::new(0.0, 200.0),
-    });
+    let from = point_of(&mut app, last, 2);
+    drag_on(&mut app, on, from, below);
     for n in 60..120 {
         stream.push(&format!("line {n}\n"));
         app.update();
@@ -362,23 +355,12 @@ fn a_drag_ended_outside_the_view_stops_scrolling() {
         selecting(CodeSource::new(Lang::Plain, text.as_str()));
     hold_at(&mut app, 3, 2, 1);
     let on = line(&mut app, 3);
-    let below = point_of(&mut app, 3, 2) + Vec2::new(0.0, 600.0);
-    app.world_mut().trigger(PointerDrag {
-        entity: on,
-        pointer: pointer(below),
-        button: PointerButton::Primary,
-        distance: Vec2::new(0.0, 600.0),
-        delta: Vec2::new(0.0, 600.0),
-    });
+    let from = point_of(&mut app, 3, 2);
+    let below = from + Vec2::new(0.0, 600.0);
+    drag_on(&mut app, on, from, below);
     settle(&mut app);
     assert!(list_state(&mut app).first_visible() > 0, "it scrolls");
-    app.world_mut().trigger(PointerDragEnd {
-        entity: on,
-        pointer: pointer(below),
-        button: PointerButton::Primary,
-        distance: Vec2::new(0.0, 600.0),
-    });
-    app.update();
+    drag_end_on(&mut app, on, from, below);
     let first = list_state(&mut app).first_visible();
     let range = selected(&mut app);
     for _ in 0..10 {

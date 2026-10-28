@@ -4,12 +4,15 @@ use bevy::app::App;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::query::With;
+use bevy::math::Vec2;
 use bevy::ui::{Display, Node};
 use bevy::ui_widgets::Button;
 use bevy_rubrix::{DiffRow, DiffSource, Layout, Row, Side};
 use rubrix_diff::Expansion;
 use support::diff::*;
-use support::{copy, point_in, press_on, shift};
+use support::{
+    copy, drag_end_on, drag_on, hold_on, point_in, press_on, shift,
+};
 
 fn gap_pair() -> DiffSource {
     let old = numbered(400);
@@ -334,3 +337,99 @@ diff --git a/two.txt b/two.txt
 -y
 +Y
 ";
+
+/// The text of row `index` a drag selects from, or `None` for a row
+/// with no such text.
+fn selectable_text(
+    app: &mut App,
+    layout: Layout,
+    index: usize,
+) -> Option<Entity> {
+    let Some(DiffRow::Body { row, .. }) = doc(app).row(index) else {
+        return None;
+    };
+    match (layout, row) {
+        (_, Row::Gap { .. }) => None,
+        (Layout::Split, Row::Addition { .. }) => None,
+        (Layout::Split, _) => Some(sides(app, index).old),
+        (Layout::Stacked, _) => Some(line_text(app, index)),
+    }
+}
+
+fn a_drag_back_from_past_the_edge_follows_and_ends(layout: Layout) {
+    let mut app = laid_out(
+        DiffSource::patch(LARGE_PATCH).unwrap(),
+        800.0,
+        400.0,
+    );
+    set(&mut app, |showing| showing.layout = layout);
+    let row = (0..)
+        .find(|&index| {
+            selectable_text(&mut app, layout, index).is_some()
+        })
+        .expect("a line row");
+    let on = selectable_text(&mut app, layout, row).expect("a line");
+    let from = point_in(&app, on, 0);
+    hold_on(&mut app, on, from, 1);
+    let below = from + Vec2::new(0.0, 600.0);
+    drag_on(&mut app, on, from, below);
+    // Until the pressed row's slot shows another kind of row, which
+    // builds the slot anew.
+    for _ in 0..200 {
+        if app.world().get_entity(on).is_err() {
+            break;
+        }
+        app.update();
+    }
+    assert!(first_visible(&mut app) > row, "it scrolls");
+
+    drag_on(&mut app, on, below, from);
+    settle(&mut app);
+    let held = first_visible(&mut app);
+    settle(&mut app);
+    assert_eq!(
+        first_visible(&mut app),
+        held,
+        "back inside, it stops"
+    );
+    let (target, text) = slots(&mut app)
+        .into_iter()
+        .filter(|&(index, _)| index > held + 2)
+        .find_map(|(index, _)| {
+            selectable_text(&mut app, layout, index)
+                .map(|text| (index, text))
+        })
+        .expect("a line row in view");
+    let end = texts(&app, text).first().map_or(0, String::len);
+    let to = point_in(&app, text, end);
+    drag_on(&mut app, on, from, to);
+    settle(&mut app);
+    let copied = copy(&mut app);
+    assert_eq!(
+        copied.lines().last().map(shown),
+        texts(&app, text).first().cloned(),
+        "the selection ends at row {target}, under the pointer"
+    );
+
+    drag_on(&mut app, on, to, below);
+    settle(&mut app);
+    assert!(first_visible(&mut app) > held, "past the edge again");
+    drag_end_on(&mut app, on, from, below);
+    let released = first_visible(&mut app);
+    let range = copy(&mut app);
+    for _ in 0..20 {
+        app.update();
+    }
+    assert_eq!(first_visible(&mut app), released, "release stops it");
+    assert_eq!(copy(&mut app), range, "and the selection with it");
+}
+
+#[test]
+fn a_stacked_drag_back_from_past_the_edge_follows_and_ends() {
+    a_drag_back_from_past_the_edge_follows_and_ends(Layout::Stacked);
+}
+
+#[test]
+fn a_split_drag_back_from_past_the_edge_follows_and_ends() {
+    a_drag_back_from_past_the_edge_follows_and_ends(Layout::Split);
+}
