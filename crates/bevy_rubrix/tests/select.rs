@@ -329,9 +329,9 @@ fn a_drag_below_a_following_stream_keeps_it_following() {
     assert!(list_state(&mut app).following());
     let last = doc(&mut app).rows() - 1;
     hold_at(&mut app, last, 2, 1);
-    let below = point_of(&mut app, last, 2) + Vec2::new(0.0, 200.0);
-    let on = line(&mut app, last);
     let from = point_of(&mut app, last, 2);
+    let below = from + Vec2::new(0.0, 200.0);
+    let on = line(&mut app, last);
     drag_on(&mut app, on, from, below);
     for n in 60..120 {
         stream.push(&format!("line {n}\n"));

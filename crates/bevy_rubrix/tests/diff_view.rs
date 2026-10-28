@@ -339,8 +339,6 @@ diff --git a/two.txt b/two.txt
 +Y
 ";
 
-/// The text of row `index` a drag selects from, or `None` for a row
-/// with no such text.
 fn selectable_text(
     app: &mut App,
     layout: Layout,
@@ -354,6 +352,15 @@ fn selectable_text(
         (Layout::Split, Row::Addition { .. }) => None,
         (Layout::Split, _) => Some(sides(app, index).old),
         (Layout::Stacked, _) => Some(line_text(app, index)),
+    }
+}
+
+fn update_until_rebuilt(app: &mut App, row: Entity) {
+    for _ in 0..200 {
+        if app.world().get_entity(row).is_err() {
+            return;
+        }
+        app.update();
     }
 }
 
@@ -374,14 +381,7 @@ fn a_drag_back_from_past_the_edge_follows_and_ends(layout: Layout) {
     hold_on(&mut app, on, from, 1);
     let below = from + Vec2::new(0.0, 600.0);
     drag_on(&mut app, on, from, below);
-    // Until the pressed row's slot shows another kind of row, which
-    // builds the slot anew.
-    for _ in 0..200 {
-        if app.world().get_entity(on).is_err() {
-            break;
-        }
-        app.update();
-    }
+    update_until_rebuilt(&mut app, on);
     assert!(first_visible(&mut app) > row, "it scrolls");
 
     drag_on(&mut app, on, below, from);
@@ -405,9 +405,8 @@ fn a_drag_back_from_past_the_edge_follows_and_ends(layout: Layout) {
     let to = point_in(&app, text, end);
     drag_on(&mut app, on, from, to);
     settle(&mut app);
-    let copied = copy(&mut app);
     assert_eq!(
-        copied.lines().last().map(shown),
+        copy(&mut app).lines().last().map(shown),
         texts(&app, text).first().cloned(),
         "the selection ends at row {target}, under the pointer"
     );

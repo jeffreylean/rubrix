@@ -488,8 +488,6 @@ fn press<D: Selectable>(
     selection.drag = Some(press.pointer.id);
 }
 
-/// Follows the pressed pointer itself, not the drag events Bevy sends
-/// to the pressed row, because a view may rebuild that row mid-drag.
 pub(crate) fn follow_drags<D: Selectable>(
     mut views: Query<(Entity, &D, &mut CodeSelection<D::At>)>,
     pointers: Query<(
