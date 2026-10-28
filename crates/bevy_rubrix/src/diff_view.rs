@@ -10,9 +10,7 @@ use bevy::ecs::world::{Mut, World};
 use bevy::image::{Image, ImageSampler};
 use bevy::text::FontSource;
 use bevy::ui::widget::{ImageNode, NodeImageMode};
-use bevy::ui::{
-    AlignItems, Display, JustifyContent, UiRect, percent, px,
-};
+use bevy::ui::{AlignItems, Display, JustifyContent, percent, px};
 use bevy_fynix::tokens::{
     MotionTokens, SpacingTokens, SurfaceTokens, Tone,
 };

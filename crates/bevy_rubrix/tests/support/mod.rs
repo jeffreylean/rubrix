@@ -182,12 +182,20 @@ pub fn slots(app: &mut App) -> Vec<(usize, Entity)> {
     slots
 }
 
+/// The slot showing row `index`, scrolled to first when no slot shows
+/// it.
 pub fn slot(app: &mut App, index: usize) -> Entity {
-    slots(app)
-        .into_iter()
-        .find(|&(shown, _)| shown == index)
-        .unwrap_or_else(|| panic!("row {index} is built"))
-        .1
+    let built = |app: &mut App| {
+        slots(app)
+            .into_iter()
+            .find(|&(shown, _)| shown == index)
+            .map(|(_, slot)| slot)
+    };
+    if let Some(slot) = built(app) {
+        return slot;
+    }
+    scroll_to(app, index);
+    built(app).unwrap_or_else(|| panic!("row {index} is built"))
 }
 
 fn descendants(app: &App, root: Entity) -> Vec<Entity> {

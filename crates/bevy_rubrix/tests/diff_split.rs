@@ -41,39 +41,48 @@ fn each_spawned_row_matches_the_split_row_for_its_index() {
     let mut app = split(source.clone());
     assert_eq!(doc(&mut app).len(), want.len());
     let mut lines = 0;
-    for (index, root) in slots(&mut app) {
-        let row = doc(&mut app).row(index);
-        assert_eq!(row, want.get(index).copied(), "row {index}");
-        let Some(DiffRow::Body { file, row }) = row else {
-            continue;
-        };
-        if matches!(row, Row::Gap { .. }) {
-            continue;
+    for top in [0, 3_000, 7_000] {
+        scroll_to(&mut app, top);
+        for (index, root) in slots(&mut app) {
+            let row = doc(&mut app).row(index);
+            assert_eq!(row, want.get(index).copied(), "row {index}");
+            let Some(DiffRow::Body { file, row }) = row else {
+                continue;
+            };
+            if matches!(row, Row::Gap { .. }) {
+                continue;
+            }
+            lines += 1;
+            let diff = files[file];
+            let shown = texts(&app, root);
+            let number = |line: Option<rubrix_diff::LineRef>| {
+                line.map(|line| line.number.to_string())
+                    .unwrap_or_default()
+            };
+            assert_eq!(
+                shown[0].trim(),
+                number(row.old_line()),
+                "row {index}"
+            );
+            assert_eq!(
+                shown[2].trim(),
+                number(row.new_line()),
+                "row {index}"
+            );
+            assert_eq!(
+                shown[1],
+                old_text(diff, row).unwrap_or_default()
+            );
+            assert_eq!(
+                shown[3],
+                new_text(diff, row).unwrap_or_default()
+            );
+            assert_eq!(
+                hatched(&app, root),
+                [row.old_line().is_none(), row.new_line().is_none()],
+                "row {index}"
+            );
         }
-        lines += 1;
-        let diff = files[file];
-        let shown = texts(&app, root);
-        let number = |line: Option<rubrix_diff::LineRef>| {
-            line.map(|line| line.number.to_string())
-                .unwrap_or_default()
-        };
-        assert_eq!(
-            shown[0].trim(),
-            number(row.old_line()),
-            "row {index}"
-        );
-        assert_eq!(
-            shown[2].trim(),
-            number(row.new_line()),
-            "row {index}"
-        );
-        assert_eq!(shown[1], old_text(diff, row).unwrap_or_default());
-        assert_eq!(shown[3], new_text(diff, row).unwrap_or_default());
-        assert_eq!(
-            hatched(&app, root),
-            [row.old_line().is_none(), row.new_line().is_none()],
-            "row {index}"
-        );
     }
     assert!(lines > 20, "{lines} line rows built");
 }

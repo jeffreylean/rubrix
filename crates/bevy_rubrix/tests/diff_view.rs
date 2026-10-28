@@ -232,6 +232,7 @@ fn a_limit_shows_n_rows_and_one_button_row() {
     let first = slot(&mut app, 1);
     assert_eq!(texts(&app, first), ["- old 1"]);
 
+    let more = slot(&mut app, 17);
     press(&mut app, more, "... 24 more lines");
     assert_eq!(doc(&mut app).len(), 1 + 40);
     let added = slot(&mut app, 21);
