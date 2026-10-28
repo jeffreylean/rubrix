@@ -31,6 +31,7 @@ use rubrix_diff::{
 use rubrix_highlight::{Highlights, Lang, Run, Stream, highlight};
 
 use crate::code_view::{Overflow, Shown, line_spans};
+use crate::select::{self, Column, RowText, Selectable, selectable};
 use crate::tokens::{Styles, SyntaxTokens, Tint};
 
 /// Bevy's line height, as a factor of the font size.
@@ -318,6 +319,7 @@ pub struct DiffDoc {
     len: usize,
     more: Option<More>,
     lists_built: u64,
+    revision: u64,
     list: Option<Entity>,
     pending_scroll: Option<usize>,
 }
@@ -354,6 +356,7 @@ impl DiffDoc {
             len: 0,
             more: None,
             lists_built: 0,
+            revision: 0,
             list: None,
             pending_scroll: None,
         }
@@ -489,6 +492,7 @@ impl DiffDoc {
     }
 
     fn index(&mut self) {
+        self.revision += 1;
         self.header_rows.clear();
         let mut at = 0;
         for file in &self.files {
@@ -572,6 +576,130 @@ impl DiffDoc {
     }
 }
 
+/// A place in a diff view's text: byte `byte` of row `row`'s text.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord,
+)]
+pub(crate) struct Spot {
+    row: usize,
+    byte: usize,
+}
+
+/// On the rich text of each line row of a diff view, a side's in a
+/// split row: the view's root, the row's index, and the column.
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DiffLine {
+    view: Entity,
+    index: usize,
+    column: Column,
+}
+
+/// The bytes of a row's text of `len` bytes that `range` covers.
+fn covered(
+    row: usize,
+    len: usize,
+    range: &Range<Spot>,
+) -> Range<usize> {
+    if row < range.start.row || row > range.end.row {
+        return 0..0;
+    }
+    let from = if row == range.start.row {
+        range.start.byte.min(len)
+    } else {
+        0
+    };
+    let to = if row == range.end.row {
+        range.end.byte.min(len)
+    } else {
+        len
+    };
+    from..to.max(from)
+}
+
+/// A selection takes a line row's text: in compact rows with its
+/// prefix, in split rows from its column's side. Header, gap and
+/// `more` rows, and a split side with no line, have none.
+impl Selectable for DiffDoc {
+    type At = Spot;
+    type Line = DiffLine;
+
+    fn line_of(line: &DiffLine) -> (Entity, usize, Column) {
+        (line.view, line.index, line.column)
+    }
+
+    fn list(&self) -> Option<Entity> {
+        self.list
+    }
+
+    fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    fn column(&self, across: f32) -> Column {
+        match self.layout() {
+            Layout::Stacked => Column::Only,
+            Layout::Split if across < 0.5 => Column::Old,
+            Layout::Split => Column::New,
+        }
+    }
+
+    fn text(
+        &self,
+        column: Column,
+        index: usize,
+    ) -> Option<RowText<'_>> {
+        let (file, row) = self.body(index)?;
+        let (lane, line, lead) = match column {
+            Column::Only => {
+                let (lane, line, prefix) = stacked_line(row)?;
+                (lane, line, if self.compact { prefix } else { "" })
+            }
+            Column::Old => (Lane::Old, row.old_line()?, ""),
+            Column::New => (Lane::New, row.new_line()?, ""),
+        };
+        let line = file.side(lane).0.line(line.index);
+        Some(RowText { lead, line })
+    }
+
+    fn at(&self, row: usize, byte: usize) -> Spot {
+        Spot { row, byte }
+    }
+
+    fn on_row(
+        &self,
+        column: Column,
+        row: usize,
+        range: &Range<Spot>,
+    ) -> Range<usize> {
+        if row < range.start.row || row > range.end.row {
+            return 0..0;
+        }
+        let len = self.text(column, row).map_or(0, |text| text.len());
+        covered(row, len, range)
+    }
+
+    fn all(&self) -> Range<Spot> {
+        Spot::default()..Spot {
+            row: self.len,
+            byte: 0,
+        }
+    }
+
+    fn copy(&self, column: Column, range: Range<Spot>) -> String {
+        let mut out = String::new();
+        let rows = (range.start.row..=range.end.row)
+            .take_while(|&row| row < self.len)
+            .filter_map(|row| Some((row, self.text(column, row)?)));
+        for (at, (row, text)) in rows.enumerate() {
+            if at > 0 {
+                out.push('\n');
+            }
+            text.push(covered(row, text.len(), &range), &mut out);
+        }
+        out
+    }
+}
+
 /// On each row of a diff view: the view's root and the index of the
 /// row it shows now, for [`DiffDoc::row`].
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -648,6 +776,7 @@ struct RowStyle {
     delete: Tint,
     faint: Color,
     header: Color,
+    selected: Color,
 }
 
 impl RowStyle {
@@ -667,6 +796,7 @@ impl RowStyle {
             delete: Tint::new(panel, removed),
             faint: theme.tone(Tone::Faint),
             header: theme.fill(),
+            selected: select::selected_colour(theme),
         }
     }
 
@@ -695,7 +825,9 @@ where
     fn build(self, cx: &mut Cx<'_, Bevy, T>) -> Entity {
         let style = Arc::new(RowStyle::new(cx.theme()));
         let root = cx.build(filling());
-        cx.world.entity_mut(root).insert(DiffDoc::new());
+        let mut view = cx.world.entity_mut(root);
+        view.insert(DiffDoc::new());
+        select::attach::<DiffDoc>(&mut view);
         cx.effect(root, self.source, |world, root, source| {
             doc_mut(world, root).show(source.clone());
         });
@@ -891,7 +1023,16 @@ where
             _ => Color::NONE,
         }
     });
-    let text = slot.sideways(text.boxed());
+    let text = slot.sideways(selectable(
+        text,
+        slot,
+        style.selected,
+        move |index| DiffLine {
+            view: root,
+            index,
+            column: Column::Only,
+        },
+    ));
     if compact {
         return row((text,)).gap(0.0).fill(fill).boxed();
     }
@@ -964,14 +1105,24 @@ where
             _ => Color::NONE,
         }
     });
-    let cell =
-        row((gutter(numbers, style), slot.sideways(text.boxed())))
-            .align(AlignItems::FlexStart)
-            .gap(0.0)
-            .grow(1.0)
-            .width(px(0.0))
-            .min_width(px(0.0))
-            .fill(fill);
+    let column = match lane {
+        Lane::Old => Column::Old,
+        Lane::New => Column::New,
+    };
+    let text = selectable(text, slot, style.selected, move |index| {
+        DiffLine {
+            view: root,
+            index,
+            column,
+        }
+    });
+    let cell = row((gutter(numbers, style), slot.sideways(text)))
+        .align(AlignItems::FlexStart)
+        .gap(0.0)
+        .grow(1.0)
+        .width(px(0.0))
+        .min_width(px(0.0))
+        .fill(fill);
     let hatch = style.faint.with_alpha(HATCH_ALPHA);
     let empty = row_signal(root, slot, move |doc, index| {
         doc.body(index).is_some_and(|(_, row)| {
@@ -1028,19 +1179,27 @@ fn number(line: Option<LineRef>, width: usize) -> String {
     }
 }
 
+/// The side a stacked row's line is on, the line, and the prefix a
+/// compact row writes before it. `None` for a gap row.
+fn stacked_line(row: Row) -> Option<(Lane, LineRef, &'static str)> {
+    match row {
+        Row::Deletion { old } => Some((Lane::Old, old, "- ")),
+        Row::Addition { new } => Some((Lane::New, new, "+ ")),
+        Row::Context { new, .. } | Row::Expanded { new, .. } => {
+            Some((Lane::New, new, "  "))
+        }
+        Row::Paired { .. } | Row::Gap { .. } => None,
+    }
+}
+
 fn stacked_spans(
     file: &SourceFile,
     row: Row,
     style: &RowStyle,
     compact: bool,
 ) -> Vec<Span> {
-    let (lane, line, prefix) = match row {
-        Row::Deletion { old } => (Lane::Old, old, "- "),
-        Row::Addition { new } => (Lane::New, new, "+ "),
-        Row::Context { new, .. } | Row::Expanded { new, .. } => {
-            (Lane::New, new, "  ")
-        }
-        Row::Paired { .. } | Row::Gap { .. } => return Vec::new(),
+    let Some((lane, line, prefix)) = stacked_line(row) else {
+        return Vec::new();
     };
     let mut spans = line_text(file, row, lane, line, style);
     if compact {

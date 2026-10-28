@@ -49,14 +49,22 @@ impl Plugin for RubrixPlugin {
             )
             .add_systems(
                 PreUpdate,
-                (code_view::take_sent, select::follow_drags)
+                (
+                    code_view::take_sent,
+                    select::follow_drags::<CodeDoc>,
+                    select::follow_drags::<DiffDoc>,
+                )
                     .chain()
                     .after(PickingSystems::Last),
             )
-            .add_systems(Update, select::keys)
+            .add_systems(
+                Update,
+                (select::keys::<CodeDoc>, select::keys::<DiffDoc>),
+            )
             .add_systems(
                 PostUpdate,
-                select::draw.after(UiSystems::PostLayout),
+                (select::draw::<CodeDoc>, select::draw::<DiffDoc>)
+                    .after(UiSystems::PostLayout),
             );
     }
 }
