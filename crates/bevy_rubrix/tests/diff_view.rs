@@ -237,3 +237,37 @@ fn a_limit_shows_n_rows_and_one_button_row() {
     let added = slot(&mut app, 21);
     assert_eq!(texts(&app, added), ["+ new 1"]);
 }
+
+#[test]
+fn each_patch_hunk_is_highlighted_from_the_start() {
+    let patch = "\
+diff --git a/lib.rs b/lib.rs
+--- a/lib.rs
++++ b/lib.rs
+@@ -1,2 +1,2 @@
+ /* a comment the omitted lines close
+-let old = 1;
++let new = 1;
+@@ -20 +20 @@
+-fn old() {}
++fn new() {}
+";
+    let mut app =
+        showing(DiffSource::patch(patch).expect("the patch parses"));
+    assert_eq!(
+        doc(&mut app).row(4),
+        Some(DiffRow::Body {
+            file: 0,
+            row: Row::Gap {
+                hunk: 1,
+                hidden: 17,
+                up: false,
+                down: false
+            }
+        })
+    );
+    let comment = slot(&mut app, 2);
+    assert_eq!(colour_of(&app, comment, "let"), FAINT);
+    let code = slot(&mut app, 5);
+    assert_eq!(colour_of(&app, code, "fn"), ACCENT);
+}

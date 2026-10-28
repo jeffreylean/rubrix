@@ -25,11 +25,11 @@ use bevy_fynix::{
     component, derived, keyed,
 };
 use rubrix_diff::{
-    Anchor, Expansion, FileChange, FileDiff, Layout, LineRef, Lines,
-    Meta, PatchError, Row, Rows, Side, diff_texts, parse_patch,
-    realign, rows,
+    Anchor, Expansion, FileChange, FileDiff, Hunk, Layout, LineRef,
+    Lines, Meta, PatchError, Row, Rows, Side, diff_texts,
+    parse_patch, realign, rows,
 };
-use rubrix_highlight::{Highlights, Lang, Stream, highlight};
+use rubrix_highlight::{Highlights, Lang, Run, Stream, highlight};
 
 use crate::code_view::{Overflow, Shown, line_spans};
 use crate::tokens::{Styles, SyntaxTokens, Tint};
@@ -37,7 +37,7 @@ use crate::tokens::{Styles, SyntaxTokens, Tint};
 /// Bevy's line height, as a factor of the font size.
 const LINE_HEIGHT: f32 = 1.2;
 
-const OVERSCAN: f32 = 400.0;
+const OVERSCAN: f32 = 100.0;
 
 const CONTEXT: u32 = 3;
 
@@ -57,16 +57,57 @@ pub struct DiffSource(Arc<[SourceFile]>);
 
 struct SourceFile {
     diff: FileDiff,
-    old: Highlights,
-    new: Highlights,
+    old: Runs,
+    new: Runs,
     digits: usize,
 }
 
+/// A side's runs. A patch lexes each hunk apart, from the start
+/// state, because the lines between its hunks are missing.
+struct Runs {
+    starts: Vec<u32>,
+    parts: Vec<Highlights>,
+}
+
+impl Runs {
+    fn new(lang: Lang, lines: &Lines, hunks: &[u32]) -> Runs {
+        let mut runs = Runs {
+            starts: Vec::new(),
+            parts: Vec::new(),
+        };
+        let mut at = 0;
+        for &len in hunks.iter().filter(|&&len| len > 0) {
+            let mut stream = Stream::new(lang);
+            for line in at..at + len {
+                stream.push(lines.raw(line));
+            }
+            runs.starts.push(at);
+            runs.parts.push(stream.finish());
+            at += len;
+        }
+        runs
+    }
+
+    fn whole(lang: Lang, lines: &Lines) -> Runs {
+        Runs {
+            starts: vec![0],
+            parts: vec![highlight(lang, lines.text())],
+        }
+    }
+
+    fn line(&self, index: u32) -> &[Run] {
+        let part =
+            self.starts.partition_point(|&start| start <= index) - 1;
+        self.parts[part].stored_runs(index - self.starts[part])
+    }
+}
+
 impl DiffSource {
-    /// The files of `patch`, as [`parse_patch`] reads them. Each side
-    /// is highlighted from its hunk lines, streamed in order, in the
-    /// language its file's name names. A patch holds only its hunk
-    /// lines, so its gaps cannot expand.
+    /// The files of `patch`, as [`parse_patch`] reads them. Each
+    /// hunk's lines on each side are streamed through the highlighter
+    /// in the language its file's name names, each hunk from the
+    /// start of a text, since the lines between hunks are missing. A
+    /// patch holds only its hunk lines, so its gaps cannot expand.
     ///
     /// # Errors
     ///
@@ -74,7 +115,7 @@ impl DiffSource {
     pub fn patch(patch: &str) -> Result<DiffSource, PatchError> {
         let files = parse_patch(patch)?
             .into_iter()
-            .map(|diff| SourceFile::new(diff, streamed))
+            .map(SourceFile::new)
             .collect();
         Ok(DiffSource(files))
     }
@@ -102,7 +143,7 @@ impl DiffSource {
         let diff = diff_texts(old, new, CONTEXT)
             .with_meta(meta)
             .expect("the change kind follows the empty sides");
-        DiffSource(Arc::new([SourceFile::new(diff, whole)]))
+        DiffSource(Arc::new([SourceFile::new(diff)]))
     }
 
     /// No files.
@@ -123,10 +164,7 @@ impl PartialEq for DiffSource {
 }
 
 impl SourceFile {
-    fn new(
-        mut diff: FileDiff,
-        highlight_side: fn(Lang, &Lines) -> Highlights,
-    ) -> SourceFile {
+    fn new(mut diff: FileDiff) -> SourceFile {
         realign(&mut diff);
         let path =
             diff.new_name().or(diff.old_name()).unwrap_or_default();
@@ -136,32 +174,29 @@ impl SourceFile {
         let first = shown.map_or("", |lines| lines.line(0));
         let lang = Lang::detect(path, first);
         let digits = digits(last_number(&diff));
+        let side = |lines: &Lines, len: fn(&Hunk) -> u32| {
+            if diff.is_partial() {
+                let hunks =
+                    diff.hunks().iter().map(len).collect::<Vec<_>>();
+                Runs::new(lang, lines, &hunks)
+            } else {
+                Runs::whole(lang, lines)
+            }
+        };
         SourceFile {
-            old: highlight_side(lang, diff.old_lines()),
-            new: highlight_side(lang, diff.new_lines()),
+            old: side(diff.old_lines(), Hunk::old_len),
+            new: side(diff.new_lines(), Hunk::new_len),
             diff,
             digits,
         }
     }
 
-    fn side(&self, lane: Lane) -> (&Lines, &Highlights) {
+    fn side(&self, lane: Lane) -> (&Lines, &Runs) {
         match lane {
             Lane::Old => (self.diff.old_lines(), &self.old),
             Lane::New => (self.diff.new_lines(), &self.new),
         }
     }
-}
-
-fn whole(lang: Lang, lines: &Lines) -> Highlights {
-    highlight(lang, lines.text())
-}
-
-fn streamed(lang: Lang, lines: &Lines) -> Highlights {
-    let mut stream = Stream::new(lang);
-    for line in 0..lines.len() {
-        stream.push(lines.raw(line));
-    }
-    stream.finish()
 }
 
 fn last_number(diff: &FileDiff) -> u32 {
@@ -813,19 +848,15 @@ fn code(spans: Signal<Vec<Span>>, style: &RowStyle) -> Rich {
     rich(spans).font(style.font.clone()).size(style.size)
 }
 
-fn gutter(
-    numbers: Signal<String>,
-    style: &RowStyle,
-) -> Stack<(Rich,)> {
-    let numbers =
-        rich(numbers.map(|numbers| vec![Span::new(numbers)]))
-            .font(style.font.clone())
-            .size(style.size)
-            .tone(Tone::Faint)
-            .wrap(false);
-    row((numbers,))
-        .shrink(0.0)
-        .padding(UiRect::right(px(style.gap)))
+/// The line numbers of a row, faint and still while the text beside
+/// them scrolls sideways. A space pads them from the text, which
+/// costs a frame less than a padded node around them.
+fn gutter(numbers: Signal<String>, style: &RowStyle) -> Rich {
+    rich(numbers.map(|numbers| vec![Span::new(numbers + " ")]))
+        .font(style.font.clone())
+        .size(style.size)
+        .tone(Tone::Faint)
+        .wrap(false)
 }
 
 fn wraps(root: Entity) -> Signal<bool> {
@@ -951,20 +982,21 @@ where
     });
     AnyView::new(move |cx: &mut Cx<'_, Bevy, T>| {
         let node = cx.build(cell);
-        cx.world.entity_mut(node).insert(ImageNode {
-            image: HATCH,
-            color: Color::NONE,
-            image_mode: NodeImageMode::Tiled {
-                tile_x: true,
-                tile_y: true,
-                stretch_value: 1.0,
-            },
-            ..ImageNode::default()
-        });
         cx.effect(node, empty.into(), move |world, node, &empty| {
-            if let Some(mut image) = world.get_mut::<ImageNode>(node)
-            {
-                image.color = if empty { hatch } else { Color::NONE };
+            let mut node = world.entity_mut(node);
+            if empty {
+                node.insert(ImageNode {
+                    image: HATCH,
+                    color: hatch,
+                    image_mode: NodeImageMode::Tiled {
+                        tile_x: true,
+                        tile_y: true,
+                        stretch_value: 1.0,
+                    },
+                    ..ImageNode::default()
+                });
+            } else {
+                node.remove::<ImageNode>();
             }
         });
         node
@@ -1033,11 +1065,8 @@ fn line_text(
 ) -> Vec<Span> {
     let (lines, highlights) = file.side(lane);
     let text = lines.line(line.index);
-    let spans = line_spans(
-        text,
-        highlights.stored_runs(line.index),
-        &style.styles,
-    );
+    let spans =
+        line_spans(text, highlights.line(line.index), &style.styles);
     let marks = match row {
         Row::Paired { .. }
         | Row::Deletion { .. }

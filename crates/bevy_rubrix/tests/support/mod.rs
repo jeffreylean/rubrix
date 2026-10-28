@@ -7,7 +7,7 @@ use bevy::color::Color;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::resource::Resource;
-use bevy::text::TextSpan;
+use bevy::text::{TextColor, TextSpan};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::ui::widget::Text;
 use bevy::ui_widgets::{Activate, Button};
@@ -26,12 +26,17 @@ use rubrix_diff::{Expansion, FileDiff, Row, rows};
 pub const LARGE_PATCH: &str =
     include_str!("../../../../bench/patch/large.patch.txt");
 
+pub const ACCENT: Color = Color::srgb(0.4, 0.6, 1.0);
+pub const FAINT: Color = Color::srgb(0.5, 0.5, 0.5);
+
 pub struct Plain;
 
 impl TextTokens for Plain {
     fn tone(&self, tone: Tone) -> Color {
         match tone {
             Tone::Body => Color::WHITE,
+            Tone::Accent => ACCENT,
+            Tone::Faint => FAINT,
             _ => Color::BLACK,
         }
     }
@@ -283,4 +288,20 @@ pub fn new_text(diff: &FileDiff, row: Row) -> Option<String> {
 
 pub fn numbered(count: usize) -> String {
     (1..=count).map(|n| format!("line {n}\n")).collect()
+}
+
+/// The colour of the first span under `root` whose text starts with
+/// `start`.
+pub fn colour_of(app: &App, root: Entity, start: &str) -> Color {
+    let world = app.world();
+    descendants(app, root)
+        .into_iter()
+        .find(|&node| {
+            world
+                .get::<TextSpan>(node)
+                .is_some_and(|span| span.0.starts_with(start))
+        })
+        .and_then(|node| world.get::<TextColor>(node))
+        .unwrap_or_else(|| panic!("a span starting {start:?}"))
+        .0
 }

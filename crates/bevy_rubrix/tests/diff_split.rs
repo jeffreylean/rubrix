@@ -1,10 +1,9 @@
 mod support;
 
 use bevy::app::App;
-use bevy::color::Alpha;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::Children;
-use bevy::ui::widget::ImageNode;
+use bevy::ui::widget::{ImageNode, Text};
 use bevy_rubrix::{DiffRow, DiffSource, Layout, Row};
 use support::*;
 
@@ -14,19 +13,23 @@ fn split(source: DiffSource) -> App {
     app
 }
 
-fn hatched(app: &App, root: Entity) -> Vec<bool> {
+fn hatched(app: &App, root: Entity) -> [bool; 2] {
     let world = app.world();
-    let mut found = Vec::new();
+    let mut sides = [false; 2];
+    let mut texts = 0;
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
-        if let Some(image) = world.get::<ImageNode>(node) {
-            found.push(image.color.alpha() > 0.0);
+        if world.get::<ImageNode>(node).is_some() {
+            sides[texts / 2] = true;
+        }
+        if world.get::<Text>(node).is_some() {
+            texts += 1;
         }
         if let Some(children) = world.get::<Children>(node) {
             stack.extend(children.iter().rev());
         }
     }
-    found
+    sides
 }
 
 #[test]
