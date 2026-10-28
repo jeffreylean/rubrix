@@ -19,10 +19,10 @@ use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
 use bevy::math::Vec2;
 use bevy::picking::Pickable;
-use bevy::picking::events::{
-    PointerDrag, PointerDragEnd, PointerPress, PointerRelease,
+use bevy::picking::events::PointerPress;
+use bevy::picking::pointer::{
+    PointerButton, PointerId, PointerLocation, PointerPressState,
 };
-use bevy::picking::pointer::PointerButton;
 use bevy::text::{ComputedTextBlock, TextLayout};
 use bevy::ui::{
     BackgroundColor, ComputedNode, Display, Node, PositionType,
@@ -37,8 +37,10 @@ use parley::{Affinity, Cursor, Selection};
 
 use crate::code_view::{OVERSCAN, Shown};
 
-/// Below a whole text's overscan, so the row a drag step brings to
-/// the edge is already built and laid out.
+/// Below the code view's overscan, so there a drag step brings to the
+/// edge a row already built and laid out. A diff view overscans less,
+/// so its step can reach a row not built yet, which the list places
+/// by its estimated height until it is built.
 const MAX_STEP: f32 = OVERSCAN - 20.0;
 
 const SELECTED_ALPHA: f32 = 0.15;
@@ -56,7 +58,7 @@ where
     grain: Grain,
     column: Column,
     revision: u64,
-    drag: Option<Vec2>,
+    drag: Option<PointerId>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -199,10 +201,7 @@ pub(crate) fn selected_colour(theme: &impl TextTokens) -> Color {
 
 pub(crate) fn attach<D: Selectable>(view: &mut EntityWorldMut) {
     view.insert((CodeSelection::<D::At>::default(), Selects))
-        .observe(press::<D>)
-        .observe(drag::<D::At>)
-        .observe(release::<D::At>)
-        .observe(drag_end::<D::At>);
+        .observe(press::<D>);
 }
 
 pub(crate) fn selectable<T, L>(
@@ -486,47 +485,34 @@ fn press<D: Selectable>(
             drag: None,
         };
     }
-    selection.drag = Some(at);
+    selection.drag = Some(press.pointer.id);
 }
 
-fn drag<At: Send + Sync + 'static>(
-    drag: On<PointerDrag>,
-    mut selections: Query<&mut CodeSelection<At>>,
-) {
-    if let Ok(mut selection) = selections.get_mut(drag.entity)
-        && selection.drag.is_some()
-    {
-        selection.drag = Some(drag.pointer.position);
-    }
-}
-
-fn release<At: Send + Sync + 'static>(
-    release: On<PointerRelease>,
-    mut selections: Query<&mut CodeSelection<At>>,
-) {
-    if let Ok(mut selection) = selections.get_mut(release.entity) {
-        selection.drag = None;
-    }
-}
-
-/// A release away from the view reaches it only as the end of the
-/// drag, which goes to the pressed row wherever the pointer is.
-fn drag_end<At: Send + Sync + 'static>(
-    end: On<PointerDragEnd>,
-    mut selections: Query<&mut CodeSelection<At>>,
-) {
-    if let Ok(mut selection) = selections.get_mut(end.entity) {
-        selection.drag = None;
-    }
-}
-
+/// Follows the pressed pointer itself, not the drag events Bevy sends
+/// to the pressed row, because a view may rebuild that row mid-drag.
 pub(crate) fn follow_drags<D: Selectable>(
     mut views: Query<(Entity, &D, &mut CodeSelection<D::At>)>,
+    pointers: Query<(
+        &PointerId,
+        &PointerLocation,
+        &PointerPressState,
+    )>,
     mut lists: ParamSet<(Hits<D>, Query<&mut VirtualList>)>,
 ) {
     for (view, doc, mut selection) in &mut views {
-        let (Some(at), Some(list)) = (selection.drag, doc.list())
+        let (Some(dragging), Some(list)) =
+            (selection.drag, doc.list())
         else {
+            continue;
+        };
+        let held = pointers
+            .iter()
+            .find(|&(id, _, press)| {
+                *id == dragging && press.is_primary_pressed()
+            })
+            .and_then(|(_, location, _)| location.location());
+        let Some(at) = held.map(|location| location.position) else {
+            selection.drag = None;
             continue;
         };
         if selection.live(doc).is_none() {
