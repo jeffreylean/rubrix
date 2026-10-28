@@ -1,6 +1,7 @@
 //! Code, diff and file-tree UI kit for Bevy, built on fynix.
 
 mod code_view;
+mod diff_view;
 mod tokens;
 
 use bevy::app::{App, Plugin, Startup};
@@ -10,6 +11,10 @@ use bevy::text::Font;
 pub use code_view::{
     CodeDoc, CodeLine, CodeSource, CodeView, Overflow, code_view,
 };
+pub use diff_view::{
+    DiffDoc, DiffRow, DiffRowAt, DiffSource, DiffView, diff_view,
+};
+pub use rubrix_diff::{Layout, Row, Side};
 pub use rubrix_highlight::{Kind, Lang, Run};
 pub use tokens::{
     Face, SyntaxStyle, SyntaxTokens, default_style, resolve,
@@ -29,7 +34,10 @@ pub struct RubrixPlugin;
 
 impl Plugin for RubrixPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, load_code_font);
+        app.add_systems(
+            Startup,
+            (load_code_font, diff_view::load_hatch),
+        );
     }
 }
 
