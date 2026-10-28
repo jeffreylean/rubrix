@@ -614,17 +614,23 @@ select(
     "wait 30",
     "screenshot r14-drag.png",
 )
-AUTOSCROLL_FRAMES = 321
+# The held drag scrolls past line 400, then a pixel scroll, still
+# held, puts line 400 on view row 18, where the pointer lets go.
+LINE_400_ROW = 18
 select(
     "autoscroll",
     "frames start",
     "wait 60",
     f"press {at_line(10, GUTTER_X)}",
     "move 700 799",
-    f"wait {AUTOSCROLL_FRAMES}",
+    "wait 360",
     "frames stop select-drag.csv",
     "log rows",
-    f"move {LINE_END_X} {LINE_1 + 18 * ROW}",
+    f"move 700 {LINE_1 + LINE_400_ROW * ROW}",
+    "scroll 0 1000000",
+    f"scroll 0 -{(400 - 1 - LINE_400_ROW) * ROW}",
+    "wait 5",
+    f"move {LINE_END_X} {LINE_1 + LINE_400_ROW * ROW}",
     "wait 5",
     "release",
     "log rows",

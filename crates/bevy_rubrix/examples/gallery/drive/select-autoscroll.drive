@@ -4,9 +4,13 @@ frames start
 wait 60
 press 235 279
 move 700 799
-wait 321
+wait 360
 frames stop select-drag.csv
 log rows
+move 700 432
+scroll 0 1000000
+scroll 0 -6477
+wait 5
 move 1250 432
 wait 5
 release

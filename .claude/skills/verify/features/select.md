@@ -23,7 +23,7 @@ Every `code_view`, on the `code` page and the `stream` page, selects and copies 
 The scripts are `drive/select-*.drive`, written by `gen_drives.py`. Each opens the `code` page on `large.rs.txt` and waits 120 frames. Line `n` of a view at its top shows at y `126 + (n - 1) * 17`, its text starts at x 271, and the gutter is at x 235. `clipboard` prints what the view copied.
 
 - **Drag (lane 1).** `select-drag.drive` drags from line 10 to the end of line 20 and copies. `log selection` prints `range 200..484`, lines 10 to 20 of the file.
-- **Auto-scroll (lane 2).** `select-autoscroll.drive` holds the button 19 px below the view for 321 frames, which scrolls 19 px a frame, then moves to the end of line 400 and releases. `log selection` prints `range 200..11911`, lines 10 to 400.
+- **Auto-scroll (lane 2).** `select-autoscroll.drive` holds the button 19 px below the view for 360 frames, which scrolls 19 px a frame until line 427 shows. Still holding, it scrolls to the top and down 6,477 px so line 400 is on view row 18, moves to the end of line 400, and releases. `log selection` prints `range 200..11911`, lines 10 to 400. The second scroll makes the end the same on every run, since the hold can end a frame early or late.
 - **Blank line (lane 3).** `select-blank.drive` copies lines 1 to 3. The clipboard keeps the empty line 2.
 - **Word (lane 4).** `select-word.drive` double-presses `Duration` on line 3. `expect selection length 8` passes, and `log selection` prints `range 51..59`.
 - **Line (lane 5).** `select-line.drive` triple-presses line 6 and copies `use bevy_fynix::tokens::{`.
