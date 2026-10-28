@@ -1,6 +1,7 @@
 //! Code, diff and file-tree UI kit for Bevy, built on fynix.
 
 mod code_view;
+mod diff_view;
 mod select;
 mod tokens;
 
@@ -17,6 +18,10 @@ pub use code_view::{
     CodeDoc, CodeLine, CodeSource, CodeStream, CodeView, Overflow,
     code_view,
 };
+pub use diff_view::{
+    DiffDoc, DiffRow, DiffRowAt, DiffSource, DiffView, diff_view,
+};
+pub use rubrix_diff::{Layout, Row, Side};
 pub use rubrix_highlight::{Kind, Lang, Run};
 pub use select::{CodeCopied, CodeSelection};
 pub use tokens::{
@@ -38,17 +43,28 @@ pub struct RubrixPlugin;
 impl Plugin for RubrixPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<select::KeyTarget>()
-            .add_systems(Startup, load_code_font)
+            .add_systems(
+                Startup,
+                (load_code_font, diff_view::load_hatch),
+            )
             .add_systems(
                 PreUpdate,
-                (code_view::take_sent, select::follow_drags)
+                (
+                    code_view::take_sent,
+                    select::follow_drags::<CodeDoc>,
+                    select::follow_drags::<DiffDoc>,
+                )
                     .chain()
                     .after(PickingSystems::Last),
             )
-            .add_systems(Update, select::keys)
+            .add_systems(
+                Update,
+                (select::keys::<CodeDoc>, select::keys::<DiffDoc>),
+            )
             .add_systems(
                 PostUpdate,
-                select::draw.after(UiSystems::PostLayout),
+                (select::draw::<CodeDoc>, select::draw::<DiffDoc>)
+                    .after(UiSystems::PostLayout),
             );
     }
 }

@@ -1,0 +1,12 @@
+page diff
+wait 30
+open ../fixtures/diff/realign-old.rs ../fixtures/diff/realign-new.rs
+wait 120
+click 734 68
+wait 120
+drag 230 176 1000 210
+key ctrl+c
+clipboard
+wait 30
+screenshot r16-copy-side.png
+exit

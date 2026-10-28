@@ -15,7 +15,8 @@
 //! - `key <combo>` such as `ctrl+a`, and `type <text>`
 //! - `screenshot <path>`, `record start <dir>`, `record stop`
 //! - `frames start`, `frames stop <csv>`
-//! - `log <topic>`, `expect <topic> <text>`, `clipboard`
+//! - `log <topic>`, `expect <topic> <text>`, `clipboard`; the `diff`
+//!   topic names the diff view's first visible row
 //! - `resize <width> <height>`, `open <path>...`
 //!
 //! A topic is a word, but `runs <line>` takes a line number too, so
@@ -72,7 +73,9 @@ use bevy::text::{TextColor, TextSpan};
 use bevy::ui::ScrollPosition;
 use bevy::window::{CursorMoved, PrimaryWindow, Window, WindowEvent};
 use bevy_fynix::views::VirtualList;
-use bevy_rubrix::{CodeDoc, CodeLine, CodeSelection};
+use bevy_rubrix::{
+    CodeDoc, CodeLine, CodeSelection, DiffDoc, DiffRow, Layout, Row,
+};
 use rubrix_highlight::spans;
 
 use crate::pages::rich::{Hit, HitLineRoot, LongLineRoot};
@@ -1189,6 +1192,7 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
             }
         }
         "scroll" => format!("scroll {}", scroll_offset(world)),
+        "diff" => diff(world),
         "stream" => pages::stream::log(world),
         "selection" => selection(world),
         "theme" => {
@@ -1228,6 +1232,55 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
             runs(world, line)
         }
     })
+}
+
+fn diff(world: &mut World) -> String {
+    let first = world
+        .query::<&VirtualList>()
+        .iter(world)
+        .next()
+        .map_or(0, VirtualList::first_visible);
+    let Some(doc) = world.query::<&DiffDoc>().iter(world).next()
+    else {
+        return "diff none".into();
+    };
+    let shape = match (doc.is_compact(), doc.layout()) {
+        (true, _) => "compact",
+        (false, Layout::Stacked) => "stacked",
+        (false, Layout::Split) => "split",
+    };
+    let number = |line: Option<rubrix_diff::LineRef>| {
+        line.map_or("-".into(), |line| line.number.to_string())
+    };
+    let row = match doc.row(first) {
+        Some(DiffRow::Header { file }) => {
+            let diff =
+                doc.source().files().nth(file).expect("a file");
+            let name = diff
+                .new_name()
+                .or(diff.old_name())
+                .unwrap_or_default();
+            format!("header {file} {name}")
+        }
+        Some(DiffRow::Body {
+            file,
+            row: Row::Gap { hidden, .. },
+        }) => {
+            format!("gap {file} hidden {hidden}")
+        }
+        Some(DiffRow::Body { file, row }) => format!(
+            "line {file} old {} new {}",
+            number(row.old_line()),
+            number(row.new_line())
+        ),
+        Some(DiffRow::More { lines }) => format!("more {lines}"),
+        None => "none".into(),
+    };
+    format!(
+        "diff files {} rows {} {shape} first {first} {row}",
+        doc.source().files().len(),
+        doc.len()
+    )
 }
 
 fn selection(world: &mut World) -> String {

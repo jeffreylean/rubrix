@@ -1,0 +1,13 @@
+page diff
+wait 30
+click 734 68
+wait 30
+click 438 68
+wait 120
+move 740 400
+scroll 0 -850000
+wait 120
+screenshot r16-stress.png
+log rows
+log diff
+exit

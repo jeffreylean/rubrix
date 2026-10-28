@@ -1,0 +1,10 @@
+page diff
+wait 30
+open ../fixtures/diff/wrap-old.rs ../fixtures/diff/wrap-new.rs
+wait 120
+click 734 68
+click 882 68
+wait 120
+screenshot r16-wrap.png
+log diff
+exit

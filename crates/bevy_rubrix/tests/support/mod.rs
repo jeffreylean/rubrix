@@ -1,30 +1,50 @@
 #![allow(dead_code, reason = "each test crate uses its own part")]
 
+pub mod diff;
+
 use core::time::Duration;
 
 use bevy::app::App;
 use bevy::asset::AssetApp;
 use bevy::camera::{
-    Camera, Camera2d, ComputedCameraValues, RenderTargetInfo,
+    Camera, Camera2d, ComputedCameraValues, NormalizedRenderTarget,
+    RenderTargetInfo,
 };
 use bevy::color::Color;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::Children;
+use bevy::ecs::observer::On;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
-use bevy::math::UVec2;
+use bevy::ecs::system::ResMut;
+use bevy::input::keyboard::{Key, KeyCode, KeyboardInput};
+use bevy::input::{ButtonInput, ButtonState};
+use bevy::math::{UVec2, Vec2};
+use bevy::picking::backend::HitData;
+use bevy::picking::events::{
+    Pointer, PointerDrag, PointerDragEnd, PointerPress,
+    PointerRelease,
+};
+use bevy::picking::pointer::{
+    Location, PointerAction, PointerButton, PointerId, PointerInput,
+};
 use bevy::text::{TextColor, TextSpan};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
-use bevy::ui::{UiPlugin, px};
+use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin, px};
 use bevy_fynix::tokens::{SpacingTokens, TextTokens, Tone};
-use bevy_fynix::views::{FrameProps, VirtualList, column};
+use bevy_fynix::views::parley::{Affinity, Cursor};
+use bevy_fynix::views::{
+    FrameProps, VirtualList, column, rich_layout,
+};
 use bevy_fynix::{FynixPlugin, Theme, mount, resource};
 use bevy_rubrix::{
-    CodeDoc, CodeLine, CodeSource, Kind, Overflow, RubrixPlugin,
-    SyntaxStyle, SyntaxTokens, code_view, resolve,
+    CodeCopied, CodeDoc, CodeLine, CodeSource, Kind, Overflow,
+    RubrixPlugin, SyntaxStyle, SyntaxTokens, code_view, resolve,
 };
 
 pub const BODY: Color = Color::WHITE;
+
+const WINDOW: u32 = 1000;
 
 pub struct Distinct;
 
@@ -99,6 +119,11 @@ pub fn app() -> App {
 
 pub fn laid_out_at(scale_factor: f32) -> App {
     let mut app = plain();
+    lay_out(&mut app, scale_factor);
+    app
+}
+
+pub fn lay_out(app: &mut App, scale_factor: f32) {
     app.add_plugins((
         bevy::asset::AssetPlugin::default(),
         bevy::transform::TransformPlugin,
@@ -115,7 +140,7 @@ pub fn laid_out_at(scale_factor: f32) -> App {
         Camera {
             computed: ComputedCameraValues {
                 target_info: Some(RenderTargetInfo {
-                    physical_size: UVec2::new(1000, 1000),
+                    physical_size: UVec2::splat(WINDOW),
                     scale_factor,
                 }),
                 ..Default::default()
@@ -123,8 +148,8 @@ pub fn laid_out_at(scale_factor: f32) -> App {
             ..Default::default()
         },
     ));
+    app.world_mut().spawn(PointerId::Mouse);
     app.update();
-    app
 }
 
 pub fn laid_out() -> App {
@@ -228,4 +253,182 @@ pub fn line(app: &mut App, row: usize) -> Entity {
 pub fn row_spans(app: &mut App, row: usize) -> Vec<(String, Color)> {
     let root = line(app, row);
     spans_of(app, root)
+}
+
+#[derive(Resource, Default)]
+pub struct Copied(pub Vec<String>);
+
+pub fn keep_copies(app: &mut App) {
+    app.init_resource::<Copied>().add_observer(
+        |copied: On<CodeCopied>, mut all: ResMut<Copied>| {
+            all.0.push(copied.text.clone());
+        },
+    );
+}
+
+pub fn copy(app: &mut App) -> String {
+    let before = app.world().resource::<Copied>().0.len();
+    ctrl(app, KeyCode::KeyC, "c");
+    let copied = &app.world().resource::<Copied>().0;
+    copied.get(before).cloned().unwrap_or_default()
+}
+
+pub fn corner(app: &App, root: Entity) -> Vec2 {
+    let world = app.world();
+    let node = world.get::<ComputedNode>(root).expect("a node");
+    world
+        .get::<UiGlobalTransform>(root)
+        .expect("a transform")
+        .translation
+        + node.content_box().min
+}
+
+pub fn point_in(app: &App, root: Entity, byte: usize) -> Vec2 {
+    let corner = corner(app, root);
+    let layout = &rich_layout(app.world(), root).expect("a layout");
+    let caret =
+        Cursor::from_byte_index(layout, byte, Affinity::Downstream)
+            .geometry(layout, 1.0);
+    corner
+        + Vec2::new(
+            caret.x0 as f32 + 1.0,
+            ((caret.y0 + caret.y1) / 2.0) as f32,
+        )
+}
+
+fn location(at: Vec2) -> Location {
+    Location {
+        target: NormalizedRenderTarget::None {
+            width: WINDOW,
+            height: WINDOW,
+        },
+        position: at,
+    }
+}
+
+fn pointer(at: Vec2) -> Pointer {
+    Pointer::new(PointerId::Mouse, location(at))
+}
+
+fn move_pointer_then(
+    app: &mut App,
+    at: Vec2,
+    action: Option<PointerAction>,
+) {
+    let actions =
+        [Some(PointerAction::Move { delta: Vec2::ZERO }), action];
+    for action in actions.into_iter().flatten() {
+        app.world_mut().write_message(PointerInput::new(
+            PointerId::Mouse,
+            location(at),
+            action,
+        ));
+    }
+}
+
+pub fn hold_on(app: &mut App, on: Entity, at: Vec2, count: u8) {
+    move_pointer_then(
+        app,
+        at,
+        Some(PointerAction::Press(PointerButton::Primary)),
+    );
+    app.world_mut().trigger(PointerPress {
+        entity: on,
+        pointer: pointer(at),
+        button: PointerButton::Primary,
+        hit: HitData::new(Entity::PLACEHOLDER, 0.0, None, None),
+        count,
+    });
+    app.update();
+}
+
+pub fn release_on(app: &mut App, on: Entity, at: Vec2) {
+    move_pointer_then(
+        app,
+        at,
+        Some(PointerAction::Release(PointerButton::Primary)),
+    );
+    app.world_mut().trigger(PointerRelease {
+        entity: on,
+        pointer: pointer(at),
+        button: PointerButton::Primary,
+        hit: HitData::new(Entity::PLACEHOLDER, 0.0, None, None),
+    });
+    app.update();
+}
+
+pub fn press_on(app: &mut App, on: Entity, at: Vec2, count: u8) {
+    hold_on(app, on, at, count);
+    release_on(app, on, at);
+}
+
+/// Bevy sends a drag to the entity first pressed, wherever the
+/// pointer is, even when that entity is gone.
+pub fn drag_on(app: &mut App, on: Entity, from: Vec2, at: Vec2) {
+    move_pointer_then(app, at, None);
+    app.world_mut().trigger(PointerDrag {
+        entity: on,
+        pointer: pointer(at),
+        button: PointerButton::Primary,
+        distance: at - from,
+        delta: at - from,
+    });
+    app.update();
+}
+
+/// A release over nothing, which ends the drag on the entity first
+/// pressed and sends no release.
+pub fn drag_end_on(app: &mut App, on: Entity, from: Vec2, at: Vec2) {
+    move_pointer_then(
+        app,
+        at,
+        Some(PointerAction::Release(PointerButton::Primary)),
+    );
+    app.world_mut().trigger(PointerDragEnd {
+        entity: on,
+        pointer: pointer(at),
+        button: PointerButton::Primary,
+        distance: at - from,
+    });
+    app.update();
+}
+
+pub fn shift(app: &mut App, held: bool) {
+    let mut keys =
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+    if held {
+        keys.press(KeyCode::ShiftLeft);
+    } else {
+        keys.release(KeyCode::ShiftLeft);
+    }
+}
+
+pub fn ctrl(app: &mut App, key: KeyCode, letter: &str) {
+    let send = |app: &mut App, key_code, logical_key, state| {
+        app.world_mut().write_message(KeyboardInput {
+            key_code,
+            logical_key,
+            state,
+            text: None,
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+    };
+    let letter = Key::Character(letter.into());
+    send(
+        app,
+        KeyCode::ControlLeft,
+        Key::Control,
+        ButtonState::Pressed,
+    );
+    send(app, key, letter.clone(), ButtonState::Pressed);
+    app.update();
+    send(app, key, letter, ButtonState::Released);
+    send(
+        app,
+        KeyCode::ControlLeft,
+        Key::Control,
+        ButtonState::Released,
+    );
+    app.update();
 }

@@ -1,6 +1,6 @@
 # Selection in the code view
 
-Every `code_view`, on the `code` page and the `stream` page, selects and copies text. R14 ships it. A selection is two byte ranges into the view's text, so rows that scroll away keep it.
+Every `code_view`, on the `code` page and the `stream` page, selects and copies text. R14 ships it. A selection is two byte ranges into the view's text, so rows that scroll away keep it. The diff page selects the same way, as `diff.md` describes.
 
 ## Sub-features
 

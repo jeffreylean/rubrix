@@ -1,8 +1,9 @@
+use core::fmt::Debug;
 use core::ops::Range;
 
 use bevy::camera::Camera;
 use bevy::clipboard::Clipboard;
-use bevy::color::Color;
+use bevy::color::{Alpha, Color};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::event::EntityEvent;
@@ -13,36 +14,51 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{
     Commands, ParamSet, Query, Res, ResMut, SystemParam,
 };
+use bevy::ecs::world::EntityWorldMut;
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
 use bevy::math::Vec2;
 use bevy::picking::Pickable;
-use bevy::picking::events::{
-    PointerDrag, PointerDragEnd, PointerPress, PointerRelease,
+use bevy::picking::events::PointerPress;
+use bevy::picking::pointer::{
+    PointerButton, PointerId, PointerLocation, PointerPressState,
 };
-use bevy::picking::pointer::PointerButton;
 use bevy::text::{ComputedTextBlock, TextLayout};
 use bevy::ui::{
     BackgroundColor, ComputedNode, Display, Node, PositionType,
     ScrollPosition, UiGlobalTransform, px,
 };
-use bevy_fynix::views::{VirtualList, drawn_layout, rich_point};
+use bevy_fynix::tokens::{TextTokens, Tone};
+use bevy_fynix::views::{
+    RowSlot, VirtualList, drawn_layout, rich_point,
+};
+use bevy_fynix::{AnyView, Bevy, Cx, View};
 use parley::{Affinity, Cursor, Selection};
 
-use crate::code_view::{CodeDoc, CodeLine, OVERSCAN, Shown};
+use crate::code_view::{OVERSCAN, Shown};
 
-/// Below a whole text's overscan, so the row a drag step brings to
-/// the edge is already built and laid out.
+/// Below the code view's overscan, so there a drag step brings to the
+/// edge a row already built and laid out. A diff view overscans less,
+/// so its step can reach a row not built yet, which the list places
+/// by its estimated height until it is built.
 const MAX_STEP: f32 = OVERSCAN - 20.0;
 
+const SELECTED_ALPHA: f32 = 0.15;
+
 /// What is selected in a code view, on the view's root entity: byte
-/// offsets into [`CodeDoc::text`]. A new source clears it.
+/// offsets into [`CodeDoc::text`](crate::CodeDoc::text). A new source
+/// clears it. A diff view keeps one too, over the places of its rows.
 #[derive(Component, Clone, Debug, Default, PartialEq)]
-pub struct CodeSelection {
-    anchor: Range<usize>,
-    focus: Range<usize>,
+pub struct CodeSelection<At = usize>
+where
+    At: Send + Sync + 'static,
+{
+    anchor: Range<At>,
+    focus: Range<At>,
     grain: Grain,
-    drag: Option<Vec2>,
+    column: Column,
+    revision: u64,
+    drag: Option<PointerId>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -53,28 +69,170 @@ enum Grain {
     Line,
 }
 
-impl CodeSelection {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Column {
+    #[default]
+    Only,
+    Old,
+    New,
+}
+
+impl<At: Copy + Ord + Send + Sync + 'static> CodeSelection<At> {
     /// What the first press covered: an empty range for a single
     /// press, the word for a double press, the line for a triple one.
-    pub fn anchor(&self) -> Range<usize> {
+    pub fn anchor(&self) -> Range<At> {
         self.anchor.clone()
     }
 
     /// What the last press or drag covered, the way
     /// [`CodeSelection::anchor`] does.
-    pub fn focus(&self) -> Range<usize> {
+    pub fn focus(&self) -> Range<At> {
         self.focus.clone()
     }
 
     /// The bytes selected, from the anchor to the focus, each whole.
-    pub fn range(&self) -> Range<usize> {
+    pub fn range(&self) -> Range<At> {
         self.anchor.start.min(self.focus.start)
             ..self.anchor.end.max(self.focus.end)
     }
 
-    pub(crate) fn clear(&mut self) {
+    pub(crate) fn clear(&mut self)
+    where
+        At: Default,
+    {
         *self = CodeSelection::default();
     }
+
+    fn live<D: Selectable<At = At>>(
+        &self,
+        doc: &D,
+    ) -> Option<Range<At>> {
+        (self.revision == doc.revision()).then(|| self.range())
+    }
+}
+
+/// What a view's root holds for a selection to read: a row per line
+/// of a virtual list, each with a rich text tagged
+/// [`Selectable::Line`].
+pub(crate) trait Selectable: Component + Sized {
+    /// A place in the text, which orders by row first.
+    type At: Copy + Ord + Default + Debug + Send + Sync + 'static;
+
+    type Line: Component;
+
+    fn line_of(line: &Self::Line) -> (Entity, usize, Column);
+
+    fn list(&self) -> Option<Entity>;
+
+    /// Changes whenever the rows do, which drops what was selected.
+    fn revision(&self) -> u64;
+
+    fn column(&self, across: f32) -> Column;
+
+    fn text(&self, column: Column, row: usize)
+    -> Option<RowText<'_>>;
+
+    fn at(&self, row: usize, byte: usize) -> Self::At;
+
+    fn on_row(
+        &self,
+        column: Column,
+        row: usize,
+        range: &Range<Self::At>,
+    ) -> Range<usize>;
+
+    fn all(&self) -> Range<Self::At>;
+
+    fn copy(&self, column: Column, range: Range<Self::At>) -> String;
+}
+
+pub(crate) struct RowText<'a> {
+    pub(crate) lead: &'static str,
+    pub(crate) line: &'a str,
+}
+
+impl RowText<'_> {
+    pub(crate) fn len(&self) -> usize {
+        self.lead.len() + self.line.len()
+    }
+
+    fn source(&self, drawn: usize) -> usize {
+        let lead = self.lead.len();
+        if drawn < lead {
+            drawn
+        } else {
+            lead + Shown::new(self.line).source(drawn - lead)
+        }
+    }
+
+    fn drawn(&self, byte: usize) -> usize {
+        let lead = self.lead.len();
+        if byte < lead {
+            byte
+        } else {
+            lead + Shown::new(self.line).shown(byte - lead)
+        }
+    }
+
+    fn word(&self, at: usize) -> Range<usize> {
+        let lead = self.lead.len();
+        if at < lead {
+            return word_at(self.lead, at);
+        }
+        let word = word_at(self.line, at - lead);
+        lead + word.start..lead + word.end
+    }
+
+    pub(crate) fn push(&self, bytes: Range<usize>, out: &mut String) {
+        let lead = self.lead.len();
+        out.push_str(
+            &self.lead[bytes.start.min(lead)..bytes.end.min(lead)],
+        );
+        out.push_str(
+            &self.line[bytes.start.max(lead) - lead
+                ..bytes.end.max(lead) - lead],
+        );
+    }
+}
+
+pub(crate) fn selected_colour(theme: &impl TextTokens) -> Color {
+    theme.tone(Tone::Accent).with_alpha(SELECTED_ALPHA)
+}
+
+pub(crate) fn attach<D: Selectable>(view: &mut EntityWorldMut) {
+    view.insert((CodeSelection::<D::At>::default(), Selects))
+        .observe(press::<D>);
+}
+
+pub(crate) fn selectable<T, L>(
+    text: impl View<Bevy, T> + 'static,
+    slot: RowSlot,
+    color: Color,
+    tag: impl Fn(usize) -> L + Send + Sync + 'static,
+) -> AnyView<Bevy, T>
+where
+    T: 'static,
+    L: Component,
+{
+    AnyView::new(move |cx: &mut Cx<'_, Bevy, T>| {
+        let node = cx.build(text);
+        cx.world
+            .entity_mut(node)
+            .insert(SelectionRects { color, layer: None });
+        tag_row(cx, node, slot, tag);
+        node
+    })
+}
+
+pub(crate) fn tag_row<T: 'static, L: Component>(
+    cx: &mut Cx<'_, Bevy, T>,
+    node: Entity,
+    slot: RowSlot,
+    tag: impl Fn(usize) -> L + Send + Sync + 'static,
+) {
+    cx.effect(node, slot.index().into(), move |world, node, &row| {
+        world.entity_mut(node).insert(tag(row));
+    });
 }
 
 /// Sent to a code view's root when `Ctrl+C` copies its selection,
@@ -91,15 +249,18 @@ pub(crate) struct KeyTarget(Option<Entity>);
 
 #[derive(Component)]
 pub(crate) struct SelectionRects {
-    pub(crate) color: Color,
-    pub(crate) layer: Option<Entity>,
+    color: Color,
+    layer: Option<Entity>,
 }
+
+#[derive(Component)]
+pub(crate) struct Selects;
 
 #[derive(Component)]
 pub(crate) struct Layer;
 
 #[derive(SystemParam)]
-pub(crate) struct Hits<'w, 's> {
+pub(crate) struct Hits<'w, 's, D: Selectable> {
     lists: Query<
         'w,
         's,
@@ -114,7 +275,7 @@ pub(crate) struct Hits<'w, 's> {
         'w,
         's,
         (
-            &'static CodeLine,
+            &'static <D as Selectable>::Line,
             &'static ComputedNode,
             &'static UiGlobalTransform,
             &'static ComputedTextBlock,
@@ -126,13 +287,14 @@ pub(crate) struct Hits<'w, 's> {
 
 struct Over {
     row: usize,
+    across: f32,
     inside: Vec2,
     past: f32,
     view: f32,
     scroll: f32,
 }
 
-impl Hits<'_, '_> {
+impl<D: Selectable> Hits<'_, '_, D> {
     fn over(&self, list: Entity, at: Vec2) -> Option<Over> {
         let camera = self.cameras.iter().next()?;
         let (state, node, transform, scroll) =
@@ -151,6 +313,7 @@ impl Hits<'_, '_> {
         let row = state.row_at(held.y * logical + scroll.y)?;
         Some(Over {
             row,
+            across: held.x / size.x,
             inside: at + (held - local) * logical,
             past,
             view,
@@ -178,48 +341,47 @@ impl Hits<'_, '_> {
     fn byte(
         &self,
         view: Entity,
-        doc: &CodeDoc,
+        doc: &D,
+        column: Column,
         row: usize,
         at: Vec2,
     ) -> usize {
-        let start = doc.line_range(row).start;
-        let Some(camera) = self.cameras.iter().next() else {
-            return start;
+        let Some(text) = doc.text(column, row) else {
+            return 0;
         };
-        let shown = self
-            .lines
-            .iter()
-            .find(|(line, ..)| **line == CodeLine { view, row });
-        let Some((_, node, transform, block, text)) = shown else {
-            return start;
+        let Some(camera) = self.cameras.iter().next() else {
+            return 0;
+        };
+        let shown = self.lines.iter().find(|(line, ..)| {
+            D::line_of(line) == (view, row, column)
+        });
+        let Some((_, node, transform, block, layout)) = shown else {
+            return 0;
         };
         let Some(point) = rich_point(node, transform, camera, at)
         else {
-            return start;
+            return 0;
         };
-        let layout = drawn_layout(block, text, node);
+        let layout = drawn_layout(block, layout, node);
         let cursor = Cursor::from_point(&layout, point.x, point.y);
-        let line = doc.line(row).unwrap_or_default();
-        start + Shown::new(line).source(cursor.index())
+        text.source(cursor.index())
     }
 }
 
-fn unit(
-    doc: &CodeDoc,
+fn unit<D: Selectable>(
+    doc: &D,
+    column: Column,
     row: usize,
     byte: usize,
     grain: Grain,
-) -> Range<usize> {
-    let line = doc.line_range(row);
-    match grain {
-        Grain::Letter => byte..byte,
-        Grain::Line => line,
-        Grain::Word => {
-            let text = doc.line(row).unwrap_or_default();
-            let word = word_at(text, byte - line.start);
-            line.start + word.start..line.start + word.end
-        }
-    }
+) -> Range<D::At> {
+    let text = doc.text(column, row);
+    let bytes = match (grain, text) {
+        (Grain::Letter, _) | (_, None) => byte..byte,
+        (Grain::Line, Some(text)) => 0..text.len(),
+        (Grain::Word, Some(text)) => text.word(byte),
+    };
+    doc.at(row, bytes.start)..doc.at(row, bytes.end)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -270,10 +432,10 @@ fn shift_held(keys: Option<&ButtonInput<KeyCode>>) -> bool {
     })
 }
 
-pub(crate) fn press(
+fn press<D: Selectable>(
     mut press: On<PointerPress>,
-    mut views: Query<(&CodeDoc, &mut CodeSelection)>,
-    hits: Hits,
+    mut views: Query<(&D, &mut CodeSelection<D::At>)>,
+    hits: Hits<D>,
     keys: Option<Res<ButtonInput<KeyCode>>>,
     mut pressed: ResMut<KeyTarget>,
 ) {
@@ -296,74 +458,73 @@ pub(crate) fn press(
         return;
     };
     pressed.0 = Some(view);
-    let byte = hits.byte(view, doc, over.row, over.inside);
-    let extend = shift_held(keys.as_deref())
-        && *selection != CodeSelection::default();
+    let extend =
+        shift_held(keys.as_deref()) && selection.live(doc).is_some();
     if extend {
-        selection.focus = unit(doc, over.row, byte, selection.grain);
+        let column = selection.column;
+        let byte =
+            hits.byte(view, doc, column, over.row, over.inside);
+        selection.focus =
+            unit(doc, column, over.row, byte, selection.grain);
     } else {
         let grain = match press.count {
             0 | 1 => Grain::Letter,
             2 => Grain::Word,
             _ => Grain::Line,
         };
-        let anchor = unit(doc, over.row, byte, grain);
+        let column = doc.column(over.across);
+        let byte =
+            hits.byte(view, doc, column, over.row, over.inside);
+        let anchor = unit(doc, column, over.row, byte, grain);
         *selection = CodeSelection {
             focus: anchor.clone(),
             anchor,
             grain,
+            column,
+            revision: doc.revision(),
             drag: None,
         };
     }
-    selection.drag = Some(at);
+    selection.drag = Some(press.pointer.id);
 }
 
-pub(crate) fn drag(
-    drag: On<PointerDrag>,
-    mut selections: Query<&mut CodeSelection>,
-) {
-    if let Ok(mut selection) = selections.get_mut(drag.entity)
-        && selection.drag.is_some()
-    {
-        selection.drag = Some(drag.pointer.position);
-    }
-}
-
-pub(crate) fn release(
-    release: On<PointerRelease>,
-    mut selections: Query<&mut CodeSelection>,
-) {
-    if let Ok(mut selection) = selections.get_mut(release.entity) {
-        selection.drag = None;
-    }
-}
-
-/// A release away from the view reaches it only as the end of the
-/// drag, which goes to the pressed row wherever the pointer is.
-pub(crate) fn drag_end(
-    end: On<PointerDragEnd>,
-    mut selections: Query<&mut CodeSelection>,
-) {
-    if let Ok(mut selection) = selections.get_mut(end.entity) {
-        selection.drag = None;
-    }
-}
-
-pub(crate) fn follow_drags(
-    mut views: Query<(Entity, &CodeDoc, &mut CodeSelection)>,
-    mut lists: ParamSet<(Hits, Query<&mut VirtualList>)>,
+pub(crate) fn follow_drags<D: Selectable>(
+    mut views: Query<(Entity, &D, &mut CodeSelection<D::At>)>,
+    pointers: Query<(
+        &PointerId,
+        &PointerLocation,
+        &PointerPressState,
+    )>,
+    mut lists: ParamSet<(Hits<D>, Query<&mut VirtualList>)>,
 ) {
     for (view, doc, mut selection) in &mut views {
-        let (Some(at), Some(list)) = (selection.drag, doc.list())
+        let (Some(dragging), Some(list)) =
+            (selection.drag, doc.list())
         else {
             continue;
         };
+        let held = pointers
+            .iter()
+            .find(|&(id, _, press)| {
+                *id == dragging && press.is_primary_pressed()
+            })
+            .and_then(|(_, location, _)| location.location());
+        let Some(at) = held.map(|location| location.position) else {
+            selection.drag = None;
+            continue;
+        };
+        if selection.live(doc).is_none() {
+            continue;
+        }
         let hits = lists.p0();
         let Some(over) = hits.over(list, at) else {
             continue;
         };
-        let byte = hits.byte(view, doc, over.row, over.inside);
-        let focus = unit(doc, over.row, byte, selection.grain);
+        let column = selection.column;
+        let byte =
+            hits.byte(view, doc, column, over.row, over.inside);
+        let focus =
+            unit(doc, column, over.row, byte, selection.grain);
         if selection.focus != focus {
             selection.focus = focus;
         }
@@ -407,9 +568,10 @@ fn reveal_past(list: &mut VirtualList, over: &Over) {
     list.scroll_range_into_view(row, range);
 }
 
-pub(crate) fn keys(
+pub(crate) fn keys<D: Selectable>(
     keys: Option<Res<ButtonInput<KeyCode>>>,
-    mut views: Query<(Entity, &CodeDoc, &mut CodeSelection)>,
+    mut views: Query<(Entity, &D, &mut CodeSelection<D::At>)>,
+    every: Query<Entity, With<Selects>>,
     pressed: Res<KeyTarget>,
     clipboard: Option<ResMut<Clipboard>>,
     mut commands: Commands,
@@ -426,9 +588,9 @@ pub(crate) fn keys(
     }
     let view = pressed
         .0
-        .filter(|&view| views.contains(view))
+        .filter(|&view| every.contains(view))
         .or_else(|| {
-            let mut every = views.iter().map(|(view, ..)| view);
+            let mut every = every.iter();
             every.next().filter(|_| every.next().is_none())
         });
     let Some(Ok((view, doc, mut selection))) =
@@ -437,62 +599,75 @@ pub(crate) fn keys(
         return;
     };
     if all {
-        let len = doc.text().len();
+        let whole = doc.all();
+        let column = match selection.live(doc) {
+            Some(_) => selection.column,
+            None => doc.column(0.0),
+        };
         *selection = CodeSelection {
-            anchor: 0..0,
-            focus: len..len,
+            anchor: whole.start..whole.start,
+            focus: whole.end..whole.end,
+            column,
+            revision: doc.revision(),
             ..CodeSelection::default()
         };
     }
-    if copy && !selection.range().is_empty() {
-        let text = doc.text()[selection.range()].to_owned();
-        if let Some(mut clipboard) = clipboard {
-            let _ = clipboard.set_text(text.as_str());
-        }
-        commands.trigger(CodeCopied { entity: view, text });
+    let Some(range) = selection.live(doc).filter(|_| copy) else {
+        return;
+    };
+    let text = doc.copy(selection.column, range);
+    if text.is_empty() {
+        return;
     }
+    if let Some(mut clipboard) = clipboard {
+        let _ = clipboard.set_text(text.as_str());
+    }
+    commands.trigger(CodeCopied { entity: view, text });
 }
 
-pub(crate) fn draw(
-    mut lines: Query<(
-        &CodeLine,
-        &ComputedNode,
-        &ComputedTextBlock,
-        &TextLayout,
-        &mut SelectionRects,
-        &ChildOf,
-    )>,
-    views: Query<(&CodeDoc, &CodeSelection)>,
+type Drawn<'a, L> = (
+    &'a L,
+    &'a ComputedNode,
+    &'a ComputedTextBlock,
+    &'a TextLayout,
+    &'a mut SelectionRects,
+    &'a ChildOf,
+);
+
+pub(crate) fn draw<D: Selectable>(
+    mut lines: Query<Drawn<'_, D::Line>>,
+    views: Query<(&D, &CodeSelection<D::At>)>,
     mut layers: Query<(&mut Node, Option<&Children>), With<Layer>>,
     mut rects: Query<&mut Node, Without<Layer>>,
     mut commands: Commands,
 ) {
-    for (line, node, block, text, mut drawn, cell) in &mut lines {
+    for (line, node, block, layout, mut drawn, cell) in &mut lines {
+        let (view, row, column) = D::line_of(line);
         let boxes = views
-            .get(line.view)
+            .get(view)
             .ok()
             .and_then(|(doc, selection)| {
-                let selected = selection.range();
-                let bytes = doc.line_range(line.row);
-                let from = selected.start.max(bytes.start);
-                let to = selected.end.min(bytes.end);
-                if from >= to {
+                let selected = selection
+                    .live(doc)
+                    .filter(|_| selection.column == column)?;
+                let bytes = doc.on_row(column, row, &selected);
+                if bytes.is_empty() {
                     return None;
                 }
-                let shown = Shown::new(doc.line(line.row)?);
-                let layout = drawn_layout(block, text, node);
+                let text = doc.text(column, row)?;
+                let layout = drawn_layout(block, layout, node);
                 let at = |byte: usize, affinity| {
                     Cursor::from_byte_index(
                         &layout,
-                        shown.shown(byte - bytes.start),
+                        text.drawn(byte),
                         affinity,
                     )
                 };
                 let logical = node.inverse_scale_factor();
                 Some(
                     Selection::new(
-                        at(from, Affinity::Downstream),
-                        at(to, Affinity::Upstream),
+                        at(bytes.start, Affinity::Downstream),
+                        at(bytes.end, Affinity::Upstream),
                     )
                     .geometry(&layout)
                     .into_iter()

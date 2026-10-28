@@ -1,0 +1,9 @@
+page diff
+wait 30
+open ../fixtures/diff/added.patch
+wait 120
+click 734 68
+wait 120
+screenshot r16-added.png
+log diff
+exit

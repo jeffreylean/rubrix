@@ -1,0 +1,10 @@
+page diff
+wait 30
+open ../fixtures/diff/gap-old.txt ../fixtures/diff/gap-new.txt
+wait 120
+click 420 252
+wait 120
+screenshot r15-expand-all.png
+log diff
+expect diff rows 312
+exit

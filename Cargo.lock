@@ -1521,6 +1521,7 @@ dependencies = [
  "bevy",
  "bevy_fynix",
  "parley",
+ "rubrix_diff",
  "rubrix_highlight",
 ]
 

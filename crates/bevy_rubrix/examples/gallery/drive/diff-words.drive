@@ -1,0 +1,6 @@
+page diff
+wait 30
+open ../fixtures/diff/words-old.rs ../fixtures/diff/words-new.rs
+wait 120
+screenshot r15-words.png
+exit

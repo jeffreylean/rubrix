@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::mem;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use bevy::color::{Alpha, Color};
+use bevy::color::Color;
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
@@ -23,17 +23,17 @@ use rubrix_highlight::{
     Highlights, Lang, Run, Stream, highlight, spans,
 };
 
-use crate::select::{self, CodeSelection, SelectionRects};
+use crate::select::{
+    self, CodeSelection, Column, RowText, Selectable, selectable,
+};
 use crate::tokens::{Styles, SyntaxTokens};
 
 /// Bevy's line height, as a factor of the font size.
-const LINE_HEIGHT: f32 = 1.2;
+pub(crate) const LINE_HEIGHT: f32 = 1.2;
 
 const TAB: usize = 4;
 
 pub(crate) const OVERSCAN: f32 = 400.0;
-
-const SELECTED_ALPHA: f32 = 0.15;
 
 const STREAM_OVERSCAN: f32 = 0.0;
 
@@ -441,10 +441,6 @@ impl CodeDoc {
         }
     }
 
-    pub(crate) fn list(&self) -> Option<Entity> {
-        self.list
-    }
-
     fn streamed(&self) -> bool {
         matches!(self.source.0, Feed::Stream(_))
     }
@@ -481,6 +477,55 @@ pub(crate) fn take_sent(mut docs: Query<&mut CodeDoc>) {
     }
 }
 
+impl Selectable for CodeDoc {
+    type At = usize;
+    type Line = CodeLine;
+
+    fn line_of(line: &CodeLine) -> (Entity, usize, Column) {
+        (line.view, line.row, Column::Only)
+    }
+
+    fn list(&self) -> Option<Entity> {
+        self.list
+    }
+
+    fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    fn column(&self, _: f32) -> Column {
+        Column::Only
+    }
+
+    fn text(&self, _: Column, row: usize) -> Option<RowText<'_>> {
+        self.line(row).map(|line| RowText { lead: "", line })
+    }
+
+    fn at(&self, row: usize, byte: usize) -> usize {
+        self.line_range(row).start + byte
+    }
+
+    fn on_row(
+        &self,
+        _: Column,
+        row: usize,
+        range: &Range<usize>,
+    ) -> Range<usize> {
+        let line = self.line_range(row);
+        let from = range.start.max(line.start);
+        let to = range.end.min(line.end).max(from);
+        from - line.start..to - line.start
+    }
+
+    fn all(&self) -> Range<usize> {
+        0..self.text().len()
+    }
+
+    fn copy(&self, _: Column, range: Range<usize>) -> String {
+        self.text()[range].to_owned()
+    }
+}
+
 /// On the rich text of each row of a code view: the view's root and
 /// the row, from 0, it shows now.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -509,21 +554,12 @@ where
             font: theme.code_font(),
             size: theme.body_size(),
             gap: theme.gap(),
-            selected: theme
-                .tone(Tone::Accent)
-                .with_alpha(SELECTED_ALPHA),
+            selected: select::selected_colour(theme),
         };
         let root = cx.build(filling());
-        cx.world
-            .entity_mut(root)
-            .insert((
-                CodeDoc::new(&CodeSource::empty()),
-                CodeSelection::default(),
-            ))
-            .observe(select::press)
-            .observe(select::drag)
-            .observe(select::release)
-            .observe(select::drag_end);
+        let mut view = cx.world.entity_mut(root);
+        view.insert(CodeDoc::new(&CodeSource::empty()));
+        select::attach::<CodeDoc>(&mut view);
         cx.effect(root, self.source, |world, root, source| {
             let mut view = world.entity_mut(root);
             view.get_mut::<CodeDoc>()
@@ -552,7 +588,7 @@ where
     }
 }
 
-fn filling() -> Stack<()> {
+pub(crate) fn filling() -> Stack<()> {
     column(()).grow(1.0).min_width(px(0.0)).min_height(px(0.0))
 }
 
@@ -621,22 +657,8 @@ where
     .wrap(component::<CodeDoc, bool>(root, |doc| {
         doc.is_some_and(|doc| doc.overflow == Overflow::Wrap)
     }));
-    let color = style.selected;
-    let text = AnyView::new(move |cx: &mut Cx<'_, Bevy, T>| {
-        let node = cx.build(line);
-        cx.world
-            .entity_mut(node)
-            .insert(SelectionRects { color, layer: None });
-        cx.effect(
-            node,
-            slot.index().into(),
-            move |world, node, &row| {
-                world
-                    .entity_mut(node)
-                    .insert(CodeLine { view: root, row });
-            },
-        );
-        node
+    let text = selectable(line, slot, style.selected, move |row| {
+        CodeLine { view: root, row }
     });
     row((gutter, slot.sideways(text)))
         .align(AlignItems::FlexStart)
@@ -703,8 +725,8 @@ struct Read {
     committed: bool,
 }
 
-fn digits(rows: usize) -> usize {
-    rows.checked_ilog10().map_or(1, |log| log as usize + 1)
+pub(crate) fn digits(number: usize) -> usize {
+    number.checked_ilog10().map_or(1, |log| log as usize + 1)
 }
 
 pub(crate) struct Shown<'a> {
@@ -910,7 +932,7 @@ mod tests {
     #[test]
     fn digits_count_the_widest_line_number() {
         assert_eq!(
-            [1, 9, 10, 99_999, 100_000].map(digits),
+            [0, 9, 10, 99_999, 100_000].map(digits),
             [1, 1, 2, 5, 6]
         );
     }

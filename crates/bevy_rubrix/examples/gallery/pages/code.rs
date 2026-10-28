@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bevy::app::App;
 use bevy::ecs::resource::Resource;
@@ -153,6 +153,12 @@ pub(super) fn read(
             paths.len()
         ));
     };
+    read_file(path)
+}
+
+pub(super) fn read_file(
+    path: &Path,
+) -> Result<(String, String), String> {
     let bytes = fs::read(path).map_err(|error| {
         format!("cannot read {}: {error}", path.display())
     })?;

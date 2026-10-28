@@ -15,6 +15,7 @@ use crate::{Build, Copied, PageView};
 
 mod about;
 mod code;
+mod diff;
 pub mod rich;
 pub mod stream;
 pub mod virtual_list;
@@ -55,6 +56,11 @@ pub const PAGES: &[Page] = &[
         build: stream::build,
         open: Some(stream::open),
     },
+    Page {
+        name: "diff",
+        build: diff::build,
+        open: Some(diff::open),
+    },
 ];
 
 pub fn plugin(app: &mut App) {
@@ -62,6 +68,7 @@ pub fn plugin(app: &mut App) {
     virtual_list::plugin(app);
     code::plugin(app);
     stream::plugin(app);
+    diff::plugin(app);
     app.add_observer(
         |copied: On<CodeCopied>, mut last: ResMut<Copied>| {
             last.0 = Some(copied.text.clone());
