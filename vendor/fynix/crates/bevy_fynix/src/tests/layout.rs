@@ -4,7 +4,7 @@
 
 use core::time::Duration;
 
-use bevy::app::App;
+use bevy::app::{App, Update};
 use bevy::asset::AssetApp;
 use bevy::camera::visibility::Visibility;
 use bevy::camera::{
@@ -78,6 +78,14 @@ pub(super) fn laid_out_at(scale_factor: f32) -> App {
         },
     ));
     app
+}
+
+#[test]
+#[should_panic(expected = "a system panicked")]
+fn a_system_that_panics_fails_the_update() {
+    let mut app = laid_out();
+    app.add_systems(Update, || panic!("a system panicked"));
+    app.update();
 }
 
 #[derive(Resource, Clone, Copy, PartialEq)]

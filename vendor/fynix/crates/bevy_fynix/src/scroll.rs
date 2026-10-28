@@ -291,6 +291,45 @@ mod tests {
     }
 
     #[test]
+    fn a_wheel_notched_to_the_end_eases_to_the_end_as_it_grows() {
+        let mut app = tests::app();
+        let mut position = ScrollPosition::default();
+        let mut goal = ScrollGoal::default();
+        goal.scroll_by(
+            &mut position,
+            Vec2::Y * 900.0,
+            Vec2::Y * 900.0,
+            true,
+        );
+        let computed = ComputedNode {
+            size: Vec2::splat(100.0),
+            content_size: Vec2::new(100.0, 1_000.0),
+            ..ComputedNode::default()
+        };
+        let node = app
+            .world_mut()
+            .spawn((Node::default(), computed, position, goal))
+            .id();
+
+        for frame in 1..=20 {
+            if frame <= 5 {
+                app.world_mut()
+                    .get_mut::<ComputedNode>(node)
+                    .unwrap()
+                    .content_size
+                    .y += 50.0;
+            }
+            app.update();
+        }
+        let position =
+            app.world().get::<ScrollPosition>(node).unwrap();
+        assert_eq!(
+            position.y, 1_150.0,
+            "the end after 5 frames of growth"
+        );
+    }
+
+    #[test]
     fn a_wheel_turns_without_the_input_plugin() {
         let mut app = tests::app();
         let node = app.world_mut().spawn_empty().id();

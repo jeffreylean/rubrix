@@ -5,14 +5,15 @@ use bevy::color::{Alpha, Color};
 use bevy::ecs::change_detection::Tick;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
+use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::math::Vec2;
 use bevy::text::{
-    FontSize, InlineBox, LineHeight, StrikethroughColor,
-    TextBackgroundColor, TextColor, TextFont, TextSpan, Underline,
-    UnderlineColor,
+    ComputedTextBlock, FontSize, InlineBox, LineHeight,
+    StrikethroughColor, TextBackgroundColor, TextColor, TextFont,
+    TextLayoutInfo, TextSpan, Underline, UnderlineColor,
 };
-use bevy::ui::{ComputedNode, UiGlobalTransform};
+use bevy::ui::{ComputedNode, UiGlobalTransform, px};
 use fynix::{Motion, ScopedExt};
 use parley::{Affinity, Cluster, Cursor};
 
@@ -20,9 +21,10 @@ use super::layout::laid_out_at;
 use crate::tests::{Plain, app, kids};
 use crate::tokens::Tone;
 use crate::views::{
-    LineColor, Rich, Span, rich, rich_layout, rich_point,
+    FrameProps, LineColor, Rich, RowSlot, Span, column, rich,
+    rich_layout, rich_point, row, virtual_list,
 };
-use crate::{mount, resource};
+use crate::{ViewExt, mount, resource};
 
 #[derive(Resource)]
 struct Line(Vec<Span>);
@@ -357,6 +359,65 @@ fn rich_layout_point_of_a_window_position_is_the_byte_under_it() {
 
     let cursor = cursor_at(&mut app, root, at).expect("a cursor");
     assert_eq!(cursor.index(), wörld);
+}
+
+#[derive(Resource)]
+struct Sideways(bool);
+
+#[test]
+fn rich_layout_breaks_a_wrapped_text_where_bevy_drew_it() {
+    let mut app = with_text();
+    app.insert_resource(Sideways(true));
+    let words = (0..30)
+        .map(|index| Span::new(format!("word{index} ")))
+        .collect::<Vec<_>>();
+    let wrapped = move |slot: RowSlot| {
+        row((slot.sideways(rich(words.clone()).boxed()),)).boxed()
+    };
+    let sideways = resource::<Sideways, _>(|on| on.0);
+    mount::<Plain>(
+        app.world_mut(),
+        column((virtual_list(1, 20.0, wrapped).sideways(sideways),))
+            .width(px(300.0))
+            .height(px(400.0)),
+    );
+    app.update();
+    app.update();
+    app.world_mut().resource_mut::<Sideways>().0 = false;
+    for _ in 0..3 {
+        app.update();
+    }
+
+    let world = app.world_mut();
+    let root = world
+        .query_filtered::<Entity, With<ComputedTextBlock>>()
+        .single(world)
+        .expect("one rich text");
+    let world = app.world();
+    let layout = rich_layout(world, root).expect("a layout");
+    let drawn = world.get::<TextLayoutInfo>(root).expect("drawn");
+    let drawn_lines = drawn
+        .glyphs
+        .iter()
+        .map(|glyph| glyph.line_index as usize + 1)
+        .max();
+    let width = world
+        .get::<ComputedNode>(root)
+        .unwrap()
+        .content_box()
+        .width();
+    assert!(layout.len() > 1, "the text wraps");
+    assert_eq!(
+        Some(layout.len()),
+        drawn_lines,
+        "as many lines as Bevy drew, after a switch out of sideways \
+         scrolling left lines of other widths in the block"
+    );
+    for line in layout.lines() {
+        let metrics = line.metrics();
+        let ink = metrics.advance - metrics.trailing_whitespace;
+        assert!(ink <= width, "a line {ink} wide in {width}");
+    }
 }
 
 fn height(app: &App, node: Entity) -> f32 {
