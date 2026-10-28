@@ -18,7 +18,7 @@ use bevy::ecs::observer::On;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Query, Res};
 use bevy::input::mouse::{MouseScrollPixelsPerLine, MouseScrollUnit};
-use bevy::math::Vec2;
+use bevy::math::{BVec2, Vec2};
 use bevy::picking::events::PointerScroll;
 use bevy::time::Time;
 use bevy::ui::{ComputedNode, Node, OverflowAxis, ScrollPosition};
@@ -65,7 +65,15 @@ pub fn wheel(
 /// A node the wheel scrolls, and where it is easing to, if anywhere.
 #[derive(Component, Clone, Copy, Debug, Default)]
 #[require(ScrollPosition)]
-pub struct ScrollGoal(Option<Vec2>);
+pub struct ScrollGoal(Option<Heading>);
+
+/// Where a wheel sent an area, and on which axes that was its end,
+/// which it follows if the content grows on the way there.
+#[derive(Clone, Copy, Debug)]
+struct Heading {
+    to: Vec2,
+    to_end: BVec2,
+}
 
 impl ScrollGoal {
     /// Scrolls on by `delta`, no further than `max`: eased from
@@ -78,14 +86,23 @@ impl ScrollGoal {
         max: Vec2,
         notched: bool,
     ) {
-        let from = self.0.unwrap_or(**position);
-        let to = (from + delta).clamp(Vec2::ZERO, max);
+        let to =
+            (self.settled(position) + delta).clamp(Vec2::ZERO, max);
         if notched {
-            self.0 = Some(to);
+            let was = self.0.map_or(BVec2::FALSE, |goal| goal.to_end);
+            let reaches = delta.cmpgt(Vec2::ZERO) & to.cmpge(max);
+            self.0 = Some(Heading {
+                to,
+                to_end: reaches | (was & delta.cmpeq(Vec2::ZERO)),
+            });
         } else {
             self.0 = None;
             **position = to;
         }
+    }
+
+    fn settled(&self, position: &ScrollPosition) -> Vec2 {
+        self.0.map_or(**position, |goal| goal.to)
     }
 
     pub(crate) fn shift(
@@ -94,8 +111,8 @@ impl ScrollGoal {
         delta: Vec2,
     ) {
         **position += delta;
-        if let Some(to) = &mut self.0 {
-            *to += delta;
+        if let Some(goal) = &mut self.0 {
+            goal.to += delta;
         }
     }
 }
@@ -140,10 +157,9 @@ fn on_scroll(
     );
     // A wheel this area has no use for, turned the other way or
     // past its end, is left to an area around it.
-    let before = (goal.0, **position);
+    let before = goal.settled(&position);
     goal.scroll_by(&mut position, delta, overflow(computed), notched);
-    let settled = goal.0.unwrap_or(**position);
-    if settled != before.0.unwrap_or(before.1) {
+    if goal.settled(&position) != before {
         scroll.propagate(false);
     }
 }
@@ -165,17 +181,27 @@ pub(crate) fn ease(
         1.0 - (-time.delta_secs() / follow).exp()
     };
     for (computed, mut position, mut goal) in &mut areas {
-        let Some(to) = goal.0 else {
+        let Some(heading) = &mut goal.0 else {
             continue;
         };
-        // The content may have shrunk since the wheel turned.
-        let to = to.min(overflow(computed));
-        let left = to - **position;
+        // The content may have shrunk since the wheel turned. An axis
+        // headed for its end moves on with it as content arrives,
+        // keeping only what was left of the way, so that growth never
+        // widens the gap and the ease lands on the end itself.
+        let overflow = overflow(computed);
+        let from = Vec2::select(
+            heading.to_end,
+            heading.to,
+            heading.to.min(overflow),
+        );
+        let to = Vec2::select(heading.to_end, overflow, from);
+        let left = from - **position;
         if left.abs().max_element() < 0.5 || share >= 1.0 {
             **position = to;
             goal.0 = None;
         } else {
-            **position += left * share;
+            **position += to - from + left * share;
+            heading.to = Vec2::select(heading.to_end, to, heading.to);
         }
     }
 }
@@ -220,6 +246,47 @@ mod tests {
         let position =
             app.world().get::<ScrollPosition>(node).unwrap();
         assert_eq!(position.y, 140.0);
+    }
+
+    #[test]
+    fn an_ease_short_of_the_end_lands_where_the_wheel_sent_it() {
+        let mut app = tests::app();
+        let area = |app: &mut App| {
+            let mut position = ScrollPosition::default();
+            let mut goal = ScrollGoal::default();
+            goal.scroll_by(
+                &mut position,
+                Vec2::Y * 100.0,
+                Vec2::Y * 900.0,
+                true,
+            );
+            let computed = ComputedNode {
+                size: Vec2::splat(100.0),
+                content_size: Vec2::new(100.0, 1_000.0),
+                ..ComputedNode::default()
+            };
+            app.world_mut()
+                .spawn((Node::default(), computed, position, goal))
+                .id()
+        };
+        let still = area(&mut app);
+        let growing = area(&mut app);
+
+        for frame in 1..=60 {
+            app.world_mut()
+                .get_mut::<ComputedNode>(growing)
+                .unwrap()
+                .content_size
+                .y += 50.0;
+            app.update();
+            let at = |node| {
+                app.world().get::<ScrollPosition>(node).unwrap().y
+            };
+            assert_eq!(at(growing), at(still), "frame {frame}");
+        }
+        let position =
+            app.world().get::<ScrollPosition>(growing).unwrap();
+        assert_eq!(position.y, 100.0);
     }
 
     #[test]
