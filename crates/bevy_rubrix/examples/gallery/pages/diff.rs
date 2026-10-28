@@ -15,7 +15,7 @@ use crate::PageView;
 
 const LARGE_PATCH: &str =
     include_str!("../../../../../bench/patch/large.patch.txt");
-const STRESS_PATCH: &str =
+pub(super) const STRESS_PATCH: &str =
     include_str!("../../../../../bench/patch/stress.patch.txt");
 const LARGE_RS: &str =
     include_str!("../../../../../bench/fixtures/rust/large.rs.txt");
@@ -47,7 +47,7 @@ pub fn plugin(app: &mut App) {
     app.init_resource::<DiffFile>();
 }
 
-fn patch(text: &str) -> DiffSource {
+pub(super) fn patch(text: &str) -> DiffSource {
     DiffSource::patch(text).expect("a bundled patch parses")
 }
 

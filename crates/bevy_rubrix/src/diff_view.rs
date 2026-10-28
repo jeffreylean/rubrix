@@ -231,6 +231,7 @@ pub fn diff_view(source: impl Into<Prop<DiffSource>>) -> DiffView {
         source: source.into(),
         layout: Prop::Value(Layout::Stacked),
         compact: Prop::Value(false),
+        row_colours: Prop::Value(false),
         overflow: Prop::Value(Overflow::Scroll),
         limit: Prop::Value(None),
     }
@@ -241,6 +242,7 @@ pub struct DiffView {
     source: Prop<DiffSource>,
     layout: Prop<Layout>,
     compact: Prop<bool>,
+    row_colours: Prop<bool>,
     overflow: Prop<Overflow>,
     limit: Prop<Option<u32>>,
 }
@@ -260,6 +262,17 @@ impl DiffView {
     /// [`overflow`](Self::overflow) while it holds.
     pub fn compact(mut self, compact: impl Into<Prop<bool>>) -> Self {
         self.compact = compact.into();
+        self
+    }
+
+    /// Whether a compact line takes its row's colour in place of its
+    /// syntax colours: [`SyntaxTokens::addition`] for an added line,
+    /// [`SyntaxTokens::deletion`] for a removed one, and
+    /// [`Tone::Dim`] for one that did not change. Off when unset, so
+    /// a compact line keeps its syntax colours. It changes nothing
+    /// outside [`compact`](Self::compact) rows.
+    pub fn row_colours(mut self, on: impl Into<Prop<bool>>) -> Self {
+        self.row_colours = on.into();
         self
     }
 
@@ -308,6 +321,7 @@ pub struct DiffDoc {
     files: Vec<FileRows>,
     layout: Layout,
     compact: bool,
+    row_colours: bool,
     overflow: Overflow,
     limit: Option<u32>,
     header_rows: Vec<usize>,
@@ -345,6 +359,7 @@ impl DiffDoc {
             files: Vec::new(),
             layout: Layout::Stacked,
             compact: false,
+            row_colours: false,
             overflow: Overflow::Scroll,
             limit: None,
             header_rows: Vec::new(),
@@ -762,6 +777,7 @@ struct RowStyle {
     add: Tint,
     delete: Tint,
     faint: Color,
+    dim: Color,
     header: Color,
     selected: Color,
 }
@@ -782,6 +798,7 @@ impl RowStyle {
             add: Tint::new(panel, added),
             delete: Tint::new(panel, removed),
             faint: theme.tone(Tone::Faint),
+            dim: theme.tone(Tone::Dim),
             header: theme.fill(),
             selected: select::selected_colour(theme),
         }
@@ -823,6 +840,9 @@ where
         });
         cx.effect(root, self.compact, |world, root, &compact| {
             reshape(world, root, |doc| doc.compact = compact);
+        });
+        cx.effect(root, self.row_colours, |world, root, &on| {
+            doc_mut(world, root).row_colours = on;
         });
         cx.effect(root, self.overflow, |world, root, &overflow| {
             doc_mut(world, root).overflow = overflow;
@@ -987,7 +1007,8 @@ where
     let text = code(
         row_signal(root, slot, move |doc, index| {
             doc.body(index).map_or_else(Vec::new, |(file, row)| {
-                stacked_spans(file, row, &spans, compact)
+                let colours = compact && doc.row_colours;
+                stacked_spans(file, row, &spans, compact, colours)
             })
         }),
         style,
@@ -1173,6 +1194,7 @@ fn stacked_spans(
     row: Row,
     style: &RowStyle,
     compact: bool,
+    row_colours: bool,
 ) -> Vec<Span> {
     let Some((lane, line, prefix)) = stacked_line(row) else {
         return Vec::new();
@@ -1182,8 +1204,13 @@ fn stacked_spans(
         let colour = match row {
             Row::Deletion { .. } => Some(style.removed),
             Row::Addition { .. } => Some(style.added),
-            _ => None,
+            _ => row_colours.then_some(style.dim),
         };
+        if row_colours {
+            for span in &mut spans {
+                span.look.color = colour;
+            }
+        }
         let mut mark = Span::new(prefix);
         mark.look.color = colour;
         spans.insert(0, mark);

@@ -23,6 +23,14 @@ It creates `<out dir>` if it is missing, builds the gallery in release, runs it 
 - Two galleries can run at once. Give each its own drive script and out dir.
 - `TIMEOUT=<seconds>` (default 300) kills a script that hangs.
 
+## Acceptance
+
+```sh
+.claude/skills/verify/scripts/acceptance.sh <out dir>
+```
+
+It runs `drive/acceptance.drive` through `launch.sh`, which visits the Hamlet pages and the stress page and checks each pass condition with `expect`. It prints one `accept:` line per check, the frame stats of each CSV the script writes, and `acceptance: <n> of <n> checks pass`. Two of the checks compare the stress views' p95 frame times with 3.0 ms, which a loaded machine fails, so run it alone. It exits 0 only when the gallery exits 0 and every check passes. `features/hamlet.md` lists the checks.
+
 ## Doctor
 
 ```sh
@@ -52,14 +60,15 @@ resize <w> <h>     open <path>...
 - Stable handles, at 1280 by 800. The page list entry `about` is at 100 62. The theme toggle is at 100 771. They move when `resize` changes the window.
 - `resize <w> <h>` asks Hyprland for the size, and prints `ok` once the window reports it. Without Hyprland, or when the window does not take the size within 2 seconds, it exits with code 2 and names the size the window has.
 - The theme toggle builds the page again and puts each scroll offset back, so a page keeps its scroll through a toggle.
-- `log` topics are `entities`, `page`, `present_mode`, `scroll`, `theme`, `rows`, `spans`, `hit`, `diff`, `runs <line>`, `stream`, and `selection`. Each prints one line such as `page about`.
+- `log` topics are `entities`, `page`, `present_mode`, `scroll`, `theme`, `rows`, `spans`, `hit`, `diff`, `runs <line>`, `stream`, `selection`, `copied`, and the Hamlet pages' `rich-styles`, `rich-stream`, `code-plate`, `code-grow`, `code-blank`, `diff-colours`, `diff-more`, `stress`, and `stress-blank`, which `features/hamlet.md` describes. Each prints one line such as `page about`.
   - `present_mode` prints the mode the window asked for, as `present_mode requested AutoNoVsync`, not the mode the driver settled on.
   - `scroll` prints the offset of the first scroll area on the current page, in pixels.
   - `rows` reads the first virtual list: `rows first_visible <n> spawned <a>..=<b> rows <slots> total <count> following <bool> x <px>`, where `x` is its sideways offset. It prints `rows empty total 0` for a list with no rows and `rows none` with no list.
   - `spans` lists the spans of the rich page's long line, `spans <n>: <id> "<text>" <hex>, ...`. `hit` prints the byte and character under the last press on its hit line, `hit 15 'ö'`, or `hit none`.
   - `stream` and `selection` read the first code view, as `features/stream.md` and `features/select.md` describe.
   - `runs <line>` reads the code page's line, counted from 1: `runs <line>: <a>..<b> <kind>, ... | shown "<text>" <hex>, ...`. The part before `|` is the runs the line was lexed into, in bytes of the line, or `empty` for an empty line. The part after is each span its row shows, or `not shown` while no row is built for it. Past the last line it prints `runs <line> none`.
-  - `diff` reads the diff page's view: `diff files <n> rows <count> <stacked|split|compact> first <index> <row>`, where `<row>` is the first visible row, as `header <file> <name>`, `line <file> old <n> new <n>` with `-` for a side without a line, `gap <file> hidden <n>`, or `more <n>`. It prints `diff none` with no diff view.
+  - `copied` prints what this gallery last copied as `copied "<text>"`, quoted as Rust debug text, or `copied none`, so `expect copied` can match a whole copy.
+  - `diff` reads the first diff view: `diff files <n> rows <count> <stacked|split|compact> first <index> <row>`, where `<row>` is the first visible row, as `header <file> <name>`, `line <file> old <n> new <n>` with `-` for a side without a line, `gap <file> hidden <n>`, or `more <n>`. It prints `diff none` with no diff view.
 - `expect <topic> <text>` prints `accept: <topic> pass` when the topic's line holds the text, else `accept: <topic> fail`. A topic that takes a line number takes it before the text: `expect runs 75 comment` checks `runs 75` for `comment`.
 - `open <path>` gives a file to the page on show. A relative path is read from the drive script's directory, so `open ../fixtures/notes.xyz` in a script in `drive/` opens `examples/gallery/fixtures/notes.xyz`. It exits with code 2 when the page takes no files or cannot read the file.
 - `clipboard` prints what this gallery last copied, never the shared system clipboard.

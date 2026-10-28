@@ -3,7 +3,7 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser(
     description="Write every virtual_list drive script but virtual-list.drive, "
-    "and every code, stream, select and diff drive script."
+    "every code, stream, select and diff drive script, and the Hamlet ones."
 )
 parser.add_argument("dir", nargs="?", type=Path, default=Path(__file__).parent / "drive")
 out = parser.parse_args().dir
@@ -946,4 +946,120 @@ review(
     "wait 90",
     LAYOUT,
     "wait 60",
+)
+
+
+PAGE_LIST = {"hamlet_rich": 272, "hamlet_code": 307, "hamlet_diff": 342, "stress": 377}
+STREAM = "click 290 68"
+SAMPLE_LINE_1 = "click 300 127 triple"
+MORE_LINES = "click 1003 382"
+STRESS_DIFF_BUTTON = "click 438 68"
+STRESS_CODE_ROWS, STRESS_DIFF_ROWS = 100_000, 97_072
+FENCE_ROWS = 17
+SAMPLE_STYLES = (
+    '"Plan" 20 bold sans | "Use " 14 sans | "care" 14 bold sans | " with " 14 sans | '
+    '"rm" 13 mono plate | ", " 14 sans | "old" 14 sans struck | " and " 14 sans | '
+    '"docs" 14 sans accent underline | "." 14 sans'
+)
+SMALL_CHANGE = (
+    '"  a" dim no fill, "- b" red on deep red, "+ B" green on deep green, '
+    '"  c" dim no fill, "+ d" green on deep green'
+)
+
+
+def first_paint(page):
+    return ["frames start", "wait 70", f"click 100 {PAGE_LIST[page]}", SETTLE, f"frames stop first-paint-{page}.csv"]
+
+
+def checked(topic, text):
+    return [f"log {topic}", f"expect {topic} {text}"]
+
+
+def to_end(csv):
+    jump = ["scroll 0 -2000000", SETTLE]
+    return ["log stress-blank", CENTER, "frames start", "wait 60", scroll(-18, 600), f"frames stop {csv}", jump, jump]
+
+
+write(
+    "acceptance",
+    "wait 30",
+    "screenshot pages.png",
+    first_paint("hamlet_rich"),
+    "screenshot hamlet-rich.png",
+    checked("rich-styles", SAMPLE_STYLES),
+    "log entities",
+    STREAM,
+    "wait 80",
+    "screenshot hamlet-rich-stream.png",
+    "log entities",
+    checked("rich-stream", '"Second " 14 sans | "grows" 14 italic sans sample kept'),
+    first_paint("hamlet_code"),
+    "screenshot hamlet-code.png",
+    checked("code-plate", "caption above text 13 mono sideways off rows 4 tallest 2 lines"),
+    SAMPLE_LINE_1,
+    "key ctrl+c",
+    "wait 2",
+    "clipboard",
+    checked("copied", '"fn main() {"'),
+    STREAM,
+    "wait 240",
+    "screenshot hamlet-code-stream.png",
+    checked("code-grow", f"rows 1 to {FENCE_ROWS} grows yes shrinks 0 empty 0"),
+    checked("code-blank", "blank 0"),
+    first_paint("hamlet_diff"),
+    "screenshot hamlet-diff.png",
+    checked("diff-colours", SMALL_CHANGE),
+    checked("diff-more", "lines 16 more 24 rows 18 built 18"),
+    MORE_LINES,
+    "wait 30",
+    "screenshot hamlet-diff-more.png",
+    checked("diff-more", "lines 40 more none rows 41 built 41"),
+    "move 1003 400",
+    "scroll 0 -200",
+    "wait 30",
+    "screenshot hamlet-diff-more-end.png",
+    f"click 100 {PAGE_LIST['stress']}",
+    SETTLE,
+    "screenshot stress.png",
+    to_end("stress-code.csv"),
+    "screenshot stress-code-end.png",
+    checked("stress", f"code last {STRESS_CODE_ROWS} of {STRESS_CODE_ROWS}"),
+    checked("stress-blank", "blank 0"),
+    STRESS_DIFF_BUTTON,
+    SETTLE,
+    to_end("stress-diff.csv"),
+    "screenshot stress-diff-end.png",
+    checked("stress", f"diff last {STRESS_DIFF_ROWS} of {STRESS_DIFF_ROWS}"),
+    checked("stress-blank", "blank 0"),
+    "exit",
+)
+write(
+    "hamlet-review-record",
+    "wait 30",
+    "record start review",
+    f"click 100 {PAGE_LIST['hamlet_rich']}",
+    "wait 90",
+    STREAM,
+    "wait 120",
+    f"click 100 {PAGE_LIST['hamlet_code']}",
+    "wait 90",
+    SAMPLE_LINE_1,
+    "wait 60",
+    STREAM,
+    "wait 300",
+    f"click 100 {PAGE_LIST['hamlet_diff']}",
+    "wait 120",
+    MORE_LINES,
+    "wait 120",
+    f"click 100 {PAGE_LIST['stress']}",
+    "wait 90",
+    CENTER,
+    scroll(-18, 360),
+    STRESS_DIFF_BUTTON,
+    "wait 60",
+    CENTER,
+    scroll(-18, 360),
+    "wait 30",
+    "record stop",
+    "exit",
 )

@@ -236,7 +236,8 @@ pub enum Overflow {
 
 /// A view of `source`, a row per line, each with its line number in
 /// a gutter, drawn in the theme's [`SyntaxTokens::code_font`] at its
-/// body size. It builds only the rows near what shows.
+/// body size, or at [`CodeView::size`]. It builds only the rows near
+/// what shows.
 ///
 /// A new source builds the view's rows again and shows its first
 /// line. A tab shows as spaces to the next stop of 4 columns, which
@@ -251,6 +252,7 @@ pub fn code_view(source: impl Into<Prop<CodeSource>>) -> CodeView {
     CodeView {
         source: source.into(),
         overflow: Prop::Value(Overflow::default()),
+        size: None,
     }
 }
 
@@ -258,6 +260,7 @@ pub fn code_view(source: impl Into<Prop<CodeSource>>) -> CodeView {
 pub struct CodeView {
     source: Prop<CodeSource>,
     overflow: Prop<Overflow>,
+    size: Option<f32>,
 }
 
 impl CodeView {
@@ -269,6 +272,14 @@ impl CodeView {
         overflow: impl Into<Prop<Overflow>>,
     ) -> CodeView {
         self.overflow = overflow.into();
+        self
+    }
+
+    /// The font size of its text and line numbers, in logical
+    /// pixels, the theme's body size when unset. It is read when the
+    /// view is built.
+    pub fn size(mut self, size: f32) -> CodeView {
+        self.size = Some(size);
         self
     }
 }
@@ -414,6 +425,7 @@ impl CodeDoc {
         let shown = CodeDoc::new(source);
         self.source = shown.source;
         self.text = shown.text;
+        self.take_sent();
         self.revision += 1;
     }
 
@@ -552,7 +564,7 @@ where
         let style = RowStyle {
             styles: Styles::new(theme),
             font: theme.code_font(),
-            size: theme.body_size(),
+            size: self.size.unwrap_or_else(|| theme.body_size()),
             gap: theme.gap(),
             selected: select::selected_colour(theme),
         };

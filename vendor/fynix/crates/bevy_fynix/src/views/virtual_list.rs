@@ -4,6 +4,7 @@ use core::ops::{Range, RangeInclusive};
 use std::sync::Arc;
 
 use bevy::app::{App, Update};
+use bevy::camera::Camera;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::ChildOf;
@@ -65,7 +66,12 @@ pub struct VirtualListView<R> {
 /// Unless the view [follows the
 /// bottom](VirtualListView::follow_bottom), rows added keep its first
 /// visible row in place, so a list that grows from no rows shows its
-/// first.
+/// first. While every row fits the view, a frame that adds rows or
+/// grows them builds every row, so a parent that takes the height of
+/// the rows shows each of them on the frame it grows. Before the list
+/// has a laid-out height, it builds every row when they all fit in
+/// the tallest camera view, so such a parent shows them on its first
+/// frame too.
 ///
 /// A row that scrolls far out of sight is not despawned but shows
 /// another row instead, so `row` builds the view of a [`RowSlot`]
@@ -189,12 +195,15 @@ where
         let spacer = cx.under(list, Cx::spawn);
         let count = self.count.get(cx.world).unwrap_or(0);
         let follows = self.follow.get(cx.world).unwrap_or(false);
+        let screen =
+            tallest_view(cx.world.query::<&Camera>().iter(cx.world));
         let state = VirtualList::new(
             self.estimate,
             self.overscan,
             count,
             follows,
             spacer,
+            screen,
         );
         let height = state.height();
         let mut area = cx.world.entity_mut(list);
@@ -401,6 +410,7 @@ impl VirtualList {
         count: usize,
         follow: bool,
         spacer: Entity,
+        screen: f32,
     ) -> Self {
         let mut list = Self {
             estimate,
@@ -419,7 +429,7 @@ impl VirtualList {
             across: 0.0,
             physical_per_logical: 1.0,
         };
-        list.place(&mut [], 0.0, 0.0, 0.0);
+        list.place(&mut [], 0.0, 0.0, 0.0, screen);
         list
     }
 
@@ -544,6 +554,7 @@ impl VirtualList {
         view: f32,
         scroll: f32,
         end: f32,
+        screen: f32,
     ) -> Scroll {
         let called = matches!(
             self.anchor,
@@ -558,6 +569,10 @@ impl VirtualList {
                 };
         }
         let view = f64::from(view);
+        let physical =
+            |y: f64| (y * self.physical_per_logical).round();
+        let fits = view > 0.0
+            && physical(self.heights.total()) <= physical(view);
         let scroll = f64::from(scroll);
         let mut anchor = self.shown_at(scroll);
         let mut within = scroll - self.heights.offset(anchor);
@@ -623,7 +638,11 @@ impl VirtualList {
         } else {
             Anchor::FirstRow
         });
-        self.fill(to, view);
+        let all = self.heights.total();
+        let fits_screen = view <= 0.0
+            && physical(all) <= physical(f64::from(screen));
+        let every_row = fits || fits_screen;
+        self.fill(to, if every_row { all } else { view }, every_row);
         Scroll {
             to: to as f32,
             jump,
@@ -677,10 +696,14 @@ impl VirtualList {
         }
     }
 
-    fn fill(&mut self, scroll: f64, view: f64) {
+    fn fill(&mut self, scroll: f64, view: f64, from_first: bool) {
         let count = self.heights.len();
         let top = (scroll - self.overscan).max(0.0);
-        let mut first = self.heights.index_at(top);
+        let mut first = if from_first {
+            0
+        } else {
+            self.heights.index_at(top)
+        };
         let mut end =
             (self.heights.index_at(top + view + 2.0 * self.overscan)
                 + 1)
@@ -774,7 +797,9 @@ fn place_rows(
         &ComputedNode,
         &mut UiTransform,
     )>,
+    cameras: Query<&Camera>,
 ) {
+    let screen = tallest_view(cameras);
     for (entity, mut list, area, mut position, mut goal) in &mut lists
     {
         let scale = area.inverse_scale_factor();
@@ -798,7 +823,8 @@ fn place_rows(
         let across = area.content_box().width() * scale;
         list.measured_across(across);
         let end = scroll::overflow(area).y;
-        let scroll = list.place(&mut measured, view, position.y, end);
+        let scroll =
+            list.place(&mut measured, view, position.y, end, screen);
         if scroll.jump {
             *goal = ScrollGoal::default();
             position.y = scroll.to;
@@ -850,6 +876,15 @@ fn place_rows(
             spacer.width = width;
         }
     }
+}
+
+fn tallest_view<'a>(
+    cameras: impl IntoIterator<Item = &'a Camera>,
+) -> f32 {
+    cameras
+        .into_iter()
+        .filter_map(Camera::logical_viewport_size)
+        .fold(0.0, |tallest, size| size.y.max(tallest))
 }
 
 fn overflows(
