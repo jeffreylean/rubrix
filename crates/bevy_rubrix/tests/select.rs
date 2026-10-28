@@ -13,7 +13,8 @@ use bevy::input::{ButtonInput, ButtonState};
 use bevy::math::Vec2;
 use bevy::picking::backend::HitData;
 use bevy::picking::events::{
-    Pointer, PointerDrag, PointerPress, PointerRelease,
+    Pointer, PointerDrag, PointerDragEnd, PointerPress,
+    PointerRelease,
 };
 use bevy::picking::pointer::{Location, PointerButton, PointerId};
 use bevy::ui::{ComputedNode, UiGlobalTransform};
@@ -300,4 +301,37 @@ fn a_drag_below_a_following_stream_keeps_it_following() {
         range.end > doc(&mut app).line_range(last).end,
         "{range:?}"
     );
+}
+
+#[test]
+fn a_drag_ended_outside_the_view_stops_scrolling() {
+    let text = numbered(10_000);
+    let mut app =
+        selecting(CodeSource::new(Lang::Plain, text.as_str()));
+    hold_at(&mut app, 3, 2, 1);
+    let on = line(&mut app, 3);
+    let below = point_of(&mut app, 3, 2) + Vec2::new(0.0, 600.0);
+    app.world_mut().trigger(PointerDrag {
+        entity: on,
+        pointer: pointer(below),
+        button: PointerButton::Primary,
+        distance: Vec2::new(0.0, 600.0),
+        delta: Vec2::new(0.0, 600.0),
+    });
+    settle(&mut app);
+    assert!(list_state(&mut app).first_visible() > 0, "it scrolls");
+    app.world_mut().trigger(PointerDragEnd {
+        entity: on,
+        pointer: pointer(below),
+        button: PointerButton::Primary,
+        distance: Vec2::new(0.0, 600.0),
+    });
+    app.update();
+    let first = list_state(&mut app).first_visible();
+    let range = selected(&mut app);
+    for _ in 0..10 {
+        app.update();
+    }
+    assert_eq!(list_state(&mut app).first_visible(), first);
+    assert_eq!(selected(&mut app), range);
 }

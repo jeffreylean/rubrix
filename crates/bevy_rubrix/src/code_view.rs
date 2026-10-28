@@ -518,7 +518,8 @@ where
             ))
             .observe(select::press)
             .observe(select::drag)
-            .observe(select::release);
+            .observe(select::release)
+            .observe(select::drag_end);
         cx.effect(root, self.source, |world, root, source| {
             let mut view = world.entity_mut(root);
             view.get_mut::<CodeDoc>()

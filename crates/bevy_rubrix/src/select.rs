@@ -18,7 +18,7 @@ use bevy::input::keyboard::KeyCode;
 use bevy::math::Vec2;
 use bevy::picking::Pickable;
 use bevy::picking::events::{
-    PointerDrag, PointerPress, PointerRelease,
+    PointerDrag, PointerDragEnd, PointerPress, PointerRelease,
 };
 use bevy::picking::pointer::PointerButton;
 use bevy::text::ComputedTextBlock;
@@ -26,8 +26,8 @@ use bevy::ui::{
     BackgroundColor, ComputedNode, Display, Node, PositionType,
     ScrollPosition, UiGlobalTransform, px,
 };
-use bevy_fynix::views::parley::{Affinity, Cursor, Selection};
 use bevy_fynix::views::{VirtualList, rich_point};
+use parley::{Affinity, Cursor, Selection};
 
 use crate::code_view::{CodeDoc, CodeLine, OVERSCAN, Shown};
 
@@ -336,6 +336,17 @@ pub(crate) fn release(
     mut selections: Query<&mut CodeSelection>,
 ) {
     if let Ok(mut selection) = selections.get_mut(release.entity) {
+        selection.drag = None;
+    }
+}
+
+/// A release away from the view reaches it only as the end of the
+/// drag, which goes to the pressed row wherever the pointer is.
+pub(crate) fn drag_end(
+    end: On<PointerDragEnd>,
+    mut selections: Query<&mut CodeSelection>,
+) {
+    if let Ok(mut selection) = selections.get_mut(end.entity) {
         selection.drag = None;
     }
 }
