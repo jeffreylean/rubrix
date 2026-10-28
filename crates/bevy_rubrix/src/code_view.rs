@@ -29,7 +29,7 @@ use crate::select::{
 use crate::tokens::{Styles, SyntaxTokens};
 
 /// Bevy's line height, as a factor of the font size.
-const LINE_HEIGHT: f32 = 1.2;
+pub(crate) const LINE_HEIGHT: f32 = 1.2;
 
 const TAB: usize = 4;
 
@@ -588,7 +588,8 @@ where
     }
 }
 
-fn filling() -> Stack<()> {
+/// A column that fills what its parent leaves it.
+pub(crate) fn filling() -> Stack<()> {
     column(()).grow(1.0).min_width(px(0.0)).min_height(px(0.0))
 }
 
@@ -725,8 +726,9 @@ struct Read {
     committed: bool,
 }
 
-fn digits(rows: usize) -> usize {
-    rows.checked_ilog10().map_or(1, |log| log as usize + 1)
+/// How many digits `number` takes to write.
+pub(crate) fn digits(number: usize) -> usize {
+    number.checked_ilog10().map_or(1, |log| log as usize + 1)
 }
 
 pub(crate) struct Shown<'a> {
@@ -932,7 +934,7 @@ mod tests {
     #[test]
     fn digits_count_the_widest_line_number() {
         assert_eq!(
-            [1, 9, 10, 99_999, 100_000].map(digits),
+            [0, 9, 10, 99_999, 100_000].map(digits),
             [1, 1, 2, 5, 6]
         );
     }

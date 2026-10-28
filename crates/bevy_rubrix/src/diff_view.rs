@@ -16,7 +16,7 @@ use bevy_fynix::tokens::{
     MotionTokens, SpacingTokens, SurfaceTokens, Tone,
 };
 use bevy_fynix::views::{
-    BehaviorExt, FrameProps, Rich, RowSlot, Span, Stack, VirtualList,
+    BehaviorExt, FrameProps, Rich, RowSlot, Span, VirtualList,
     button, column, ghost, label, rich, row, virtual_list,
 };
 use bevy_fynix::{
@@ -30,12 +30,11 @@ use rubrix_diff::{
 };
 use rubrix_highlight::{Highlights, Lang, Run, Stream, highlight};
 
-use crate::code_view::{Overflow, Shown, line_spans};
+use crate::code_view::{
+    LINE_HEIGHT, Overflow, Shown, digits, filling, line_spans,
+};
 use crate::select::{self, Column, RowText, Selectable, selectable};
 use crate::tokens::{Styles, SyntaxTokens, Tint};
-
-/// Bevy's line height, as a factor of the font size.
-const LINE_HEIGHT: f32 = 1.2;
 
 const OVERSCAN: f32 = 100.0;
 
@@ -173,7 +172,7 @@ impl SourceFile {
             .find(|lines| !lines.is_empty());
         let first = shown.map_or("", |lines| lines.line(0));
         let lang = Lang::detect(path, first);
-        let digits = digits(last_number(&diff));
+        let digits = digits(last_number(&diff) as usize);
         let side = |lines: &Lines, len: fn(&Hunk) -> u32| {
             if diff.is_partial() {
                 let hunks =
@@ -210,10 +209,6 @@ fn last_number(diff: &FileDiff) -> u32 {
         .map(|line| line.number.get())
         .max()
         .unwrap_or(0)
-}
-
-fn digits(number: u32) -> usize {
-    number.checked_ilog10().map_or(1, |log| log as usize + 1)
 }
 
 /// A view of `source`: a header row per file, then its rows as
@@ -872,10 +867,6 @@ fn reshape(
         .and_then(|list| world.get::<VirtualList>(list))
         .map(VirtualList::first_visible);
     doc_mut(world, root).relayout_keeping(first, set);
-}
-
-fn filling() -> Stack<()> {
-    column(()).grow(1.0).min_width(px(0.0)).min_height(px(0.0))
 }
 
 fn list<T>(root: Entity, style: Arc<RowStyle>) -> AnyView<Bevy, T>
@@ -1548,14 +1539,6 @@ mod tests {
         assert_eq!(
             texts(&marked),
             [("a", false), ("b", true), ("c", true), ("d", false)]
-        );
-    }
-
-    #[test]
-    fn digits_count_the_widest_line_number() {
-        assert_eq!(
-            [0, 9, 10, 99_999, 100_000].map(digits),
-            [1, 1, 2, 5, 6]
         );
     }
 }
