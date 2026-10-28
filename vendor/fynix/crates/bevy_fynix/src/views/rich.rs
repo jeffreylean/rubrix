@@ -46,14 +46,9 @@ pub struct Rich {
     #[elem(patch = PatchBodyFont)]
     pub font: Prop<FontSource>,
     /// The size of a span whose look has none. The theme's body
-    /// size when unset or NaN.
+    /// size when unset.
     #[elem(
         default = theme.body_size(),
-        with = |size: f32, theme| if size.is_nan() {
-            theme.body_size()
-        } else {
-            size
-        },
         patch = PatchBodySize,
         blend = blend_f32
     )]
@@ -102,17 +97,16 @@ pub struct Span {
 /// or Bevy's default where it says nothing.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Look {
-    /// The rich text's tone when `None` or a channel is NaN.
+    /// The rich text's tone when `None`.
     pub color: Option<Color>,
     /// The rich text's font when `None`.
     pub font: Option<FontSource>,
-    /// The rich text's size when `None` or NaN. Bevy lays out no
+    /// The rich text's size when `None`. Bevy lays out no
     /// text for a size of zero or less.
     pub size: Option<f32>,
     pub weight: Option<FontWeight>,
     pub style: Option<FontStyle>,
-    /// A fill behind the span, the height of its line. No fill when
-    /// a channel is NaN.
+    /// A fill behind the span, the height of its line.
     pub background: Option<Color>,
     pub underline: Option<LineColor>,
     pub strikethrough: Option<LineColor>,
@@ -123,7 +117,7 @@ pub struct Look {
 pub enum LineColor {
     /// The span's text colour.
     Ink,
-    /// The span's text colour instead when a channel is NaN.
+    /// A colour of its own.
     Own(Color),
 }
 
@@ -331,7 +325,7 @@ fn mark<C: Component + Default>(
 }
 
 fn size_of(look: &Look, body: &Body) -> f32 {
-    look.size.filter(|size| !size.is_nan()).unwrap_or(body.size)
+    look.size.unwrap_or(body.size)
 }
 
 fn font_of(look: &Look, body: &Body) -> TextFont {
@@ -344,15 +338,6 @@ fn font_of(look: &Look, body: &Body) -> TextFont {
     }
 }
 
-fn without_nan(color: Option<Color>) -> Option<Color> {
-    color.filter(|color| {
-        let linear = color.to_linear();
-        ![linear.red, linear.green, linear.blue, linear.alpha]
-            .iter()
-            .any(|channel| channel.is_nan())
-    })
-}
-
 fn draw(
     entity: &mut EntityWorldMut,
     look: &Look,
@@ -361,11 +346,8 @@ fn draw(
 ) {
     let fade = |color| faded(color, paint.opacity);
     put(entity, font_of(look, body));
-    put(
-        entity,
-        TextColor(fade(without_nan(look.color).unwrap_or(paint.ink))),
-    );
-    match without_nan(look.background) {
+    put(entity, TextColor(fade(look.color.unwrap_or(paint.ink))));
+    match look.background {
         Some(color) => put(entity, TextBackgroundColor(fade(color))),
         // bevy_ui_render has no
         // `RemovedComponents<TextBackgroundColor>`, so it redraws a
@@ -380,9 +362,7 @@ fn draw(
         }
     }
     let line_ink = |line: Option<LineColor>| match line {
-        Some(LineColor::Own(color)) => {
-            without_nan(Some(color)).map(fade)
-        }
+        Some(LineColor::Own(color)) => Some(fade(color)),
         Some(LineColor::Ink) | None => None,
     };
     mark::<Underline>(entity, look.underline.is_some());
