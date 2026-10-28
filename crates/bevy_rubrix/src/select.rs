@@ -243,15 +243,22 @@ where
         cx.world
             .entity_mut(node)
             .insert(SelectionRects { color, layer: None });
-        cx.effect(
-            node,
-            slot.index().into(),
-            move |world, node, &row| {
-                world.entity_mut(node).insert(tag(row));
-            },
-        );
+        tag_row(cx, node, slot, tag);
         node
     })
+}
+
+/// Inserts `tag` of the row `slot` shows on `node`, again each time
+/// the slot shows another row.
+pub(crate) fn tag_row<T: 'static, L: Component>(
+    cx: &mut Cx<'_, Bevy, T>,
+    node: Entity,
+    slot: RowSlot,
+    tag: impl Fn(usize) -> L + Send + Sync + 'static,
+) {
+    cx.effect(node, slot.index().into(), move |world, node, &row| {
+        world.entity_mut(node).insert(tag(row));
+    });
 }
 
 /// Sent to a code view's root when `Ctrl+C` copies its selection,

@@ -953,15 +953,10 @@ where
     .within(column(()).width(percent(100.0)));
     AnyView::new(move |cx: &mut Cx<'_, Bevy, T>| {
         let node = cx.build(content);
-        cx.effect(
-            node,
-            slot.index().into(),
-            move |world, node, &index| {
-                world
-                    .entity_mut(node)
-                    .insert(DiffRowAt { view: root, index });
-            },
-        );
+        select::tag_row(cx, node, slot, move |index| DiffRowAt {
+            view: root,
+            index,
+        });
         node
     })
 }
