@@ -25,7 +25,7 @@ The diff page shows a diff in `diff_view`: a header row per file, then its rows,
 
 ## Driving it with launch.sh
 
-Preconditions: `doctor.sh` is clean and the out dir is empty. The scripts are in `crates/bevy_rubrix/examples/gallery/drive/`, and `gen_diff_drives.py` writes every `diff-*.drive`. The files they open are in `examples/gallery/fixtures/diff/`.
+Preconditions: `doctor.sh` is clean and the out dir is empty. The scripts are in `crates/bevy_rubrix/examples/gallery/drive/`, and `gen_drives.py` writes every `diff-*.drive`. The files they open are in `examples/gallery/fixtures/diff/`.
 
 R15 lanes:
 
