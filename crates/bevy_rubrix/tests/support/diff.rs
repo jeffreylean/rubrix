@@ -99,6 +99,7 @@ pub struct Showing {
     pub source: DiffSource,
     pub layout: Layout,
     pub compact: bool,
+    pub row_colours: bool,
     pub limit: Option<u32>,
 }
 
@@ -137,6 +138,7 @@ fn plain(source: DiffSource) -> App {
         source,
         layout: Layout::Stacked,
         compact: false,
+        row_colours: false,
         limit: None,
     });
     app
@@ -146,6 +148,7 @@ fn view() -> DiffView {
     diff_view(resource::<Showing, _>(|s| s.source.clone()))
         .layout(resource::<Showing, _>(|s| s.layout))
         .compact(resource::<Showing, _>(|s| s.compact))
+        .row_colours(resource::<Showing, _>(|s| s.row_colours))
         .limit(resource::<Showing, _>(|s| s.limit))
         .overflow(Overflow::Scroll)
 }

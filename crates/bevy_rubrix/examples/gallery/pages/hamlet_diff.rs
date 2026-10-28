@@ -63,7 +63,8 @@ fn plate(source: DiffSource, marker: impl Component) -> PageView {
         cx.build(
             column((column((diff_view(source)
                 .compact(true)
-                .limit(Some(LIMIT)),))
+                .limit(Some(LIMIT))
+                .row_colours(true),))
             .min_height(px(0.0))
             .with((FitRows, marker)),))
             .padding(UiRect::axes(px(10.0), px(8.0)))

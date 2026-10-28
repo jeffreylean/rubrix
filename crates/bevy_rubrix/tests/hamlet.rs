@@ -187,30 +187,47 @@ fn a_code_view_draws_its_text_at_its_size() {
     );
 }
 
+fn compact_colours(app: &mut App) -> Vec<Vec<(String, Color)>> {
+    (1..=4)
+        .map(|index| {
+            let line = line_text(app, index);
+            support::spans_of(app, line)
+        })
+        .collect()
+}
+
 #[test]
-fn compact_lines_take_the_colour_of_their_row() {
+fn compact_lines_keep_their_syntax_colours_unless_row_colours_is_on()
+{
     let mut app = showing(DiffSource::texts(
-        "letters.txt",
-        "a\nb\nc\n",
-        "a\nB\nc\nd\n",
+        "a.rs",
+        "fn a() {}\nlet b = 1;\n",
+        "fn a() {}\nlet c = 1;\nlet d = 2;\n",
     ));
     set(&mut app, |showing| showing.compact = true);
     let (removed, added) = (Plain.deletion(), Plain.addition());
+    let keyword = Plain.tone(Tone::Accent);
+    let body = Plain.tone(Tone::Body);
+    let syntax = compact_colours(&mut app);
+    assert_eq!(syntax[0][0], ("  ".into(), body));
+    assert_eq!(syntax[1][0], ("- ".into(), removed));
+    assert_eq!(syntax[1][1], ("let ".into(), keyword));
+    assert_eq!(syntax[2][1], ("let ".into(), keyword));
+    set(&mut app, |showing| showing.row_colours = true);
     let dim = Plain.tone(Tone::Dim);
     let rows = [
-        (1, "  a", dim),
-        (2, "- b", removed),
-        (3, "+ B", added),
-        (4, "  c", dim),
-        (5, "+ d", added),
+        ("  fn a() {}", dim),
+        ("- let b = 1;", removed),
+        ("+ let c = 1;", added),
+        ("+ let d = 2;", added),
     ];
-    for (index, text, ink) in rows {
-        let line = line_text(&mut app, index);
-        let spans = support::spans_of(&app, line);
+    for (spans, (text, ink)) in
+        compact_colours(&mut app).into_iter().zip(rows)
+    {
         let shown = spans.iter().map(|(text, _)| text.as_str());
-        assert_eq!(shown.collect::<String>(), text, "row {index}");
+        assert_eq!(shown.collect::<String>(), text);
         for (span, colour) in spans {
-            assert_eq!(colour, ink, "{span:?} in row {index}");
+            assert_eq!(colour, ink, "{span:?} in {text:?}");
         }
     }
 }
