@@ -89,9 +89,6 @@ pub struct CodeCopied {
 #[derive(Resource, Default)]
 pub(crate) struct KeyTarget(Option<Entity>);
 
-/// On a row's text: the colour of its selection rectangles, and the
-/// layer behind the text that holds them, spawned at its first
-/// selection.
 #[derive(Component)]
 pub(crate) struct SelectionRects {
     pub(crate) color: Color,
