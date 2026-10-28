@@ -25,5 +25,3 @@ scripts/check-bevy-pin.sh
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT licence](LICENSE-MIT) at your option.
 
 `vendor/fynix` keeps its own licence files, also `MIT OR Apache-2.0`.
-
-Created in [T3 Code](https://t3.codes).
