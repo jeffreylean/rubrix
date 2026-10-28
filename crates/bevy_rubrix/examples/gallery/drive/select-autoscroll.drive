@@ -1,0 +1,16 @@
+page code
+wait 120
+press 235 279
+move 700 799
+wait 321
+log rows
+move 1250 432
+wait 5
+release
+log rows
+key ctrl+c
+log selection
+clipboard
+wait 30
+screenshot r14-autoscroll.png
+exit

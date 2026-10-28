@@ -1,0 +1,9 @@
+page code
+wait 120
+drag 235 279 1250 449
+key ctrl+c
+log selection
+clipboard
+wait 30
+screenshot r14-drag.png
+exit

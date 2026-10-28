@@ -1,0 +1,19 @@
+page stream
+wait 120
+log entities
+click 882 68
+click 1030 68
+wait 30
+screenshot r13-restart-empty.png
+log stream
+click 882 68
+wait 200
+log entities
+click 1030 68
+wait 200
+log entities
+click 1030 68
+wait 200
+log entities
+screenshot r13-restart.png
+exit
