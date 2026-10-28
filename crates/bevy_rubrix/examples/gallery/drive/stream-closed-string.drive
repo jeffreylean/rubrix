@@ -1,0 +1,12 @@
+page stream
+wait 120
+open ../fixtures/closed-string.rs
+click 290 68
+click 1030 68
+wait 120
+screenshot r13-closed-string.png
+log stream
+log runs 1
+log runs 2
+expect runs 2 keyword
+exit

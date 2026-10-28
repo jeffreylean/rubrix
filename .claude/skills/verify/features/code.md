@@ -56,7 +56,7 @@ Run `.../code-review-record.drive`, then `video.sh <out>/review <out>/review.mp4
 - A row is 17 px under `wrap off`. From the top, `scroll 0 -<(n - 1) * 17>` puts line n first.
 - The page starts under `wrap off`. The button names the state, so `wrap off` means that lines scroll sideways.
 - A tab shows as spaces to the next 4-column stop. Columns count chars, so a tab after a CJK char stops short of the stop.
-- Opening a file or pressing a file button builds a new list at line 1.
+- Opening a file or pressing a file button builds a new list at line 1. Pressing the button of the file already shown keeps the list and its scroll, because the sources are equal.
 - Pressing `100k lines` lexes 100,000 lines in one frame of about 20 ms.
 - The theme switch builds the view again and puts its scroll back.
 - The list builds the rows within 400 px of the view, about 87 rows, not within the 1,000 px that the `virtual_list` page uses.

@@ -1,0 +1,10 @@
+page code
+wait 120
+click 235 279
+click 1250 449 shift
+key ctrl+c
+log selection
+clipboard
+wait 30
+screenshot r14-extend.png
+exit

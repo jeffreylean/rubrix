@@ -1,0 +1,9 @@
+page stream
+wait 120
+open ../fixtures/open-string.rs
+wait 120
+screenshot r13-open-string.png
+log stream
+log runs 3
+expect runs 3 string
+exit

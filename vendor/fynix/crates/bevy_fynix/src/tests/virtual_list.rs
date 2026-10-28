@@ -6,14 +6,21 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bevy::app::App;
-use bevy::camera::{Camera, RenderTargetInfo};
+use bevy::camera::{
+    Camera, NormalizedRenderTarget, RenderTargetInfo,
+};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::world::World;
-use bevy::math::UVec2;
+use bevy::input::mouse::MouseScrollUnit;
+use bevy::input::touch::TouchPhase;
+use bevy::math::{UVec2, Vec2};
+use bevy::picking::backend::HitData;
+use bevy::picking::events::{Pointer, PointerScroll};
+use bevy::picking::pointer::{Location, PointerId};
 use bevy::ui::{
     ComputedNode, Display, Node, OverflowAxis, ScrollPosition,
     UiGlobalTransform, Val, percent, px,
@@ -507,6 +514,19 @@ fn growing_from_no_rows_follows_the_bottom() {
 
     assert_eq!(shown_at(&mut app, area, 199), Some(VIEW - 20.0));
     assert_eq!(state(&app, area).count(), 200);
+}
+
+#[test]
+fn a_list_built_following_follows_rows_added_before_its_first_update()
+{
+    let mut app = laid_out();
+    app.insert_resource(Follow(true));
+    let area = mounted(&mut app, 0, ESTIMATE, row(uniform), px(VIEW));
+    app.world_mut().resource_mut::<Count>().0 = 300;
+    settle(&mut app);
+
+    assert!(state(&app, area).following());
+    assert_eq!(shown_at(&mut app, area, 299), Some(VIEW - 20.0));
 }
 
 #[test]
@@ -1814,4 +1834,62 @@ fn turning_sideways_on_forgets_the_heights_rows_had_wrapped() {
             .eq(spans),
         "as if built scrolling sideways"
     );
+}
+
+fn notch(app: &mut App, area: Entity, lines: f32) {
+    let location = Location {
+        target: NormalizedRenderTarget::None {
+            width: 1000,
+            height: 1000,
+        },
+        position: Vec2::ZERO,
+    };
+    app.world_mut().trigger(PointerScroll {
+        entity: area,
+        pointer: Pointer::new(PointerId::Mouse, location),
+        unit: MouseScrollUnit::Line,
+        x: 0.0,
+        y: lines,
+        hit: HitData::new(Entity::PLACEHOLDER, 0.0, None, None),
+        phase: TouchPhase::Moved,
+    });
+}
+
+fn arrive(app: &mut App) {
+    app.world_mut().resource_mut::<Count>().0 += 1;
+    app.update();
+}
+
+#[test]
+fn a_wheel_flung_to_the_end_follows_the_rows_arriving() {
+    let mut app = at_scale(1.0);
+    app.insert_resource(Follow(true));
+    let area = list(&mut app, 1_000, uniform);
+    scroll_to(&mut app, area, 999);
+    settle(&mut app);
+    app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y -=
+        100.0;
+    settle(&mut app);
+    assert!(!state(&app, area).following(), "scrolled up");
+
+    notch(&mut app, area, -3.0);
+    let mut frames = 0;
+    while !state(&app, area).following() {
+        frames += 1;
+        assert!(
+            frames <= 60,
+            "following again within 60 frames, {} short of the end",
+            crate::scroll::overflow(
+                app.world().get::<ComputedNode>(area).unwrap()
+            )
+            .y - scroll(&app, area)
+        );
+        arrive(&mut app);
+    }
+    for frame in 1..=30 {
+        arrive(&mut app);
+        assert!(state(&app, area).following(), "frame {frame} after");
+    }
+    let last = app.world().resource::<Count>().0 - 1;
+    assert_eq!(shown_at(&mut app, area, last), Some(VIEW - 20.0));
 }

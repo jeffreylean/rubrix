@@ -1,0 +1,14 @@
+page code
+wait 120
+key ctrl+a
+log selection
+expect selection length 313933
+frames start
+wait 60
+key ctrl+c
+wait 10
+frames stop select-copy.csv
+clipboard
+wait 30
+screenshot r14-all.png
+exit

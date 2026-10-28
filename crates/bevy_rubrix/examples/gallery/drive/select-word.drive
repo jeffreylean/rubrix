@@ -1,0 +1,11 @@
+page code
+wait 120
+click 435 160 double
+log selection
+expect selection length 8
+key ctrl+c
+log selection
+clipboard
+wait 30
+screenshot r14-word.png
+exit

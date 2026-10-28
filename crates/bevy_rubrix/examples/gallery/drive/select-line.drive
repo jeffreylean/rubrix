@@ -1,0 +1,9 @@
+page code
+wait 120
+click 311 211 triple
+key ctrl+c
+log selection
+clipboard
+wait 30
+screenshot r14-line.png
+exit

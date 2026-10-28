@@ -1,0 +1,11 @@
+page stream
+wait 120
+open ../fixtures/crlf.rs
+click 290 68
+click 1030 68
+wait 2000
+screenshot r13-crlf.png
+log stream
+log runs 3
+log rows
+exit

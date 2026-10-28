@@ -278,7 +278,7 @@ fn character_at(
         world.get::<Camera>(camera)?,
         at,
     )?;
-    let layout = rich_layout(world, root)?;
+    let layout = &rich_layout(world, root)?;
     let (cluster, _) =
         parley::Cluster::from_point_exact(layout, point.x, point.y)?;
     Some(cluster.text_range().start)

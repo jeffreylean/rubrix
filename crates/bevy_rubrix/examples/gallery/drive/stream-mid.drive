@@ -1,0 +1,12 @@
+page stream
+wait 120
+click 438 68
+click 1030 68
+wait 300
+log stream
+wait 100
+log stream
+screenshot r13-mid.png
+log rows
+expect rows following true
+exit

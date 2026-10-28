@@ -1520,6 +1520,7 @@ version = "0.0.3"
 dependencies = [
  "bevy",
  "bevy_fynix",
+ "parley",
  "rubrix_highlight",
 ]
 

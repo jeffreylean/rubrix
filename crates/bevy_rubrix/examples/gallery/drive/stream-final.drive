@@ -1,0 +1,44 @@
+page stream
+wait 120
+click 586 68
+frames start
+wait 60
+click 1030 68
+wait 85
+frames stop stream-4k.csv
+click 734 68
+frames start
+wait 60
+click 1030 68
+wait 8
+click 1030 68
+wait 8
+click 1030 68
+wait 8
+click 1030 68
+wait 8
+click 1030 68
+wait 8
+click 1030 68
+wait 8
+click 1030 68
+wait 8
+click 1030 68
+wait 8
+click 1030 68
+wait 8
+click 1030 68
+wait 8
+frames stop stream-64k.csv
+wait 30
+screenshot r13-final.png
+log stream
+log rows
+page code
+wait 120
+move 740 400
+scroll 0 -200000
+wait 30
+screenshot r13-final-code.png
+log rows
+exit
