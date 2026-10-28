@@ -36,11 +36,11 @@ Keep build output out of `/tmp`. Set `CARGO_TARGET_DIR` to a directory under `~/
 
 ## no_std crates
 
-A crate opts into the no_std check with `no_std = true` under `[package.metadata.rubrix]` in its `Cargo.toml`. `scripts/check-no-std.sh` builds each such crate for `x86_64-unknown-none`. No later PR needs to edit `.github/`.
+A crate opts into the no_std check with `no_std = true` under `[package.metadata.rubrix]` in its `Cargo.toml`. `scripts/check-no-std.sh` builds each such crate for `x86_64-unknown-none`. `rubrix_highlight` and `rubrix_diff` opt in. A new crate opts in without a change under `.github/`.
 
 ## Vendoring rule
 
-`vendor/fynix` is a plain copy of the upstream commit that `vendor/README.md` records. It is not a submodule, a subtree, or a fork.
+`vendor/fynix` started as a copy of the upstream commit that `vendor/README.md` records, and now carries rubrix's changes to it. It is not a submodule, a subtree, or a fork.
 
 - fynix changes are rubrix PRs that edit the files under `vendor/fynix`.
 - Nothing is pushed to voxell-tech/fynix or to any fork of it.
