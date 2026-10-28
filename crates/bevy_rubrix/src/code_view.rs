@@ -425,6 +425,7 @@ impl CodeDoc {
         let shown = CodeDoc::new(source);
         self.source = shown.source;
         self.text = shown.text;
+        self.take_sent();
         self.revision += 1;
     }
 
