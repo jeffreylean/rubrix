@@ -11,7 +11,7 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::system::ResMut;
 use bevy::input::keyboard::{Key, KeyCode, KeyboardInput};
 use bevy::input::{ButtonInput, ButtonState};
-use bevy::math::Vec2;
+use bevy::math::{Rect, Vec2};
 use bevy::picking::backend::HitData;
 use bevy::picking::events::{
     Pointer, PointerDrag, PointerDragEnd, PointerPress,
@@ -273,9 +273,7 @@ fn ctrl_a_selects_the_whole_source_built_or_not() {
 const LONG_LINE: &str =
     include_str!("../examples/gallery/fixtures/long-line.rs");
 
-/// The gallery's code view: a 1280 px window less its 200 px sidebar
-/// and the page's 20 px padding on each side.
-const GALLERY_VIEW: f32 = 1040.0;
+const GALLERY_VIEW: f32 = 1280.0 - 200.0 - 2.0 * 20.0;
 
 const WRAPPED_ROW: usize = 2;
 
@@ -289,9 +287,7 @@ fn long_line_wrapped() -> App {
     app
 }
 
-/// Each drawn visual line of `root`'s text, top to bottom, as its
-/// top and bottom in the window.
-fn drawn_lines(app: &App, root: Entity) -> Vec<(f32, f32)> {
+fn drawn_lines(app: &App, root: Entity) -> Vec<Range<f32>> {
     let corner = corner(app, root);
     let info =
         app.world().get::<TextLayoutInfo>(root).expect("drawn");
@@ -299,10 +295,10 @@ fn drawn_lines(app: &App, root: Entity) -> Vec<(f32, f32)> {
         .run_geometry
         .iter()
         .map(|run| {
-            (corner.y + run.bounds.min.y, corner.y + run.bounds.max.y)
+            corner.y + run.bounds.min.y..corner.y + run.bounds.max.y
         })
         .collect::<Vec<_>>();
-    lines.sort_by(|a, b| a.0.total_cmp(&b.0));
+    lines.sort_by(|a, b| a.start.total_cmp(&b.start));
     lines.dedup();
     lines
 }
@@ -356,9 +352,7 @@ fn a_press_on_a_wrapped_line_selects_the_byte_drawn_under_it() {
     }
 }
 
-/// The selection rectangles drawn for `root`'s text, as their top
-/// left and bottom right in the window.
-fn rects_of(app: &App, root: Entity) -> Vec<(Vec2, Vec2)> {
+fn rects_of(app: &App, root: Entity) -> Vec<Rect> {
     let world = app.world();
     let cell = world.get::<ChildOf>(root).expect("a cell").parent();
     let layer = world.get::<Children>(cell).expect("children")[0];
@@ -380,8 +374,7 @@ fn rects_of(app: &App, root: Entity) -> Vec<(Vec2, Vec2)> {
                         .get::<UiGlobalTransform>(rect)
                         .expect("a transform")
                         .translation;
-                    let half = node.size() / 2.0;
-                    (centre - half, centre + half)
+                    Rect::from_center_size(centre, node.size())
                 })
                 .collect()
         })
@@ -421,23 +414,23 @@ fn a_selected_wrapped_line_keeps_every_row_and_rects_its_drawn_lines()
         centre.y + text.size().y / 2.0,
     );
     let rects = rects_of(&app, root);
-    for &(min, max) in &rects {
+    for rect in &rects {
         assert!(
-            min.y >= top - 1.0 && max.y <= bottom + 1.0,
-            "{min}..{max} within {top}..{bottom}"
+            rect.min.y >= top - 1.0 && rect.max.y <= bottom + 1.0,
+            "{rect:?} within {top}..{bottom}"
         );
     }
     let mut lines = rects
         .iter()
-        .map(|(min, max)| (min.y, max.y))
+        .map(|rect| rect.min.y..rect.max.y)
         .collect::<Vec<_>>();
-    lines.sort_by(|a, b| a.0.total_cmp(&b.0));
+    lines.sort_by(|a, b| a.start.total_cmp(&b.start));
     let drawn = drawn_lines(&app, root);
     assert_eq!(lines.len(), drawn.len(), "a rect per drawn line");
     for (rect, line) in lines.iter().zip(&drawn) {
         assert!(
-            (rect.0 - line.0).abs() < 0.5
-                && (rect.1 - line.1).abs() < 0.5,
+            (rect.start - line.start).abs() < 0.5
+                && (rect.end - line.end).abs() < 0.5,
             "rect {rect:?} on drawn line {line:?}"
         );
     }
