@@ -3,12 +3,13 @@
 mod code_view;
 mod tokens;
 
-use bevy::app::{App, Plugin, Startup};
+use bevy::app::{App, Plugin, PreUpdate, Startup};
 use bevy::asset::{Assets, Handle, uuid_handle};
 use bevy::ecs::system::ResMut;
 use bevy::text::Font;
 pub use code_view::{
-    CodeDoc, CodeLine, CodeSource, CodeView, Overflow, code_view,
+    CodeDoc, CodeLine, CodeSource, CodeStream, CodeView, Overflow,
+    code_view,
 };
 pub use rubrix_highlight::{Kind, Lang, Run};
 pub use tokens::{
@@ -29,7 +30,8 @@ pub struct RubrixPlugin;
 
 impl Plugin for RubrixPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, load_code_font);
+        app.add_systems(Startup, load_code_font)
+            .add_systems(PreUpdate, code_view::take_sent);
     }
 }
 
