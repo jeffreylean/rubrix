@@ -33,7 +33,7 @@ const TAB: usize = 4;
 
 pub(crate) const OVERSCAN: f32 = 400.0;
 
-const SELECTED_ALPHA: f32 = 0.2;
+const SELECTED_ALPHA: f32 = 0.15;
 
 const STREAM_OVERSCAN: f32 = 0.0;
 
