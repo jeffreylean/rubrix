@@ -11,15 +11,18 @@ use bevy_fynix::{AnyView, Prop, ScopedExt, ViewExt};
 use crate::{Build, PageView};
 
 mod about;
+mod code;
 pub mod rich;
 pub mod virtual_list;
 
 const BUTTON_WIDTH: f32 = 140.0;
 
+pub type Open = fn(&mut World, &[PathBuf]) -> Result<(), String>;
+
 pub struct Page {
     pub name: &'static str,
     pub build: fn() -> PageView,
-    pub open: Option<fn(&mut World, &[PathBuf])>,
+    pub open: Option<Open>,
 }
 
 pub const PAGES: &[Page] = &[
@@ -38,11 +41,17 @@ pub const PAGES: &[Page] = &[
         build: virtual_list::build,
         open: None,
     },
+    Page {
+        name: "code",
+        build: code::build,
+        open: Some(code::open),
+    },
 ];
 
 pub fn plugin(app: &mut App) {
     rich::plugin(app);
     virtual_list::plugin(app);
+    code::plugin(app);
 }
 
 fn control(

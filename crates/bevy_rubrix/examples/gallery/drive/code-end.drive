@@ -1,0 +1,14 @@
+page code
+wait 120
+move 740 400
+scroll 0 -169983
+wait 30
+screenshot r12-10000.png
+log rows
+expect rows first_visible 9999 spawned
+scroll 0 -2000000
+wait 30
+screenshot r12-end.png
+log rows
+log runs 10372
+exit

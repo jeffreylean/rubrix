@@ -50,7 +50,14 @@ resize <w> <h>     open <path>...
 - Stable handles, at 1280 by 800. The page list entry `about` is at 100 62. The theme toggle is at 100 771. They move when `resize` changes the window.
 - `resize <w> <h>` asks Hyprland for the size, and prints `ok` once the window reports it. Without Hyprland, or when the window does not take the size within 2 seconds, it exits with code 2 and names the size the window has.
 - The theme toggle builds the page again and puts each scroll offset back, so a page keeps its scroll through a toggle.
-- `log` topics are `entities`, `page`, `present_mode`, `scroll`, `theme`. Each prints one line such as `page about`. `present_mode` prints the mode the window asked for, as `present_mode requested AutoNoVsync`, not the mode the driver settled on. `scroll` prints the offset of the first scroll area on the current page, in pixels. `expect page about` prints `accept: page pass` or `accept: page fail`.
+- `log` topics are `entities`, `page`, `present_mode`, `scroll`, `theme`, `rows`, `spans`, `hit`, and `runs <line>`. Each prints one line such as `page about`.
+  - `present_mode` prints the mode the window asked for, as `present_mode requested AutoNoVsync`, not the mode the driver settled on.
+  - `scroll` prints the offset of the first scroll area on the current page, in pixels.
+  - `rows` reads the first virtual list: `rows first_visible <n> spawned <a>..=<b> rows <slots> total <count> following <bool> x <px>`, where `x` is its sideways offset. It prints `rows empty total 0` for a list with no rows and `rows none` with no list.
+  - `spans` lists the spans of the rich page's long line, `spans <n>: <id> "<text>" <hex>, ...`. `hit` prints the byte and character under the last press on its hit line, `hit 15 'ö'`, or `hit none`.
+  - `runs <line>` reads the code page's line, counted from 1: `runs <line>: <a>..<b> <kind>, ... | shown "<text>" <hex>, ...`. The part before `|` is the runs the line was lexed into, in bytes of the line. The part after is each span its row shows, or `not shown` while no row is built for it. Past the last line it prints `runs <line> none`.
+- `expect <topic> <text>` prints `accept: <topic> pass` when the topic's line holds the text, else `accept: <topic> fail`. A topic that takes a line number takes it before the text: `expect runs 75 comment` checks `runs 75` for `comment`.
+- `open <path>` gives a file to the page on show. A relative path is read from the drive script's directory, so `open ../fixtures/notes.xyz` in a script in `drive/` opens `examples/gallery/fixtures/notes.xyz`. It exits with code 2 when the page takes no files or cannot read the file.
 - `clipboard` prints what this gallery last copied, never the shared system clipboard.
 - Each step prints `drive: <step> ok`. Wait for every one, and for `screenshot` the file exists when it prints.
 - Never warp the OS pointer or use wtype. They act on the focused window, and the gallery has none.

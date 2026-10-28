@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 bevy = { workspace = true }
 bevy_fynix = { workspace = true, features = ["std"] }
+rubrix_highlight = { path = "../rubrix_highlight" }
 
 [dev-dependencies]
 bevy = { workspace = true, features = [

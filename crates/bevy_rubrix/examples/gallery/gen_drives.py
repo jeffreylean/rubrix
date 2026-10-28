@@ -2,14 +2,14 @@ import argparse
 from pathlib import Path
 
 parser = argparse.ArgumentParser(
-    description="Write every virtual_list drive script but virtual-list.drive."
+    description="Write every virtual_list drive script but virtual-list.drive, "
+    "and every code drive script."
 )
 parser.add_argument("dir", nargs="?", type=Path, default=Path(__file__).parent / "drive")
 out = parser.parse_args().dir
 CENTER = "move 740 400"
-TEN_K, HUNDRED_K, APPEND, PLAIN, FOLLOW = (
-    "click 290 68", "click 438 68", "click 586 68", "click 734 68", "click 882 68"
-)
+BUTTONS = ["click 290 68", "click 438 68", "click 586 68", "click 734 68", "click 882 68"]
+TEN_K, HUNDRED_K, APPEND, PLAIN, FOLLOW = BUTTONS
 FOLLOW_ON = [FOLLOW, "wait 2"]
 
 
@@ -224,3 +224,216 @@ write(
     "log rows",
     "exit",
 )
+
+LARGE_RS, LARGE_TS, STRESS, WRAP = BUTTONS[:4]
+THEME = "click 100 771"
+SETTLE = "wait 120"
+LARGE_RS_LINES = (
+    (Path(__file__).resolve().parents[4] / "bench/fixtures/rust/large.rs.txt")
+    .read_text()
+    .splitlines()
+)
+
+
+def to_line(line_number):
+    return f"scroll 0 -{(line_number - 1) * ROW}"
+
+
+def code(name, *steps):
+    write(f"code-{name}", "page code", SETTLE, *steps, "exit")
+
+
+write(
+    "code-large",
+    "frames start",
+    "wait 70",
+    "page code",
+    SETTLE,
+    "frames stop code-first-paint.csv",
+    "screenshot r12-large.png",
+    "log page",
+    "log rows",
+    "log runs 1",
+    CENTER,
+    "frames start",
+    "wait 60",
+    back_and_forth(18, 6, 100),
+    "frames stop code-scroll.csv",
+    "log rows",
+    "exit",
+)
+code(
+    "end",
+    CENTER,
+    to_line(10_000),
+    "wait 30",
+    "screenshot r12-10000.png",
+    "log rows",
+    "expect rows first_visible 9999 spawned",
+    "scroll 0 -2000000",
+    "wait 30",
+    "screenshot r12-end.png",
+    "log rows",
+    f"log runs {len(LARGE_RS_LINES)}",
+)
+code(
+    "late-comment",
+    "open ../fixtures/late-comment.rs",
+    "wait 30",
+    CENTER,
+    to_line(60),
+    "wait 30",
+    "screenshot r12-late-comment.png",
+    "log rows",
+    "expect rows first_visible 59 spawned",
+    "log runs 60",
+    "expect runs 60 comment",
+    "expect runs 75 comment",
+)
+code(
+    "hscroll",
+    "open ../fixtures/long-line.rs",
+    "wait 10",
+    WRAP,
+    "wait 10",
+    WRAP,
+    "wait 10",
+    CENTER,
+    "scroll -6000 0",
+    "wait 30",
+    "screenshot r12-hscroll.png",
+    "log rows",
+    "log runs 3",
+)
+code(
+    "wrap",
+    "open ../fixtures/long-line.rs",
+    "wait 10",
+    WRAP,
+    "wait 10",
+    CENTER,
+    "wait 30",
+    "screenshot r12-wrap.png",
+    "log rows",
+    "expect rows x 0",
+    "log runs 3",
+)
+code(
+    "100k",
+    "frames start",
+    "wait 70",
+    STRESS,
+    "wait 60",
+    "frames stop code-load-100k.csv",
+    CENTER,
+    "frames start",
+    "wait 70",
+    to_line(50_000),
+    "wait 2",
+    "log rows",
+    "expect rows first_visible 49999 spawned",
+    "wait 58",
+    "frames stop code-jump-100k.csv",
+    "screenshot r12-100k.png",
+    "log rows",
+    "log runs 50000",
+    "frames start",
+    "wait 60",
+    back_and_forth(18, 6, 100),
+    "frames stop code-scroll-100k.csv",
+    "log rows",
+)
+code(
+    "unicode",
+    "open ../fixtures/unicode.rs",
+    "wait 30",
+    "screenshot r12-unicode.png",
+    "log runs 1",
+    "log runs 3",
+    "log runs 4",
+    "log runs 6",
+)
+code(
+    "edges",
+    "open ../fixtures/empty.txt",
+    "wait 30",
+    "screenshot r12-edges-empty.png",
+    "log rows",
+    "expect rows total 1 following",
+    "log runs 1",
+    "open ../fixtures/one-line.rs",
+    "wait 30",
+    "screenshot r12-edges.png",
+    "log rows",
+    "expect rows total 1 following",
+    "log runs 1",
+)
+quoted = next(
+    n for n, line in enumerate(LARGE_RS_LINES, 1) if line.startswith("const ") and '"' in line
+)
+commented = max(
+    n for n, line in enumerate(LARGE_RS_LINES[:quoted], 1) if line.startswith("//")
+)
+assert quoted - commented < 10, (commented, quoted)
+lines = [
+    "log rows",
+    f"expect rows first_visible {commented - 5} spawned",
+    f"log runs {commented}",
+    f"log runs {quoted}",
+]
+code(
+    "theme",
+    CENTER,
+    to_line(commented - 4),
+    "wait 30",
+    "screenshot r12-theme-dark.png",
+    "log theme",
+    lines,
+    THEME,
+    SETTLE,
+    "screenshot r12-theme.png",
+    "log theme",
+    lines,
+)
+code(
+    "plain",
+    "open ../fixtures/notes.xyz",
+    "wait 30",
+    "screenshot r12-plain.png",
+    "log runs 1",
+    "expect runs 1 plain",
+)
+code(
+    "review-record",
+    "record start review",
+    "wait 60",
+    CENTER,
+    scroll(-18, 120),
+    "wait 30",
+    WRAP,
+    "wait 90",
+    WRAP,
+    "wait 60",
+    "open ../fixtures/long-line.rs",
+    "wait 30",
+    CENTER,
+    ["scroll -60 0"] * 40,
+    "wait 60",
+    LARGE_RS,
+    "wait 30",
+    CENTER,
+    to_line(commented - 4),
+    "wait 60",
+    THEME,
+    "wait 120",
+    STRESS,
+    "wait 60",
+    CENTER,
+    to_line(50_000),
+    "wait 90",
+    scroll(-18, 120),
+    "wait 30",
+    "record stop",
+    "log rows",
+)
+

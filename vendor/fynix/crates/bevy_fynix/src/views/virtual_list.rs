@@ -24,7 +24,7 @@ use crate::tokens::SpacingTokens;
 use crate::views::frame::{Frame, FrameProps};
 use crate::{AnyView, Bevy, Cx, FynixSystems, Styled, View};
 
-const OVERSCAN: f64 = 1000.0;
+const OVERSCAN: f32 = 1000.0;
 
 /// How much of a row, in logical px, has to show for it to count as
 /// showing, so that a row only rounding shows does not.
@@ -52,6 +52,7 @@ pub struct VirtualListView<R> {
     estimate: f32,
     sideways: Prop<bool>,
     follow: Prop<bool>,
+    overscan: f32,
     row: R,
 }
 
@@ -84,9 +85,9 @@ pub struct VirtualListView<R> {
 ///
 /// # Limits
 ///
-/// - It builds at most 199 rows, cutting the 1,000 px of overscan on
-///   each side first. A view more than 199 rows high shows a blank
-///   band below them.
+/// - It builds at most 199 rows, cutting the
+///   [overscan](VirtualListView::overscan) on each side first. A view
+///   more than 199 rows high shows a blank band below them.
 /// - Positions are `f32` pixels, as in Bevy's layout. Past 2^23 px,
 ///   about 440,000 rows of 19 px, a
 ///   [`scroll_to`](VirtualList::scroll_to) of the last row leaves it
@@ -117,6 +118,7 @@ pub fn virtual_list<R>(
         estimate,
         sideways: Prop::Value(false),
         follow: Prop::Value(false),
+        overscan: OVERSCAN,
         row,
     }
 }
@@ -156,6 +158,19 @@ impl<R> VirtualListView<R> {
         self.follow = on.into();
         self
     }
+
+    /// Builds the rows within `px` logical pixels above and below the
+    /// view too, 1,000 when unset, so that a row is laid out before
+    /// it shows unless one frame scrolls further than that. Each
+    /// frame lays out and draws every row built, so fewer cost less.
+    pub fn overscan(mut self, px: f32) -> Self {
+        assert!(
+            px.is_finite() && px >= 0.0,
+            "an overscan of {px} px"
+        );
+        self.overscan = px;
+        self
+    }
 }
 
 impl<R> FrameProps for VirtualListView<R> {
@@ -173,7 +188,12 @@ where
         let list = cx.build(self.frame);
         let spacer = cx.under(list, Cx::spawn);
         let count = self.count.get(cx.world).unwrap_or(0);
-        let state = VirtualList::new(self.estimate, count, spacer);
+        let state = VirtualList::new(
+            self.estimate,
+            self.overscan,
+            count,
+            spacer,
+        );
         let height = state.height();
         let mut area = cx.world.entity_mut(list);
         area.insert((
@@ -203,9 +223,11 @@ where
             }
         });
         *cx.world.get_mut::<Node>(spacer).expect("a node") = Node {
+            position_type: PositionType::Absolute,
+            top: px(0.0),
+            left: px(0.0),
             width: percent(100.0),
             height,
-            flex_shrink: 0.0,
             ..Node::default()
         };
         let row = Arc::new(self.row);
@@ -311,6 +333,7 @@ pub struct RowSpan {
 #[derive(Component)]
 pub struct VirtualList {
     estimate: f32,
+    overscan: f64,
     count: usize,
     heights: Heights,
     spacer: Entity,
@@ -370,9 +393,15 @@ struct Scroll {
 }
 
 impl VirtualList {
-    fn new(estimate: f32, count: usize, spacer: Entity) -> Self {
+    fn new(
+        estimate: f32,
+        overscan: f32,
+        count: usize,
+        spacer: Entity,
+    ) -> Self {
         let mut list = Self {
             estimate,
+            overscan: f64::from(overscan),
             count,
             heights: Heights::default(),
             spacer,
@@ -647,11 +676,12 @@ impl VirtualList {
 
     fn fill(&mut self, scroll: f64, view: f64) {
         let count = self.heights.len();
-        let top = (scroll - OVERSCAN).max(0.0);
+        let top = (scroll - self.overscan).max(0.0);
         let mut first = self.heights.index_at(top);
         let mut end =
-            (self.heights.index_at(top + view + 2.0 * OVERSCAN) + 1)
-                .min(count);
+            (self.heights.index_at(top + view + 2.0 * self.overscan)
+                + 1)
+            .min(count);
         if end.saturating_sub(first) > MAX_SLOTS {
             let shown = self.heights.index_at(scroll);
             let below = self.heights.index_at(scroll + view) + 1;

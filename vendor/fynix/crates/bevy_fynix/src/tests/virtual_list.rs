@@ -16,7 +16,7 @@ use bevy::ecs::world::World;
 use bevy::math::UVec2;
 use bevy::ui::{
     ComputedNode, Display, Node, OverflowAxis, ScrollPosition,
-    UiGlobalTransform, Val, px,
+    UiGlobalTransform, Val, percent, px,
 };
 
 use super::layout::laid_out;
@@ -311,6 +311,37 @@ fn in_the_middle_it_builds_the_rows_within_the_overscan() {
     assert_eq!(shown_at(&mut app, area, 5_000), Some(0.0));
     assert_eq!(state(&app, area).first_visible(), 5_000);
     assert_cover(&mut app, area, -OVERSCAN, VIEW + OVERSCAN);
+}
+
+#[test]
+fn an_overscan_of_100_px_builds_only_the_rows_within_it() {
+    const NEAR: f32 = 100.0;
+    let mut app = laid_out();
+    app.insert_resource(Count(10_000));
+    mount::<Plain>(
+        app.world_mut(),
+        column((virtual_list(
+            resource::<Count, _>(|count| count.0),
+            ESTIMATE,
+            row(uniform),
+        )
+        .overscan(NEAR),))
+        .width(px(300.0))
+        .height(px(VIEW)),
+    );
+    settle(&mut app);
+    let area = app
+        .world_mut()
+        .query_filtered::<Entity, With<VirtualList>>()
+        .single(app.world())
+        .expect("one list");
+    scroll_to(&mut app, area, 5_000);
+    settle(&mut app);
+
+    assert_eq!(state(&app, area).first_visible(), 5_000);
+    assert_cover(&mut app, area, -NEAR, VIEW + NEAR);
+    let most = ((VIEW + 2.0 * NEAR) / ESTIMATE) as usize + 1;
+    assert!(rows(&mut app, area).len() <= most);
 }
 
 #[test]
@@ -812,6 +843,45 @@ fn sideways_list(app: &mut App) -> Entity {
         .query_filtered::<Entity, With<VirtualList>>()
         .single(app.world())
         .expect("one list")
+}
+
+#[test]
+fn a_sideways_list_leaves_a_parent_sized_by_its_content_its_width() {
+    let mut app = laid_out();
+    app.insert_resource(Count(100));
+    let row = |slot: RowSlot| {
+        let wide = frame().width(px(3000.0)).height(px(20.0));
+        hrow((slot.sideways(wide.boxed()),)).boxed()
+    };
+    mount::<Plain>(
+        app.world_mut(),
+        column((virtual_list(
+            resource::<Count, _>(|count| count.0),
+            ESTIMATE,
+            row,
+        )
+        .sideways(true),))
+        .width(percent(100.0))
+        .height(px(VIEW)),
+    );
+    settle(&mut app);
+    let area = app
+        .world_mut()
+        .query_filtered::<Entity, With<VirtualList>>()
+        .single(app.world())
+        .expect("one list");
+
+    let width =
+        app.world().get::<ComputedNode>(area).unwrap().size().x;
+    assert_eq!(width, 1000.0, "the window's width");
+    app.world_mut().get_mut::<ScrollPosition>(area).unwrap().x =
+        5000.0;
+    settle(&mut app);
+    assert_eq!(
+        app.world().get::<ScrollPosition>(area).unwrap().x,
+        2000.0,
+        "as far as the rows overflow"
+    );
 }
 
 fn left(app: &App, node: Entity) -> f32 {

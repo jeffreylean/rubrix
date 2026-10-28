@@ -1,0 +1,15 @@
+page code
+wait 120
+open ../fixtures/empty.txt
+wait 30
+screenshot r12-edges-empty.png
+log rows
+expect rows total 1 following
+log runs 1
+open ../fixtures/one-line.rs
+wait 30
+screenshot r12-edges.png
+log rows
+expect rows total 1 following
+log runs 1
+exit
