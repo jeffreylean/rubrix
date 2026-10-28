@@ -1152,7 +1152,16 @@ fn write_file(path: &Path, contents: String) -> Result<(), String> {
 fn topic_line(world: &mut World, topic: &str) -> Option<String> {
     Some(match topic {
         "entities" => {
-            format!("entities {}", world.entities().count_spawned())
+            let count = world.entities().count_spawned();
+            let sample = pages::hamlet_rich::sample_ids(world);
+            if sample.is_empty() {
+                format!("entities {count}")
+            } else {
+                format!(
+                    "entities {count} sample {}",
+                    sample.join(" ")
+                )
+            }
         }
         "page" => {
             format!(
@@ -1194,6 +1203,23 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
         "scroll" => format!("scroll {}", scroll_offset(world)),
         "diff" => diff(world),
         "stream" => pages::stream::log(world),
+        "rich-styles" => {
+            let palette = world.resource::<Mode>().0;
+            pages::hamlet_rich::styles(world, &palette)
+        }
+        "rich-stream" => {
+            let palette = world.resource::<Mode>().0;
+            pages::hamlet_rich::streamed(world, &palette)
+        }
+        "code-plate" => pages::hamlet_code::plate_line(world),
+        "code-grow" => pages::hamlet_code::growth_line(world),
+        "copied" => match &world.resource::<Copied>().0 {
+            Some(text) => format!("copied {text:?}"),
+            None => "copied none".into(),
+        },
+        "diff-colours" => pages::hamlet_diff::colours_line(world),
+        "diff-more" => pages::hamlet_diff::more_line(world),
+        "stress" => pages::stress::log(world),
         "selection" => selection(world),
         "theme" => {
             format!("theme {}", world.resource::<Mode>().0.name())
@@ -1235,15 +1261,14 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
 }
 
 fn diff(world: &mut World) -> String {
-    let first = world
-        .query::<&VirtualList>()
-        .iter(world)
-        .next()
-        .map_or(0, VirtualList::first_visible);
-    let Some(doc) = world.query::<&DiffDoc>().iter(world).next()
+    let Some((view, doc)) =
+        world.query::<(Entity, &DiffDoc)>().iter(world).next()
     else {
         return "diff none".into();
     };
+    let first = pages::find_under::<VirtualList>(world, view)
+        .and_then(|list| world.get::<VirtualList>(list))
+        .map_or(0, VirtualList::first_visible);
     let shape = match (doc.is_compact(), doc.layout()) {
         (true, _) => "compact",
         (false, Layout::Stacked) => "stacked",
