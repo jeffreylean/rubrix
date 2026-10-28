@@ -5,6 +5,7 @@ use core::ops::Range;
 use bevy::app::App;
 use bevy::camera::NormalizedRenderTarget;
 use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::observer::On;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::ResMut;
@@ -17,27 +18,33 @@ use bevy::picking::events::{
     PointerRelease,
 };
 use bevy::picking::pointer::{Location, PointerButton, PointerId};
-use bevy::ui::{ComputedNode, UiGlobalTransform};
+use bevy::text::TextLayoutInfo;
+use bevy::ui::{ComputedNode, Display, Node, UiGlobalTransform};
 use bevy_fynix::views::parley::{Affinity, Cursor};
 use bevy_fynix::views::{VirtualList, rich_layout};
 use bevy_rubrix::{
     CodeCopied, CodeSelection, CodeSource, Lang, Overflow,
 };
 use support::{
-    Wrapping, doc, laid_out, line, list, list_state, mount_view, view,
+    Wrapping, doc, laid_out, line, list, list_state, mount_view,
+    spans_of, view,
 };
 
 #[derive(Resource, Default)]
 struct Copied(Vec<String>);
 
 fn selecting(source: CodeSource) -> App {
+    selecting_in(source, 600.0)
+}
+
+fn selecting_in(source: CodeSource, width: f32) -> App {
     let mut app = laid_out();
     app.init_resource::<Copied>().add_observer(
         |copied: On<CodeCopied>, mut all: ResMut<Copied>| {
             all.0.push(copied.text.clone());
         },
     );
-    mount_view(&mut app, source, 600.0, 400.0);
+    mount_view(&mut app, source, width, 400.0);
     settle(&mut app);
     app
 }
@@ -48,16 +55,20 @@ fn settle(app: &mut App) {
     }
 }
 
-fn point_of(app: &mut App, row: usize, byte: usize) -> Vec2 {
-    let root = line(app, row);
+fn corner(app: &App, root: Entity) -> Vec2 {
     let world = app.world();
-    let layout = rich_layout(world, root).expect("a layout");
     let node = world.get::<ComputedNode>(root).expect("a node");
-    let corner = world
+    world
         .get::<UiGlobalTransform>(root)
         .expect("a transform")
         .translation
-        + node.content_box().min;
+        + node.content_box().min
+}
+
+fn point_of(app: &mut App, row: usize, byte: usize) -> Vec2 {
+    let root = line(app, row);
+    let corner = corner(app, root);
+    let layout = &rich_layout(app.world(), root).expect("a layout");
     let caret =
         Cursor::from_byte_index(layout, byte, Affinity::Downstream)
             .geometry(layout, 1.0);
@@ -80,9 +91,13 @@ fn pointer(at: Vec2) -> Pointer {
 }
 
 fn press_at(app: &mut App, row: usize, byte: usize, count: u8) {
-    hold_at(app, row, byte, count);
-    let on = line(app, row);
     let at = point_of(app, row, byte);
+    press_point(app, row, at, count);
+}
+
+fn press_point(app: &mut App, row: usize, at: Vec2, count: u8) {
+    hold_point(app, row, at, count);
+    let on = line(app, row);
     app.world_mut().trigger(PointerRelease {
         entity: on,
         pointer: pointer(at),
@@ -94,6 +109,10 @@ fn press_at(app: &mut App, row: usize, byte: usize, count: u8) {
 
 fn hold_at(app: &mut App, row: usize, byte: usize, count: u8) {
     let at = point_of(app, row, byte);
+    hold_point(app, row, at, count);
+}
+
+fn hold_point(app: &mut App, row: usize, at: Vec2, count: u8) {
     let on = line(app, row);
     app.world_mut().trigger(PointerPress {
         entity: on,
@@ -260,12 +279,185 @@ fn a_wrapped_row_maps_a_point_on_its_second_visual_line() {
     app.world_mut().resource_mut::<Wrapping>().0 = Overflow::Wrap;
     settle(&mut app);
     let root = line(&mut app, 0);
-    let layout = rich_layout(app.world(), root).expect("a layout");
+    let layout = &rich_layout(app.world(), root).expect("a layout");
     assert!(layout.len() >= 2, "the line wraps");
     let second = layout.get(1).expect("a second line").text_range();
     let byte = second.start + 2;
     press_at(&mut app, 0, byte, 1);
     assert_eq!(selected(&mut app), byte..byte);
+}
+
+const LONG_LINE: &str =
+    include_str!("../examples/gallery/fixtures/long-line.rs");
+
+/// The gallery's code view: a 1280 px window less its 200 px sidebar
+/// and the page's 20 px padding on each side.
+const GALLERY_VIEW: f32 = 1040.0;
+
+const WRAPPED_ROW: usize = 2;
+
+fn long_line_wrapped() -> App {
+    let mut app = selecting_in(
+        CodeSource::new(Lang::Rust, LONG_LINE),
+        GALLERY_VIEW,
+    );
+    app.world_mut().resource_mut::<Wrapping>().0 = Overflow::Wrap;
+    settle(&mut app);
+    app
+}
+
+/// Each drawn visual line of `root`'s text, top to bottom, as its
+/// top and bottom in the window.
+fn drawn_lines(app: &App, root: Entity) -> Vec<(f32, f32)> {
+    let corner = corner(app, root);
+    let info =
+        app.world().get::<TextLayoutInfo>(root).expect("drawn");
+    let mut lines = info
+        .run_geometry
+        .iter()
+        .map(|run| {
+            (corner.y + run.bounds.min.y, corner.y + run.bounds.max.y)
+        })
+        .collect::<Vec<_>>();
+    lines.sort_by(|a, b| a.0.total_cmp(&b.0));
+    lines.dedup();
+    lines
+}
+
+#[test]
+fn a_press_on_a_wrapped_line_selects_the_byte_drawn_under_it() {
+    let mut app = long_line_wrapped();
+    let root = line(&mut app, WRAPPED_ROW);
+    assert!(drawn_lines(&app, root).len() >= 3, "line 3 wraps");
+    assert!(spans_of(&app, root).len() > 5, "highlighted spans");
+    let text =
+        doc(&mut app).line(WRAPPED_ROW).expect("line 3").to_owned();
+    let letter =
+        |at: usize| text.as_bytes()[at].is_ascii_alphabetic();
+    let line_start = doc(&mut app).line_range(WRAPPED_ROW).start;
+    let corner = corner(&app, root);
+    let info =
+        app.world().get::<TextLayoutInfo>(root).expect("drawn");
+    let glyphs = &info.glyphs;
+    assert_eq!(glyphs.len(), text.len(), "a glyph per byte");
+    let between = (1..glyphs.len())
+        .filter(|&at| letter(at - 1) && letter(at))
+        .filter(|&at| {
+            glyphs[at - 1].line_index == glyphs[at].line_index
+        })
+        .step_by(5)
+        .map(|at| {
+            let (left, right) = (&glyphs[at - 1], &glyphs[at]);
+            let x = (left.position.x + right.position.x) / 2.0 + 1.0;
+            (
+                at,
+                right.line_index,
+                corner + Vec2::new(x, right.position.y),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        between.iter().filter(|&&(_, line, _)| line > 0).count()
+            >= 10,
+        "points on the later visual lines"
+    );
+    for (at, line, point) in between {
+        press_point(&mut app, WRAPPED_ROW, point, 1);
+        let byte = line_start + at;
+        assert_eq!(
+            selected(&mut app),
+            byte..byte,
+            "drawn between bytes {} and {at} on visual line {line}",
+            at - 1
+        );
+    }
+}
+
+/// The selection rectangles drawn for `root`'s text, as their top
+/// left and bottom right in the window.
+fn rects_of(app: &App, root: Entity) -> Vec<(Vec2, Vec2)> {
+    let world = app.world();
+    let cell = world.get::<ChildOf>(root).expect("a cell").parent();
+    let layer = world.get::<Children>(cell).expect("children")[0];
+    world
+        .get::<Children>(layer)
+        .map(|rects| {
+            rects
+                .iter()
+                .copied()
+                .filter(|&rect| {
+                    world.get::<Node>(rect).expect("a node").display
+                        != Display::None
+                })
+                .map(|rect| {
+                    let node = world
+                        .get::<ComputedNode>(rect)
+                        .expect("a node");
+                    let centre = world
+                        .get::<UiGlobalTransform>(rect)
+                        .expect("a transform")
+                        .translation;
+                    let half = node.size() / 2.0;
+                    (centre - half, centre + half)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_selected_wrapped_line_keeps_every_row_and_rects_its_drawn_lines()
+{
+    let mut app = long_line_wrapped();
+    let rows = doc(&mut app).rows();
+    let spans = |app: &mut App| {
+        let list = list_state(app);
+        (0..rows)
+            .map(|row| list.row_span(row).expect("a row"))
+            .map(|span| (span.top, span.height))
+            .collect::<Vec<_>>()
+    };
+    let before = spans(&mut app);
+    press_at(&mut app, WRAPPED_ROW, 3, 3);
+    assert_eq!(
+        selected(&mut app),
+        doc(&mut app).line_range(WRAPPED_ROW)
+    );
+    settle(&mut app);
+    assert_eq!(spans(&mut app), before, "row tops and heights");
+
+    let root = line(&mut app, WRAPPED_ROW);
+    let world = app.world();
+    let text = world.get::<ComputedNode>(root).expect("a node");
+    let centre = world
+        .get::<UiGlobalTransform>(root)
+        .expect("a transform")
+        .translation;
+    let (top, bottom) = (
+        centre.y - text.size().y / 2.0,
+        centre.y + text.size().y / 2.0,
+    );
+    let rects = rects_of(&app, root);
+    for &(min, max) in &rects {
+        assert!(
+            min.y >= top - 1.0 && max.y <= bottom + 1.0,
+            "{min}..{max} within {top}..{bottom}"
+        );
+    }
+    let mut lines = rects
+        .iter()
+        .map(|(min, max)| (min.y, max.y))
+        .collect::<Vec<_>>();
+    lines.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let drawn = drawn_lines(&app, root);
+    assert_eq!(lines.len(), drawn.len(), "a rect per drawn line");
+    for (rect, line) in lines.iter().zip(&drawn) {
+        assert!(
+            (rect.0 - line.0).abs() < 0.5
+                && (rect.1 - line.1).abs() < 0.5,
+            "rect {rect:?} on drawn line {line:?}"
+        );
+    }
 }
 
 #[test]
