@@ -28,7 +28,7 @@ use bevy::ui::{
     UiGlobalTransform, UiSystems, Val, percent, px,
 };
 
-use super::layout::laid_out;
+use super::layout::{laid_out, laid_out_at};
 use crate::tests::Plain;
 use crate::views::{
     FrameProps, RowSlot, RowSpan, VirtualList, column, frame,
@@ -1266,7 +1266,7 @@ fn scroll_to_failures(
     height: Height,
     index: usize,
 ) -> Vec<String> {
-    let mut app = at_scale(scale_factor);
+    let mut app = laid_out_at(scale_factor);
     app.insert_resource(Follow(follow));
     let area = mounted(&mut app, 10_000, 17.0, row(height), px(VIEW));
     settle(&mut app);
@@ -1571,24 +1571,10 @@ fn a_width_change_keeps_a_right_estimate_past_one_huge_row() {
     );
 }
 
-pub(super) fn at_scale(scale_factor: f32) -> App {
-    let mut app = laid_out();
-    app.world_mut()
-        .query::<&mut Camera>()
-        .single_mut(app.world_mut())
-        .unwrap()
-        .computed
-        .target_info = Some(RenderTargetInfo {
-        physical_size: UVec2::new(1000, 1000),
-        scale_factor,
-    });
-    app
-}
-
 #[test]
 fn rows_never_overlap_at_any_scale() {
     for scale_factor in [1.0, 1.25, 1.5, 2.0] {
-        let mut app = at_scale(scale_factor);
+        let mut app = laid_out_at(scale_factor);
         let area =
             mounted(&mut app, 10_000, 16.3, row(regions), px(VIEW));
         for (index, frames) in [(9_999, 4), (5_000, 4), (100, 4)] {
@@ -1864,7 +1850,7 @@ fn arrive(app: &mut App) {
 
 #[test]
 fn a_wheel_flung_to_the_end_follows_the_rows_arriving() {
-    let mut app = at_scale(1.0);
+    let mut app = laid_out_at(1.0);
     app.insert_resource(Follow(true));
     let area = list(&mut app, 1_000, uniform);
     scroll_to(&mut app, area, 999);
@@ -1962,7 +1948,7 @@ fn built_under(app: &mut App, area: Entity) -> Vec<usize> {
 #[test]
 fn a_following_list_its_parent_fits_draws_every_row_as_it_grows() {
     for scale_factor in [1.0, 1.25, 2.0] {
-        let mut app = at_scale(scale_factor);
+        let mut app = laid_out_at(scale_factor);
         fitted(&mut app);
         app.insert_resource(Count(0));
         mount::<Plain>(app.world_mut(), fitted_list());
@@ -2002,7 +1988,7 @@ fn assert_builds_every_row(app: &mut App, area: Entity, at: &str) {
 #[test]
 fn a_list_its_parent_fits_draws_every_row_on_its_first_two_frames() {
     for scale_factor in [1.0, 1.25, 2.0] {
-        let mut app = at_scale(scale_factor);
+        let mut app = laid_out_at(scale_factor);
         fitted(&mut app);
         app.insert_resource(Count(17));
         app.insert_resource(Pass(0));
@@ -2037,7 +2023,7 @@ fn a_list_its_parent_fits_draws_every_row_on_its_first_two_frames() {
 #[test]
 fn a_list_its_parent_fits_laid_out_empty_draws_the_rows_it_gets() {
     for scale_factor in [1.0, 1.25, 2.0] {
-        let mut app = at_scale(scale_factor);
+        let mut app = laid_out_at(scale_factor);
         fitted(&mut app);
         app.insert_resource(Count(0));
         mount::<Plain>(app.world_mut(), fitted_list());

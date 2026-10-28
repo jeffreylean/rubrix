@@ -4,10 +4,11 @@ use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::world::World;
 use bevy::ui::{ComputedNode, ScrollPosition, UiGlobalTransform, px};
 
+use super::layout::laid_out_at;
 use super::virtual_list::{
-    Count, Follow, Grown, Height, Shows, Sideways, VIEW, at_scale,
-    grown, list, mounted, regions, reveal, row, scroll, scroll_to,
-    settle, shown_at, state, tall_hundredths, uniform, wrapping_list,
+    Count, Follow, Grown, Height, Shows, Sideways, VIEW, grown, list,
+    mounted, regions, reveal, row, scroll, scroll_to, settle,
+    shown_at, state, tall_hundredths, uniform, wrapping_list,
 };
 use crate::views::VirtualList;
 
@@ -183,7 +184,7 @@ fn landing_case(
     start: Start,
     index: usize,
 ) -> Vec<String> {
-    let mut app = at_scale(scale);
+    let mut app = laid_out_at(scale);
     app.insert_resource(Follow(follow));
     let area = mounted(
         &mut app,
@@ -337,7 +338,7 @@ fn count_change_case(
     call: Call,
     index: usize,
 ) -> Vec<String> {
-    let mut app = at_scale(scale);
+    let mut app = laid_out_at(scale);
     app.insert_resource(Follow(follow));
     let area = mounted(
         &mut app,
@@ -428,7 +429,7 @@ fn rows_added_after_a_scroll_to_land_or_follow() {
         for gap in 0..4 {
             for at_bottom in [false, true] {
                 cases += 1;
-                let mut app = at_scale(1.0);
+                let mut app = laid_out_at(1.0);
                 app.insert_resource(Follow(true));
                 let area = mounted(
                     &mut app,
@@ -487,7 +488,7 @@ fn scroll_to_the_last_row_of_a_stream() {
             for gap in 0..3 {
                 for follow in [true, false] {
                     cases += 1;
-                    let mut app = at_scale(scale);
+                    let mut app = laid_out_at(scale);
                     app.insert_resource(Follow(follow));
                     let area = mounted(
                         &mut app,
@@ -540,7 +541,7 @@ fn a_following_list_that_shrinks_to_its_view_follows() {
         for grow in [false, true] {
             for settled in [true, false] {
                 cases += 1;
-                let mut app = at_scale(1.0);
+                let mut app = laid_out_at(1.0);
                 app.insert_resource(Follow(true));
                 let area = list(&mut app, 10_000, uniform);
                 scroll_to(&mut app, area, 5_000);
@@ -581,7 +582,7 @@ fn a_following_list_that_shrinks_to_its_view_follows() {
 
 #[test]
 fn this_frames_count_is_placed_this_frame() {
-    let mut app = at_scale(1.0);
+    let mut app = laid_out_at(1.0);
     let area = list(&mut app, 10_000, uniform);
 
     app.world_mut().resource_mut::<Count>().0 = 10_100;
@@ -600,7 +601,7 @@ fn wheel(app: &mut App, area: Entity, by: f32) {
 
 #[test]
 fn following_stops_on_a_move_up_and_resumes_at_the_bottom() {
-    let mut app = at_scale(1.0);
+    let mut app = laid_out_at(1.0);
     app.insert_resource(Follow(true));
     let area = list(&mut app, 1_000, uniform);
     scroll_to(&mut app, area, 999);
@@ -652,7 +653,7 @@ fn following_stops_on_a_move_up_and_resumes_at_the_bottom() {
 
 #[test]
 fn rows_arriving_with_a_move_to_the_end_are_followed() {
-    let mut app = at_scale(1.0);
+    let mut app = laid_out_at(1.0);
     app.insert_resource(Follow(true));
     let area = list(&mut app, 1_000, uniform);
     scroll_to(&mut app, area, 500);
@@ -675,7 +676,7 @@ fn rows_arriving_with_a_move_to_the_end_are_followed() {
 #[test]
 fn a_move_to_the_bottom_follows_again() {
     for (to, steps) in [(990, 5), (500, 0)] {
-        let mut app = at_scale(1.0);
+        let mut app = laid_out_at(1.0);
         app.insert_resource(Follow(true));
         let area = list(&mut app, 1_000, uniform);
         scroll_to(&mut app, area, to);
@@ -700,7 +701,7 @@ fn a_move_to_the_bottom_follows_again() {
 
 #[test]
 fn reveals_at_the_bottom_keep_a_list_following() {
-    let mut app = at_scale(1.0);
+    let mut app = laid_out_at(1.0);
     app.insert_resource(Follow(true));
     let area = list(&mut app, 1_000, uniform);
     scroll_to(&mut app, area, 999);
@@ -719,7 +720,7 @@ fn reveals_at_the_bottom_keep_a_list_following() {
 #[test]
 fn a_following_list_that_fits_or_is_empty_follows_a_stream() {
     for (from, index) in [(10, Some(5)), (0, Some(0)), (0, None)] {
-        let mut app = at_scale(1.0);
+        let mut app = laid_out_at(1.0);
         app.insert_resource(Follow(true));
         let area = list(&mut app, from, uniform);
         if let Some(index) = index {
@@ -750,7 +751,7 @@ fn reveals_of_unmeasured_rows_scroll_the_least_by_the_second_frame() {
                 for from in [9_000, 1_000, 5_100, 4_900] {
                     for follow in [false, true] {
                         cases += 1;
-                        let mut app = at_scale(scale);
+                        let mut app = laid_out_at(scale);
                         app.insert_resource(Follow(follow));
                         app.insert_resource(Grown(5_000, height));
                         let area = mounted(
@@ -802,7 +803,7 @@ fn reveals_of_unmeasured_rows_scroll_the_least_by_the_second_frame() {
 #[test]
 fn ranges_of_an_unmeasured_tall_row_scroll_the_least() {
     for measured in [false, true] {
-        let mut app = at_scale(1.0);
+        let mut app = laid_out_at(1.0);
         app.insert_resource(Grown(5_000, 2_000.0));
         let area = list(&mut app, 10_000, grown);
         if measured {
@@ -905,7 +906,7 @@ fn rows_sit_on_whole_physical_pixels_at_every_scale() {
     let mut failed = Vec::new();
     for scale in EVERY_SCALE {
         for estimate in [16.3, 17.0, 20.0] {
-            let mut app = at_scale(scale);
+            let mut app = laid_out_at(scale);
             let area = mounted(
                 &mut app,
                 10_000,
@@ -957,9 +958,9 @@ fn rows_sit_on_whole_physical_pixels_at_every_scale() {
 
 #[test]
 fn turning_sideways_off_forgets_the_heights_it_measured() {
-    let mut fresh = at_scale(1.0);
+    let mut fresh = laid_out_at(1.0);
     let built = wrapping_list(&mut fresh, false);
-    let mut app = at_scale(1.0);
+    let mut app = laid_out_at(1.0);
     let area = wrapping_list(&mut app, true);
     let first = state(&app, area).first_visible();
     let top = shown_at(&mut app, area, first);
@@ -987,7 +988,7 @@ fn turning_sideways_off_forgets_the_heights_it_measured() {
 
 #[test]
 fn a_scroll_to_among_rows_that_lay_out_at_nothing_lands() {
-    let mut app = at_scale(1.0);
+    let mut app = laid_out_at(1.0);
     let area = list(&mut app, 10_000, |_, index| {
         if index.is_multiple_of(10) { 0.0 } else { 20.0 }
     });
@@ -1005,7 +1006,7 @@ fn a_scroll_to_among_rows_that_lay_out_at_nothing_lands() {
 
 #[test]
 fn following_turned_on_at_the_end_of_a_long_list_follows() {
-    let mut app = at_scale(1.25);
+    let mut app = laid_out_at(1.25);
     let area = list(&mut app, 100_000, |_, _| 19.2);
     scroll_to(&mut app, area, 99_999);
     settle(&mut app);
@@ -1021,7 +1022,7 @@ fn following_turned_on_at_the_end_of_a_long_list_follows() {
 
 #[test]
 fn following_turned_off_with_rows_arriving_keeps_the_view() {
-    let mut app = at_scale(1.0);
+    let mut app = laid_out_at(1.0);
     app.insert_resource(Follow(true));
     let area = list(&mut app, 1_000, uniform);
     scroll_to(&mut app, area, 999);
@@ -1037,7 +1038,7 @@ fn following_turned_off_with_rows_arriving_keeps_the_view() {
 
 #[test]
 fn a_scroll_to_past_the_last_row_of_a_stream_lands_when_it_stops() {
-    let mut app = at_scale(1.0);
+    let mut app = laid_out_at(1.0);
     let area = list(&mut app, 1_000, uniform);
     scroll_to(&mut app, area, usize::MAX);
     for count in (1_002..=1_040).step_by(2) {
@@ -1057,7 +1058,7 @@ fn a_scroll_to_past_the_last_row_of_a_stream_lands_when_it_stops() {
 
 #[test]
 fn a_reveal_in_view_as_rows_arrive_keeps_a_list_following() {
-    let mut app = at_scale(1.0);
+    let mut app = laid_out_at(1.0);
     app.insert_resource(Follow(true));
     let area = list(&mut app, 1_000, uniform);
     scroll_to(&mut app, area, 999);

@@ -4,25 +4,23 @@ use std::thread;
 
 use bevy::app::App;
 use bevy::asset::AssetApp;
-use bevy::camera::{
-    Camera, Camera2d, ComputedCameraValues, RenderTargetInfo,
-};
+use bevy::camera::Camera;
 use bevy::color::{Alpha, Color};
 use bevy::ecs::change_detection::Tick;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::resource::Resource;
-use bevy::math::{UVec2, Vec2};
+use bevy::math::Vec2;
 use bevy::text::{
     FontSize, InlineBox, LineHeight, StrikethroughColor,
     TextBackgroundColor, TextColor, TextFont, TextSpan, Underline,
     UnderlineColor,
 };
-use bevy::time::TimeUpdateStrategy;
-use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin, UiScale};
+use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale};
 use fynix::{Motion, ScopedExt};
 use parley::{Affinity, Cluster, Cursor};
 
+use super::layout::laid_out_at;
 use crate::tests::{Plain, app, kids};
 use crate::tokens::Tone;
 use crate::views::{
@@ -266,39 +264,14 @@ fn the_root_size_reaches_spans_with_no_size_of_their_own() {
     assert_eq!(size(spans[1]), FontSize::Px(20.0));
 }
 
-fn laid_out() -> App {
-    laid_out_at(1.0)
+fn with_text() -> App {
+    with_text_at(1.0)
 }
 
-fn laid_out_at(scale_factor: f32) -> App {
-    let mut app = app();
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(
-        Duration::from_millis(10),
-    ));
-    app.add_plugins((
-        bevy::asset::AssetPlugin::default(),
-        bevy::transform::TransformPlugin,
-        bevy::input::InputPlugin,
-        bevy::picking::PickingPlugin,
-        bevy::picking::InteractionPlugin,
-        bevy::text::TextPlugin,
-    ))
-    .init_asset::<bevy::image::Image>()
-    .init_asset::<bevy::image::TextureAtlasLayout>()
-    .add_plugins(UiPlugin);
-    app.world_mut().spawn((
-        Camera2d,
-        Camera {
-            computed: ComputedCameraValues {
-                target_info: Some(RenderTargetInfo {
-                    physical_size: UVec2::new(1000, 1000),
-                    scale_factor,
-                }),
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-    ));
+fn with_text_at(scale_factor: f32) -> App {
+    let mut app = laid_out_at(scale_factor);
+    app.add_plugins(bevy::text::TextPlugin)
+        .init_asset::<bevy::image::TextureAtlasLayout>();
     app
 }
 
@@ -317,7 +290,7 @@ fn mixed(app: &mut App) -> Entity {
 
 #[test]
 fn rich_layout_maps_every_character_boundary_to_a_point_and_back() {
-    let mut app = laid_out();
+    let mut app = with_text();
     let root = mixed(&mut app);
 
     let full = MIXED.concat();
@@ -370,7 +343,7 @@ fn cursor_at(
 
 #[test]
 fn rich_layout_point_of_a_window_position_is_the_byte_under_it() {
-    let mut app = laid_out();
+    let mut app = with_text();
     let root = mixed(&mut app);
     let world = app.world();
     let layout = &rich_layout(world, root).expect("a layout");
@@ -399,7 +372,7 @@ fn height(app: &App, node: Entity) -> f32 {
 
 #[test]
 fn rich_layout_of_no_text_is_one_line_high() {
-    let mut app = laid_out();
+    let mut app = with_text();
     let empty = mount::<Plain>(app.world_mut(), rich(Vec::new()));
     let blanks = mount::<Plain>(
         app.world_mut(),
@@ -421,7 +394,7 @@ struct Size(f32);
 
 #[test]
 fn a_rich_text_with_no_text_is_one_line_of_its_size_high() {
-    let mut app = laid_out();
+    let mut app = with_text();
     app.insert_resource(Size(10.0));
     let sized = || resource::<Size, _>(|size| size.0);
     let empty = mount::<Plain>(
@@ -446,7 +419,7 @@ fn a_rich_text_with_no_text_is_one_line_of_its_size_high() {
 
 #[test]
 fn a_blank_line_is_as_high_as_its_first_span_size() {
-    let mut app = laid_out();
+    let mut app = with_text();
     let blank = mount::<Plain>(
         app.world_mut(),
         rich(vec![Span::new("").size(30.0), Span::new("")]),
@@ -463,7 +436,7 @@ fn a_blank_line_is_as_high_as_its_first_span_size() {
 
 #[test]
 fn every_point_of_a_rich_text_with_no_text_is_byte_0() {
-    let mut app = laid_out();
+    let mut app = with_text();
     let empty = mount::<Plain>(app.world_mut(), rich(Vec::new()));
     let blanks =
         mount::<Plain>(app.world_mut(), rich(vec![Span::new(""); 3]));
@@ -544,7 +517,7 @@ fn an_empty_rich_text_is_one_line_high_at_each_scale_factor() {
     let mut uneven = Vec::new();
     for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
         for size in [None].into_iter().chain(sizes.map(Some)) {
-            let mut app = laid_out_at(scale);
+            let mut app = with_text_at(scale);
             let sized = |rich: Rich| match size {
                 Some(size) => rich.size(size),
                 None => rich,
@@ -576,7 +549,7 @@ fn an_empty_rich_text_is_one_line_high_at_each_scale_factor() {
 
 #[test]
 fn an_empty_rich_text_is_as_high_as_its_span_line_height() {
-    let mut app = laid_out_at(1.2);
+    let mut app = with_text_at(1.2);
     let empty =
         mount::<Plain>(app.world_mut(), rich(Vec::new()).size(15.0));
     let worded = mount::<Plain>(
@@ -600,7 +573,7 @@ fn a_huge_blank_line_lays_out_at(scale_factor: f32) {
     let size: f32 = 6_990_511.0;
     let (sent, received) = mpsc::channel();
     thread::spawn(move || {
-        let mut app = laid_out_at(scale_factor);
+        let mut app = with_text_at(scale_factor);
         let empty = mount::<Plain>(
             app.world_mut(),
             rich(Vec::new()).size(size),
@@ -620,7 +593,7 @@ fn a_huge_blank_line_lays_out_at(scale_factor: f32) {
 fn a_blank_line_lays_out_at_a_negative_ui_scale() {
     let (sent, received) = mpsc::channel();
     thread::spawn(move || {
-        let mut app = laid_out();
+        let mut app = with_text();
         app.insert_resource(UiScale(-1.25));
         let empty = mount::<Plain>(
             app.world_mut(),
@@ -651,7 +624,7 @@ fn a_huge_empty_rich_text_lays_out_at_scale_1() {
 
 #[test]
 fn a_nan_root_size_takes_the_theme_size() {
-    let mut app = laid_out();
+    let mut app = with_text();
     let nan = mount::<Plain>(
         app.world_mut(),
         rich(vec![Span::new("x")]).size(f32::NAN),

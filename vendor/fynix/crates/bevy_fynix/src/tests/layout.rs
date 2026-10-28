@@ -35,6 +35,10 @@ use crate::{
 /// An app that lays its nodes out in a 1000 by 1000 window, 10ms to
 /// an update.
 pub(super) fn laid_out() -> App {
+    laid_out_at(1.0)
+}
+
+pub(super) fn laid_out_at(scale_factor: f32) -> App {
     let mut app = app_with(Plain::default());
     app.insert_resource(TimeUpdateStrategy::ManualDuration(
         Duration::from_millis(10),
@@ -66,7 +70,7 @@ pub(super) fn laid_out() -> App {
             computed: ComputedCameraValues {
                 target_info: Some(RenderTargetInfo {
                     physical_size: UVec2::new(1000, 1000),
-                    scale_factor: 1.0,
+                    scale_factor,
                 }),
                 ..Default::default()
             },
