@@ -1,0 +1,14 @@
+diff --git a/src/greet.rs b/src/greet.rs
+new file mode 100644
+index 0000000..5d1c0a2
+--- /dev/null
++++ b/src/greet.rs
+@@ -0,0 +1,8 @@
++/// Says hello to `name`.
++pub fn greet(name: &str) -> String {
++    format!("hello, {name}")
++}
++
++pub fn shout(name: &str) -> String {
++    greet(name).to_uppercase()
++}

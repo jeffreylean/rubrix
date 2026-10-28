@@ -1,0 +1,146 @@
+page diff
+wait 120
+record start review
+wait 60
+move 740 400
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+scroll 0 -18
+wait 30
+click 400 134
+wait 60
+click 400 134
+wait 60
+open ../fixtures/diff/gap-old.txt ../fixtures/diff/gap-new.txt
+wait 60
+click 252 252
+wait 90
+open ../fixtures/diff/forty-old.txt ../fixtures/diff/forty-new.txt
+wait 30
+click 1030 68
+wait 90
+click 740 439
+wait 60
+click 1030 68
+wait 30
+wait 30
+record stop
+log diff
+exit

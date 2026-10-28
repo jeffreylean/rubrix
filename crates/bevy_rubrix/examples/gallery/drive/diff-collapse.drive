@@ -1,0 +1,7 @@
+page diff
+wait 120
+click 400 134
+wait 120
+screenshot r15-collapse.png
+log diff
+exit

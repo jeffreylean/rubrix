@@ -1,0 +1,11 @@
+page diff
+wait 120
+move 740 400
+scroll 0 -2000000
+wait 10
+scroll 0 4861
+wait 120
+screenshot r15-last-file.png
+log diff
+expect diff first 10308 header 92 crates/bevy_fynix/src/views/menu.rs
+exit

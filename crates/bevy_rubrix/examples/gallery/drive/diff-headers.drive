@@ -1,0 +1,8 @@
+page diff
+wait 30
+open ../fixtures/diff/headers.patch
+wait 120
+screenshot r15-headers.png
+log diff
+expect diff files 4
+exit

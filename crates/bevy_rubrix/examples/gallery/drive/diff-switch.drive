@@ -1,0 +1,11 @@
+page diff
+wait 120
+move 740 400
+scroll 0 -50983
+wait 120
+log diff
+click 734 68
+wait 120
+log diff
+screenshot r16-switch.png
+exit

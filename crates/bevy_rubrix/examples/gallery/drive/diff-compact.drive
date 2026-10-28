@@ -1,0 +1,15 @@
+page diff
+wait 30
+open ../fixtures/diff/forty-old.txt ../fixtures/diff/forty-new.txt
+wait 120
+click 1030 68
+wait 120
+screenshot r15-compact.png
+log diff
+expect diff rows 18 compact
+click 740 439
+wait 120
+log diff
+expect diff rows 41 compact
+screenshot r15-compact-all.png
+exit
