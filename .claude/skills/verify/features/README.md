@@ -27,3 +27,4 @@ The gallery lists its pages on the left. Each page has one file here when it shi
 - [rich.md](rich.md): the `rich` page, rich text in more than one style.
 - [virtual-list.md](virtual-list.md): the `virtual_list` page, a list that builds only the rows near its view.
 - [code.md](code.md): the `code` page, a highlighted file in a virtual list.
+- [diff.md](diff.md): the `diff` page, a multi-file diff in stacked and split rows.
