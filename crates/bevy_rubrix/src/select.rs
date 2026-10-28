@@ -45,7 +45,7 @@ const SELECTED_ALPHA: f32 = 0.15;
 
 /// What is selected in a code view, on the view's root entity: byte
 /// offsets into [`CodeDoc::text`](crate::CodeDoc::text). A new source
-/// clears it. A diff view keeps one too, in places of its rows.
+/// clears it. A diff view keeps one too, over the places of its rows.
 #[derive(Component, Clone, Debug, Default, PartialEq)]
 pub struct CodeSelection<At = usize>
 where
@@ -158,7 +158,6 @@ pub(crate) trait Selectable: Component + Sized {
 
 /// A row's text as a selection reads it: `lead`, drawn as it is, then
 /// `line`, drawn with each tab as spaces.
-#[derive(Clone, Copy)]
 pub(crate) struct RowText<'a> {
     pub(crate) lead: &'static str,
     pub(crate) line: &'a str,

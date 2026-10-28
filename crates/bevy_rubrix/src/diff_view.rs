@@ -589,15 +589,13 @@ pub(crate) struct DiffLine {
     column: Column,
 }
 
-/// The bytes of a row's text of `len` bytes that `range` covers.
+/// The bytes of the text of row `row`, `len` bytes long, that
+/// `range` covers, for a row inside it.
 fn covered(
     row: usize,
     len: usize,
     range: &Range<Spot>,
 ) -> Range<usize> {
-    if row < range.start.row || row > range.end.row {
-        return 0..0;
-    }
     let from = if row == range.start.row {
         range.start.byte.min(len)
     } else {
