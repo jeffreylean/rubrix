@@ -1645,14 +1645,15 @@ fn a_list_its_parent_fits_draws_every_row_on_its_first_two_frames() {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 enum Start {
     Top,
     Middle,
     Bottom,
 }
 
-struct Landing {
-    name: &'static str,
+struct Landing<'a> {
+    name: &'a str,
     height: Height,
     estimate: f32,
     scale: f32,
@@ -2018,14 +2019,153 @@ fn scroll_to_lands_on_a_tail_of_another_height() {
     ]);
 }
 
+/// The shapes of rows a landing sweep runs, each under the estimates
+/// it runs at.
+type Shapes<'a> = &'a [(&'a str, Height, &'a [f32])];
+
+const EVERY_INDEX: [usize; 7] =
+    [0, 5_000, 9_940, 9_973, 9_975, 9_999, 10_050];
+
+fn assert_lands_in_every_combination(
+    shapes: Shapes,
+    scales: &[f32],
+    starts: &[Start],
+    indices: &[usize],
+) {
+    let mut failed = Vec::new();
+    let mut cases = 0;
+    for &(shape, height, estimates) in shapes {
+        for &estimate in estimates {
+            for &scale in scales {
+                for follow in [false, true] {
+                    for &start in starts {
+                        for &index in indices {
+                            let name = format!(
+                                "{shape} under {estimate} at \
+                                 {scale}x, follow {follow}, from \
+                                 {start:?} to row {index}"
+                            );
+                            failed.extend(landing_failures(
+                                &Landing {
+                                    name: &name,
+                                    height,
+                                    estimate,
+                                    scale,
+                                    follow,
+                                    start,
+                                    index,
+                                },
+                            ));
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_none(failed, cases);
+}
+
+#[test]
+#[ignore = "slow: run with --ignored after changing the list's \
+            scrolling"]
+fn scroll_to_lands_on_19_px_rows_in_every_combination() {
+    assert_lands_in_every_combination(
+        &[("19 px", h19, &[17.0, 19.0, 20.0])],
+        &[1.0, 1.25],
+        &[Start::Top, Start::Bottom],
+        &EVERY_INDEX,
+    );
+}
+
+#[test]
+#[ignore = "slow: run with --ignored after changing the list's \
+            scrolling"]
+fn scroll_to_lands_on_20_px_rows_in_every_combination() {
+    assert_lands_in_every_combination(
+        &[("20 px", uniform, &[20.0, 5.0, 170.0])],
+        &[1.0, 1.25],
+        &[Start::Top, Start::Bottom],
+        &EVERY_INDEX,
+    );
+}
+
+#[test]
+#[ignore = "slow: run with --ignored after changing the list's \
+            scrolling"]
+fn scroll_to_lands_among_a_tall_row_every_100_in_every_combination() {
+    assert_lands_in_every_combination(
+        &[("60 px every 100th", tall_hundredths, &[20.0, 17.0])],
+        &[1.0, 1.25],
+        &[Start::Top, Start::Middle, Start::Bottom],
+        &EVERY_INDEX,
+    );
+}
+
+#[test]
+#[ignore = "slow: run with --ignored after changing the list's \
+            scrolling"]
+fn scroll_to_lands_among_regions_in_every_combination() {
+    assert_lands_in_every_combination(
+        &[("regions", regions, &[20.0])],
+        &[1.0, 1.25],
+        &[Start::Top, Start::Middle, Start::Bottom],
+        &EVERY_INDEX,
+    );
+}
+
+#[test]
+#[ignore = "slow: run with --ignored after changing the list's \
+            scrolling"]
+fn scroll_to_lands_among_mixed_heights_in_every_combination() {
+    assert_lands_in_every_combination(
+        &[("12 to 40 px", mixed, &[17.0, 26.0])],
+        &[1.0, 1.25],
+        &[Start::Top, Start::Middle, Start::Bottom],
+        &EVERY_INDEX,
+    );
+}
+
+#[test]
+#[ignore = "slow: run with --ignored after changing the list's \
+            scrolling"]
+fn scroll_to_lands_on_a_tail_of_another_height_in_every_combination()
+{
+    assert_lands_in_every_combination(
+        &[
+            ("a 60 px tail", tall_tail, &[17.0]),
+            ("a 5 px tail", short_tail, &[40.0, 20.0]),
+        ],
+        &[1.0, 1.25],
+        &[Start::Top, Start::Bottom],
+        &[9_900, 9_973, 9_999, 10_050],
+    );
+}
+
+#[test]
+#[ignore = "slow: run with --ignored after changing the list's \
+            scrolling"]
+fn scroll_to_the_last_row_lands_at_every_coarse_scale() {
+    assert_lands_in_every_combination(
+        &[
+            ("19 px", h19, &[17.0]),
+            ("60 px every 100th", tall_hundredths, &[20.0]),
+        ],
+        &[1.5, 1.75, 2.0],
+        &[Start::Top],
+        &[9_973, 9_999],
+    );
+}
+
+#[derive(Clone, Copy, Debug)]
 enum Call {
     Before,
     With,
     After,
 }
 
-struct CountChange {
-    name: &'static str,
+struct CountChange<'a> {
+    name: &'a str,
     height: Height,
     estimate: f32,
     follow: bool,
@@ -2034,7 +2174,7 @@ struct CountChange {
     index: usize,
 }
 
-const COUNT_CHANGES: [CountChange; 9] = [
+const COUNT_CHANGES: [CountChange<'static>; 9] = [
     CountChange {
         name: "19 px under 17, 1000 rows, row 5000 called the \
                update before",
@@ -2183,6 +2323,47 @@ fn scroll_to_lands_against_the_count_of_its_frames() {
             .collect(),
         COUNT_CHANGES.len(),
     );
+}
+
+#[test]
+#[ignore = "slow: run with --ignored after changing the list's \
+            scrolling"]
+fn scroll_to_lands_against_the_count_of_its_frames_in_every_combination()
+ {
+    let mut failed = Vec::new();
+    let mut cases = 0;
+    for (shape, height, estimate) in [
+        ("19 px", h19 as Height, 17.0),
+        ("20 px", uniform, 20.0),
+        ("60 px every 100th", tall_hundredths, 20.0),
+    ] {
+        for follow in [false, true] {
+            for from in [0, 1_000, 9_990] {
+                for call in [Call::Before, Call::With, Call::After] {
+                    for index in [5_000, 9_999] {
+                        let name = format!(
+                            "{shape} under {estimate}, follow \
+                             {follow}, {from} rows, row {index} \
+                             called {call:?}"
+                        );
+                        failed.extend(count_change_failures(
+                            &CountChange {
+                                name: &name,
+                                height,
+                                estimate,
+                                follow,
+                                from,
+                                call,
+                                index,
+                            },
+                        ));
+                        cases += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert_none(failed, cases);
 }
 
 struct Added {
@@ -2560,14 +2741,14 @@ fn a_following_list_that_fits_or_is_empty_follows_a_stream() {
     }
 }
 
-struct Reveal {
-    name: &'static str,
+struct Reveal<'a> {
+    name: &'a str,
     estimate: f32,
     height: f32,
     from: usize,
 }
 
-const REVEALS: [Reveal; 6] = [
+const REVEALS: [Reveal<'static>; 6] = [
     Reveal {
         name: "a 60 px row from far below, under 20",
         estimate: 20.0,
@@ -2650,6 +2831,33 @@ fn reveals_of_unmeasured_rows_scroll_the_least_by_the_second_frame() {
         REVEALS.iter().flat_map(reveal_failures).collect(),
         REVEALS.len(),
     );
+}
+
+#[test]
+#[ignore = "slow: run with --ignored after changing the list's \
+            scrolling"]
+fn reveals_of_unmeasured_rows_scroll_the_least_in_every_combination()
+{
+    let mut failed = Vec::new();
+    let mut cases = 0;
+    for estimate in [2.0, 20.0, 200.0] {
+        for height in [60.0, 2_000.0] {
+            for from in [9_000, 1_000, 5_100, 4_900] {
+                let name = format!(
+                    "a {height} px row from row {from}, under \
+                     {estimate}"
+                );
+                failed.extend(reveal_failures(&Reveal {
+                    name: &name,
+                    estimate,
+                    height,
+                    from,
+                }));
+                cases += 1;
+            }
+        }
+    }
+    assert_none(failed, cases);
 }
 
 fn range_by_the_second_frame(
