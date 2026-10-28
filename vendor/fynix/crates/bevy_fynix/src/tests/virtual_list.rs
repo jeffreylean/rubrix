@@ -1915,7 +1915,7 @@ fn fit_rows(
 
 #[test]
 fn a_following_list_its_parent_fits_draws_every_row_as_it_grows() {
-    for scale_factor in [1.0, 2.0] {
+    for scale_factor in [1.0, 1.25, 2.0] {
         let mut app = at_scale(scale_factor);
         app.add_systems(
             PostUpdate,

@@ -32,12 +32,6 @@ const SHOWN: f64 = 0.5;
 
 const MAX_SLOTS: usize = 199;
 
-/// How far the view may fall short of the sum of its rows' heights
-/// and still fit them: a parent that takes the rows' spans, which sit
-/// on whole physical pixels, can end up to half a pixel under the
-/// sum.
-const FITS_WITHIN: f64 = 1.0;
-
 const ESTIMATE_TOLERANCE: core::ops::RangeInclusive<f32> = 0.8..=1.25;
 
 pub(crate) fn plugin(app: &mut App) {
@@ -566,8 +560,10 @@ impl VirtualList {
                 };
         }
         let view = f64::from(view);
-        let fits =
-            view > 0.0 && self.heights.total() <= view + FITS_WITHIN;
+        let physical =
+            |y: f64| (y * self.physical_per_logical).round();
+        let fits = view > 0.0
+            && physical(self.heights.total()) <= physical(view);
         let scroll = f64::from(scroll);
         let mut anchor = self.shown_at(scroll);
         let mut within = scroll - self.heights.offset(anchor);

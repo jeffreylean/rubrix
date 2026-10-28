@@ -209,8 +209,7 @@ pub fn blank_rows(world: &World, list: Entity) -> usize {
     (first..=last).filter(|row| !drawn.contains(row)).count()
 }
 
-/// Hamlet's plate around a code or diff block: 10 by 8 px in, on the
-/// theme's fill, with a 1 px border.
+/// Hamlet's plate around a code or diff block.
 pub fn plated<V: FrameProps>(view: V, theme: &Palette) -> V {
     view.padding(UiRect::axes(px(10.0), px(8.0)))
         .fill(theme.fill())
