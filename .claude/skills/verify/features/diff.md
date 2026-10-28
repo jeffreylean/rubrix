@@ -37,7 +37,7 @@ R15 lanes:
 - **Headers.** Run `.../diff-headers.drive`. `r15-headers.png` shows `src/old_name.rs → src/new_name.rs`, `mode 100644 → 100755`, and `binary`, with rows only under `src/lib.rs`.
 - **Compact.** Run `.../diff-compact.drive`. `expect diff rows 18 compact` passes, a header, 16 rows, and the button. `r15-compact.png` shows `- ` prefixes and `... 24 more lines`. After the click, `expect diff rows 41 compact` passes.
 - **Copy.** Not built yet. It needs R14's selection.
-- **100,000 lines.** Run `.../diff-stress.drive`. `log rows` prints `rows 87`, below 200, near row 50,000, and `r15-stress.png` shows rows with no blank band.
+- **100,000 lines.** Run `.../diff-stress.drive`. `log rows` prints `rows 52`, below 200, near row 50,000, and `r15-stress.png` shows rows with no blank band.
 
 R16 lanes:
 
@@ -47,10 +47,10 @@ R16 lanes:
 - **Last file.** Run `.../diff-split-last.drive`. `expect diff first 9520 header 92 crates/bevy_fynix/src/views/menu.rs` passes.
 - **Sideways.** Run `.../diff-hscroll.drive`. `log rows` ends with `x 400`, and `r16-hscroll.png` shows both sides moved by the same amount with both gutters in place.
 - **Wrap.** Run `.../diff-wrap.drive`. `r16-wrap.png` shows a row as tall as the wrapped new line, and `}` below it on both sides.
-- **Switch.** Run `.../diff-switch.drive`. Both `log diff` lines name the same line, as `line 32 old 1476 new 1674`.
+- **Switch.** Run `.../diff-switch.drive`. Both `log diff` lines name the same line, as `line 32 old 1478 new 1676`.
 - **Copy one side.** Not built yet. It needs R14's selection.
 - **Expand in split.** Run `.../diff-split-expand.drive`. `log diff` prints `rows 114`, and `r16-expand.png` shows the revealed lines on both sides with matching numbers.
-- **100,000 lines split.** Run `.../diff-split-stress.drive`. `log rows` prints `rows 87`, below 200, and `r16-stress.png` shows rows with no blank band.
+- **100,000 lines split.** Run `.../diff-split-stress.drive`. `log rows` prints `rows 52`, below 200, and `r16-stress.png` shows rows with no blank band.
 
 ## Perf
 
