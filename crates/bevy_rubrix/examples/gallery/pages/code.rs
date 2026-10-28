@@ -16,7 +16,7 @@ use bevy_rubrix::{
 use super::{control, wrapping};
 use crate::{PageView, Palette};
 
-const LARGE_RS: &str =
+pub(super) const LARGE_RS: &str =
     include_str!("../../../../../bench/fixtures/rust/large.rs.txt");
 const LARGE_TS: &str =
     include_str!("../../../../../bench/fixtures/ts/large.ts.txt");
@@ -124,7 +124,7 @@ fn show(world: &mut World, name: &str, source: CodeSource) {
     file.source = source;
 }
 
-fn stress() -> String {
+pub(super) fn stress() -> String {
     let mut text = String::with_capacity(LARGE_RS.len() * 10);
     for line in LARGE_RS.lines().cycle().take(STRESS_LINES) {
         text.push_str(line);
@@ -137,9 +137,20 @@ pub fn open(
     world: &mut World,
     paths: &[PathBuf],
 ) -> Result<(), String> {
+    let (name, text) = read("code", paths)?;
+    let source = CodeSource::detect(&name, text);
+    show(world, &name, source);
+    Ok(())
+}
+
+/// The name and text of the one file in `paths`, which `page` opens.
+pub(super) fn read(
+    page: &str,
+    paths: &[PathBuf],
+) -> Result<(String, String), String> {
     let [path] = paths else {
         return Err(format!(
-            "the code page opens one file, not {}",
+            "the {page} page opens one file, not {}",
             paths.len()
         ));
     };
@@ -154,7 +165,5 @@ pub fn open(
         || path.display().to_string(),
         |name| name.to_string_lossy().into_owned(),
     );
-    let source = CodeSource::detect(&name, text);
-    show(world, &name, source);
-    Ok(())
+    Ok((name, text))
 }

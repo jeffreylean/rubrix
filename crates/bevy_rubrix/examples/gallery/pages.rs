@@ -13,6 +13,7 @@ use crate::{Build, PageView};
 mod about;
 mod code;
 pub mod rich;
+pub mod stream;
 pub mod virtual_list;
 
 const BUTTON_WIDTH: f32 = 140.0;
@@ -46,12 +47,18 @@ pub const PAGES: &[Page] = &[
         build: code::build,
         open: Some(code::open),
     },
+    Page {
+        name: "stream",
+        build: stream::build,
+        open: Some(stream::open),
+    },
 ];
 
 pub fn plugin(app: &mut App) {
     rich::plugin(app);
     virtual_list::plugin(app);
     code::plugin(app);
+    stream::plugin(app);
 }
 
 fn control(

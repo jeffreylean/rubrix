@@ -10,7 +10,7 @@
 //!
 //! - `page <name>`, `wait <frames>`, `exit`
 //! - `move <x> <y>`, `click <x> <y> [double|triple]`, `drag <x0> <y0>
-//!   <x1> <y1>`, `scroll <dx> <dy>`
+//!   <x1> <y1>`, `scroll <dx> <dy>`, `wheel <dx> <dy>`
 //! - `key <combo>` such as `ctrl+a`, and `type <text>`
 //! - `screenshot <path>`, `record start <dir>`, `record stop`
 //! - `frames start`, `frames stop <csv>`
@@ -22,7 +22,9 @@
 //! `open` reads a relative path from the script's directory.
 //!
 //! Positions are logical pixels in the window. A scroll `dy` below
-//! zero moves the content up, so the page scrolls down. Every step
+//! zero moves the content up, so the page scrolls down. A `scroll`
+//! turns in pixels, as a trackpad does, and a `wheel` in lines, the
+//! notches of a mouse wheel, which ease. Every step
 //! prints `drive: <step> ok` when it is done.
 //!
 //! A scroll goes to what is under the pointer, so a `click` on the
@@ -72,8 +74,8 @@ use bevy_fynix::views::VirtualList;
 use bevy_rubrix::{CodeDoc, CodeLine};
 use rubrix_highlight::spans;
 
-use crate::pages::PAGES;
 use crate::pages::rich::{Hit, HitLineRoot, LongLineRoot};
+use crate::pages::{self, PAGES};
 use crate::{
     Copied, Mode, PAGE_CENTER, Ready, Selected, page_areas, scrollers,
 };
@@ -108,6 +110,7 @@ pub enum Step {
     Click { at: Vec2, count: u8 },
     Drag { from: Vec2, to: Vec2 },
     Scroll(Vec2),
+    Wheel(Vec2),
     Key(Vec<Press>),
     Type(String),
     Screenshot(PathBuf),
@@ -132,6 +135,7 @@ impl Step {
             Self::Click { .. } => "click",
             Self::Drag { .. } => "drag",
             Self::Scroll(_) => "scroll",
+            Self::Wheel(_) => "wheel",
             Self::Key(_) => "key",
             Self::Type(_) => "type",
             Self::Screenshot(_) => "screenshot",
@@ -218,6 +222,10 @@ fn parse_line(text: &str) -> Result<Option<Step>, String> {
         "scroll" => {
             let [dx, dy] = exact(&words, "scroll <dx> <dy>")?;
             Step::Scroll(Vec2::new(number(dx)?, number(dy)?))
+        }
+        "wheel" => {
+            let [dx, dy] = exact(&words, "wheel <dx> <dy>")?;
+            Step::Wheel(Vec2::new(number(dx)?, number(dy)?))
         }
         "key" => {
             let [combo] = exact(&words, "key <combo>")?;
@@ -479,7 +487,7 @@ fn parse_combo(combo: &str) -> Result<Vec<Press>, String> {
 enum Input {
     Move(Vec2),
     Button(ButtonState),
-    Wheel(Vec2),
+    Wheel(Vec2, MouseScrollUnit),
     Key(Press, ButtonState),
 }
 
@@ -716,12 +724,16 @@ impl Drive {
                 )]);
                 self.put_in(world, frames, name);
             }
-            Step::Scroll(by) => {
+            Step::Scroll(by) | Step::Wheel(by) => {
+                let unit = match step {
+                    Step::Wheel(_) => MouseScrollUnit::Line,
+                    _ => MouseScrollUnit::Pixel,
+                };
                 let mut frames = VecDeque::new();
                 if self.pointer.is_none() {
                     frames.push_back(vec![Input::Move(PAGE_CENTER)]);
                 }
-                frames.push_back(vec![Input::Wheel(by)]);
+                frames.push_back(vec![Input::Wheel(by, unit)]);
                 self.put_in(world, frames, name);
             }
             Step::Key(presses) => {
@@ -938,10 +950,10 @@ impl Drive {
                     window,
                 },
             ),
-            Input::Wheel(by) => send(
+            Input::Wheel(by, unit) => send(
                 world,
                 MouseWheel {
-                    unit: MouseScrollUnit::Pixel,
+                    unit,
                     x: by.x,
                     y: by.y,
                     window,
@@ -1125,6 +1137,7 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
             }
         }
         "scroll" => format!("scroll {}", scroll_offset(world)),
+        "stream" => pages::stream::log(world),
         "theme" => {
             format!("theme {}", world.resource::<Mode>().0.name())
         }
@@ -1298,6 +1311,7 @@ click 10 20 double
 click 10 20 triple
 drag 1 2 3 4
 scroll 0 -400
+wheel 0 -3
 key ctrl+a
 key enter
 type hello  world
@@ -1336,6 +1350,7 @@ exit
                     to: Vec2::new(3.0, 4.0)
                 },
                 Step::Scroll(Vec2::new(0.0, -400.0)),
+                Step::Wheel(Vec2::new(0.0, -3.0)),
                 Step::Key(vec![
                     key(KeyCode::ControlLeft, Key::Control, None),
                     key(
@@ -1613,6 +1628,17 @@ exit
         assert!(!app.world().resource::<Mode>().0.dark);
         assert_ne!(scroll_areas(&mut app), before, "built again");
         assert_eq!(scrolled(&mut app), 400.0);
+    }
+
+    #[test]
+    fn a_wheel_turns_in_lines_and_eases_there() {
+        let mut app = headless("wheel 0 -2\nwait 30\nexit");
+        run(&mut app);
+        let per_line = *app
+            .world()
+            .resource::<bevy::input::mouse::MouseScrollPixelsPerLine>(
+        );
+        assert_eq!(scrolled(&mut app), 2.0 * per_line);
     }
 
     #[test]
