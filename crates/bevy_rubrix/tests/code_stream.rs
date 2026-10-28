@@ -214,3 +214,20 @@ fn the_view_follows_the_newest_line() {
     let shown = state.spawned().expect("rows");
     assert_eq!(*shown.end(), rows - 1, "the newest row is built");
 }
+
+#[test]
+fn a_stream_faster_than_the_view_follows_to_its_last_line() {
+    let (mut app, stream) = streaming(Lang::Rust);
+    for chunk in LARGE_RS.as_bytes().chunks(4096) {
+        stream.push(core::str::from_utf8(chunk).expect("ASCII"));
+        app.update();
+        assert!(list_state(&mut app).following(), "it follows");
+    }
+    stream.finish();
+    app.update();
+    app.update();
+    let rows = doc(&mut app).rows();
+    let state = list_state(&mut app);
+    assert!(state.following());
+    assert_eq!(*state.spawned().expect("rows").end(), rows - 1);
+}

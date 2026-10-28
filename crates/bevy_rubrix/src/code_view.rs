@@ -133,7 +133,8 @@ impl CodeSource {
 
     /// The rows a code view shows for it: a row per line, but none
     /// for the empty line after a final newline. An empty text shows
-    /// one row. A streaming source counts the text sent so far.
+    /// one row. A streaming source counts the text sent so far, and
+    /// has no row before its first byte.
     pub fn rows(&self) -> usize {
         match &self.0 {
             Feed::Whole(whole) => {
@@ -142,8 +143,12 @@ impl CodeSource {
             }
             Feed::Stream(inbox) => {
                 let sent = inbox.sent();
-                sent.lines + 1
-                    - usize::from(sent.text.ends_with('\n'))
+                if sent.text.is_empty() {
+                    0
+                } else {
+                    sent.lines + 1
+                        - usize::from(sent.text.ends_with('\n'))
+                }
             }
         }
     }
@@ -335,13 +340,15 @@ impl CodeDoc {
     }
 
     /// See [`CodeSource::rows`]. A streaming source counts the text
-    /// this view has shown so far.
+    /// this view has shown so far, and shows no row before its first
+    /// byte, so its view starts at the bottom and follows it.
     pub fn rows(&self) -> usize {
         match &self.text {
             Text::Whole(whole) => {
                 whole.highlights.line_count() as usize
                     - usize::from(whole.text.ends_with('\n'))
             }
+            Text::Growing(growing) if growing.text.is_empty() => 0,
             Text::Growing(growing) => {
                 growing.ends.len() + 1
                     - usize::from(growing.text.ends_with('\n'))
