@@ -256,8 +256,12 @@ impl DiffView {
 
     /// Whether it draws as a compact block: stacked rows with no
     /// gutter, each line's text after a `+ `, `- ` or two-space
-    /// prefix, and wrapped. It wins over [`layout`](Self::layout) and
-    /// [`overflow`](Self::overflow) while it holds.
+    /// prefix, and wrapped. A line takes its row's colour in place of
+    /// its syntax colours: [`SyntaxTokens::addition`] for an added
+    /// line, [`SyntaxTokens::deletion`] for a removed one, and
+    /// [`Tone::Dim`] for one that did not change. It wins over
+    /// [`layout`](Self::layout) and [`overflow`](Self::overflow)
+    /// while it holds.
     pub fn compact(mut self, compact: impl Into<Prop<bool>>) -> Self {
         self.compact = compact.into();
         self
@@ -762,6 +766,7 @@ struct RowStyle {
     add: Tint,
     delete: Tint,
     faint: Color,
+    dim: Color,
     header: Color,
     selected: Color,
 }
@@ -782,6 +787,7 @@ impl RowStyle {
             add: Tint::new(panel, added),
             delete: Tint::new(panel, removed),
             faint: theme.tone(Tone::Faint),
+            dim: theme.tone(Tone::Dim),
             header: theme.fill(),
             selected: select::selected_colour(theme),
         }
@@ -1180,13 +1186,14 @@ fn stacked_spans(
     let mut spans = line_text(file, row, lane, line, style);
     if compact {
         let colour = match row {
-            Row::Deletion { .. } => Some(style.removed),
-            Row::Addition { .. } => Some(style.added),
-            _ => None,
+            Row::Deletion { .. } => style.removed,
+            Row::Addition { .. } => style.added,
+            _ => style.dim,
         };
-        let mut mark = Span::new(prefix);
-        mark.look.color = colour;
-        spans.insert(0, mark);
+        for span in &mut spans {
+            span.look.color = Some(colour);
+        }
+        spans.insert(0, Span::new(prefix).color(colour));
     }
     spans
 }
