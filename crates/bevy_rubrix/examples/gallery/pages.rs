@@ -136,9 +136,6 @@ fn wrapping(buttons: PageView) -> PageView {
     .boxed()
 }
 
-/// A box that takes the height of every row of the virtual list in
-/// it, so the code or diff view in it shows all of its rows and never
-/// scrolls, as a block in Hamlet's chat does.
 #[derive(Component)]
 pub struct FitRows;
 
@@ -166,9 +163,10 @@ fn fit_rows(
     }
 }
 
-/// `root` and every node under it, depth first, in the order they
-/// show.
-pub fn under(world: &World, root: Entity) -> Vec<Entity> {
+pub fn descendants_in_order(
+    world: &World,
+    root: Entity,
+) -> Vec<Entity> {
     let mut found = Vec::new();
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
@@ -180,12 +178,11 @@ pub fn under(world: &World, root: Entity) -> Vec<Entity> {
     found
 }
 
-/// The first of [`under`] `root` that has a `C`.
 pub fn find_under<C: Component>(
     world: &World,
     root: Entity,
 ) -> Option<Entity> {
-    under(world, root)
+    descendants_in_order(world, root)
         .into_iter()
         .find(|&node| world.get::<C>(node).is_some())
 }

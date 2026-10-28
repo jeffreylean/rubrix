@@ -1,10 +1,5 @@
-//! Hamlet's `code_view` call site, `code_view` at
-//! `crates/hamlet_ui/src/markdown/draw.rs:289` in Hamlet 3b8cc93a,
-//! rebuilt with rubrix's code view: a fenced block on a bordered
-//! plate under its language, in 13 px mono that wraps, since nothing
-//! in a chat scrolls sideways.
-
 use bevy::app::{App, First, PostUpdate};
+use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::Children;
@@ -29,7 +24,6 @@ use bevy_rubrix::{
 use super::{FitRows, control, find_under};
 use crate::{Build, PageView};
 
-/// Hamlet's size for code, under the 14 px body.
 const CODE_SIZE: f32 = 13.0;
 
 const CAPTION_SIZE: f32 = 11.0;
@@ -60,14 +54,9 @@ fn main() {
 
 const BYTES_PER_FRAME: usize = 3;
 
-/// The fenced block that streams in, still open, after the button.
 #[derive(Resource, Default)]
-struct Fence {
-    stream: Option<(CodeStream, usize)>,
-}
+struct Fence(Option<Sending>);
 
-/// How the streamed plate's height went, frame by frame, since the
-/// stream started.
 #[derive(Resource, Default)]
 struct Growth {
     frames: u32,
@@ -77,11 +66,9 @@ struct Growth {
     last: f32,
 }
 
-/// The plate of the sample block.
 #[derive(Component)]
 struct SamplePlate;
 
-/// The plate of the streamed block.
 #[derive(Component)]
 struct FencePlate;
 
@@ -95,25 +82,32 @@ pub fn plugin(app: &mut App) {
         .add_systems(PostUpdate, measure.after(UiSystems::Layout));
 }
 
-fn send(mut fence: ResMut<Fence>) {
-    let Some((stream, sent)) = &mut fence.stream else {
-        return;
-    };
-    if *sent == FENCE.len() {
-        return;
-    }
-    let end = (*sent + BYTES_PER_FRAME).min(FENCE.len());
-    stream.push(&FENCE[*sent..end]);
-    *sent = end;
+struct Sending {
+    stream: CodeStream,
+    sent: usize,
 }
 
-/// Starts the fenced block again. The first bytes go with the press,
-/// so the plate never shows without a line.
+impl Sending {
+    fn send_next(&mut self) {
+        let end = (self.sent + BYTES_PER_FRAME).min(FENCE.len());
+        self.stream.push(&FENCE[self.sent..end]);
+        self.sent = end;
+    }
+}
+
+fn send(mut fence: ResMut<Fence>) {
+    if let Some(sending) = &mut fence.bypass_change_detection().0 {
+        sending.send_next();
+    }
+}
+
 fn start(world: &mut World) {
-    let stream = CodeSource::streaming(Lang::Rust);
-    stream.push(&FENCE[..BYTES_PER_FRAME]);
-    world.resource_mut::<Fence>().stream =
-        Some((stream, BYTES_PER_FRAME));
+    let mut sending = Sending {
+        stream: CodeSource::streaming(Lang::Rust),
+        sent: 0,
+    };
+    sending.send_next();
+    world.resource_mut::<Fence>().0 = Some(sending);
     *world.resource_mut::<Growth>() = Growth::default();
 }
 
@@ -124,7 +118,7 @@ fn measure(
     children: Query<&Children>,
     docs: Query<&CodeDoc>,
 ) {
-    if fence.stream.is_none() {
+    if fence.0.is_none() {
         return;
     }
     let Ok((plate, node)) = plates.single() else {
@@ -160,9 +154,9 @@ pub fn build() -> PageView {
         keyed(
             resource::<Fence, _>(|fence| {
                 fence
-                    .stream
+                    .0
                     .as_ref()
-                    .map(|(stream, _)| stream.source())
+                    .map(|sending| sending.stream.source())
             }),
             |source| match source {
                 Some(source) => {
@@ -179,9 +173,6 @@ pub fn build() -> PageView {
     .boxed()
 }
 
-/// `source` on a plate under its `lang`, as Hamlet draws a fenced
-/// block: 10 by 8 px in, a 1 px border, the caption 4 px above the
-/// code.
 fn plate(
     lang: &'static str,
     source: CodeSource,
@@ -214,9 +205,6 @@ fn plate(
     .boxed()
 }
 
-/// The `code-plate` log line, read off the sample plate: where the
-/// caption sits, the code's size and font, whether the view scrolls
-/// sideways, its rows, and the most lines one row wraps onto.
 pub fn plate_line(world: &mut World) -> String {
     let Some(code) = world
         .query_filtered::<Entity, With<SamplePlate>>()
@@ -279,9 +267,6 @@ pub fn plate_line(world: &mut World) -> String {
     )
 }
 
-/// The `code-grow` log line: how many frames the streamed plate was
-/// measured, its height then and now, how often it shrank, and how
-/// often it showed no line.
 pub fn growth_line(world: &mut World) -> String {
     let growth = world.resource::<Growth>();
     format!(

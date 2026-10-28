@@ -1,6 +1,6 @@
 # Hamlet pages and the stress page
 
-Three pages rebuild Hamlet's chat blocks from rubrix's views, and a fourth loads both 100,000-line inputs. R17 ships them, with `drive/acceptance.drive` and `scripts/acceptance.sh`. Each Hamlet page cites the Hamlet function it rebuilds, at Hamlet 3b8cc93a.
+Three pages rebuild Hamlet's chat blocks from rubrix's views, and a fourth loads both 100,000-line inputs. R17 ships them, with `drive/acceptance.drive` and `scripts/acceptance.sh`. The Hamlet functions named below are at Hamlet 3b8cc93a.
 
 ## Sub-features
 

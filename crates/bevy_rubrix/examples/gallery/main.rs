@@ -16,7 +16,6 @@ use bevy::camera::Camera2d;
 use bevy::color::{Alpha, Color};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::hierarchy::Children;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
@@ -183,17 +182,10 @@ fn page_areas(world: &mut World) -> Vec<Entity> {
 }
 
 fn scrollers(world: &World, area: Entity) -> Vec<Entity> {
-    let mut found = Vec::new();
-    let mut stack = vec![area];
-    while let Some(node) = stack.pop() {
-        if world.get::<ScrollGoal>(node).is_some() {
-            found.push(node);
-        }
-        if let Some(children) = world.get::<Children>(node) {
-            stack.extend(children.iter().rev());
-        }
-    }
-    found
+    pages::descendants_in_order(world, area)
+        .into_iter()
+        .filter(|&node| world.get::<ScrollGoal>(node).is_some())
+        .collect()
 }
 
 fn save_scroll(world: &mut World) {

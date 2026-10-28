@@ -1,10 +1,3 @@
-//! Hamlet's `rich` call site, `rich` at
-//! `crates/hamlet_ui/src/markdown/draw.rs:197` in Hamlet 3b8cc93a,
-//! rebuilt with fynix's rich text: each markdown block one rich
-//! element, with a span for each run of one style. Nothing here uses
-//! the gallery's own items, so `tests/hamlet.rs` builds the same
-//! page.
-
 use bevy::app::{App, Update};
 use bevy::color::Color;
 use bevy::ecs::component::Component;
@@ -26,33 +19,27 @@ use bevy_fynix::views::{
 use bevy_fynix::{AnyView, Bevy, Cx, ViewExt, resource};
 use bevy_rubrix::SyntaxTokens;
 
-/// Hamlet's heading size in this sample.
 pub const HEADING_SIZE: f32 = 20.0;
 
-/// Inline code, one pixel under the 14 px body, as Hamlet sets it.
 pub const CODE_SIZE: f32 = 13.0;
 
 const STREAMED: &str = "Second *grows*";
 
-/// `Sec`, the first text the second block shows.
-const STREAM_FROM: usize = 3;
+const STREAM_FROM: usize = "Sec".len();
 
 const FRAMES_PER_BYTE: u32 = 4;
 
-/// The column of the sample's blocks, `# Plan` and its paragraph.
 #[derive(Component)]
 pub struct Sample;
 
-/// The column of the second block, the one that streams.
 #[derive(Component)]
 pub struct Streamed;
 
-/// How much of the second block has arrived.
 #[derive(Resource, Default)]
-pub struct Second {
-    /// Bytes of [`STREAMED`] shown, 0 before the stream starts.
+pub struct Second(Option<Started>);
+
+struct Started {
     shown: usize,
-    /// The sample's span entities when the stream started.
     sample: Vec<Entity>,
 }
 
@@ -61,26 +48,28 @@ pub fn plugin(app: &mut App) {
 }
 
 fn grow(mut second: ResMut<Second>, mut frames: Local<u32>) {
-    if second.shown == 0 || second.shown == STREAMED.len() {
+    let Some(started) = &second.0 else {
+        return;
+    };
+    if started.shown == STREAMED.len() {
         return;
     }
     *frames += 1;
-    if (*frames).is_multiple_of(FRAMES_PER_BYTE) {
-        second.shown += 1;
+    if (*frames).is_multiple_of(FRAMES_PER_BYTE)
+        && let Some(started) = &mut second.0
+    {
+        started.shown += 1;
     }
 }
 
-/// Starts the second block again from `Sec`, and notes the sample's
-/// spans so that [`streamed`] can tell whether they were kept.
 pub fn stream(world: &mut World) {
     let sample = spans_in::<Sample>(world);
-    let mut second = world.resource_mut::<Second>();
-    second.shown = STREAM_FROM;
-    second.sample = sample;
+    world.resource_mut::<Second>().0 = Some(Started {
+        shown: STREAM_FROM,
+        sample,
+    });
 }
 
-/// The page, under `controls`. Its bounds are what the spans need:
-/// the plate and the accent from the theme, and the code font.
 pub fn view<T>(controls: AnyView<Bevy, T>) -> AnyView<Bevy, T>
 where
     T: SyntaxTokens + SurfaceTokens + SpacingTokens + Send + Sync,
@@ -96,7 +85,8 @@ where
         .with(Sample);
         let second =
             column((rich(resource::<Second, _>(|second| {
-                second_spans(&STREAMED[..second.shown])
+                let shown = second.0.as_ref().map_or(0, |s| s.shown);
+                second_spans(&STREAMED[..shown])
             })),))
             .with(Streamed);
         cx.build(
@@ -117,7 +107,6 @@ fn sans(text: &str) -> Span {
     Span::new(text).font(FontSource::sans_serif())
 }
 
-/// ``Use **care** with `rm`, ~~old~~ and [docs](http://x).``
 fn paragraph<T: SyntaxTokens + SurfaceTokens>(
     theme: &T,
 ) -> Vec<Span> {
@@ -139,8 +128,6 @@ fn paragraph<T: SyntaxTokens + SurfaceTokens>(
     ]
 }
 
-/// The spans of `text`, markdown whose `*` marks open and close
-/// italics. An italic run still open shows in italics so far.
 fn second_spans(text: &str) -> Vec<Span> {
     text.split('*')
         .enumerate()
@@ -152,8 +139,6 @@ fn second_spans(text: &str) -> Vec<Span> {
         .collect()
 }
 
-/// The span entities of the blocks in the column marked `M`, in
-/// order.
 pub fn spans_in<M: Component>(world: &mut World) -> Vec<Entity> {
     let Some(column) =
         world.query_filtered::<Entity, With<M>>().iter(world).next()
@@ -173,8 +158,6 @@ pub fn spans_in<M: Component>(world: &mut World) -> Vec<Entity> {
         .collect()
 }
 
-/// The `rich-styles` log line: every span of the sample, as
-/// [`describe`] puts it, `|` between them.
 pub fn styles<T: SyntaxTokens + SurfaceTokens>(
     world: &mut World,
     theme: &T,
@@ -186,9 +169,6 @@ pub fn styles<T: SyntaxTokens + SurfaceTokens>(
     format!("rich-styles {}", spans.join(" | "))
 }
 
-/// The `rich-stream` log line: the second block's spans, then
-/// whether the sample still has the span entities it had when the
-/// stream started.
 pub fn streamed<T: SyntaxTokens + SurfaceTokens>(
     world: &mut World,
     theme: &T,
@@ -198,18 +178,14 @@ pub fn streamed<T: SyntaxTokens + SurfaceTokens>(
         .map(|span| describe(world, span, theme))
         .collect::<Vec<_>>();
     let now = spans_in::<Sample>(world);
-    let started = &world.resource::<Second>().sample;
-    let sample = if started.is_empty() {
-        "not streamed"
-    } else if *started == now {
-        "kept"
-    } else {
-        "changed"
+    let sample = match &world.resource::<Second>().0 {
+        None => "not streamed",
+        Some(started) if started.sample == now => "kept",
+        Some(_) => "changed",
     };
     format!("rich-stream {} sample {sample}", spans.join(" | "))
 }
 
-/// The ids of the sample's span entities, for the `entities` topic.
 pub fn sample_ids(world: &mut World) -> Vec<String> {
     spans_in::<Sample>(world)
         .into_iter()
@@ -217,10 +193,6 @@ pub fn sample_ids(world: &mut World) -> Vec<String> {
         .collect()
 }
 
-/// A span as `"<text>" <size>`, then each of `bold`, `italic`, its
-/// font (`mono`, `sans` or `default`), its ink (`accent`, `dim` or a
-/// hex colour when not the body's), `plate` for the theme's fill
-/// behind it, `underline` and `struck`.
 fn describe<T: SyntaxTokens + SurfaceTokens>(
     world: &World,
     span: Entity,

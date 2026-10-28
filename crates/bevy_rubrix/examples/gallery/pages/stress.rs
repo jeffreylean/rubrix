@@ -1,8 +1,3 @@
-//! The 100,000-line stress file in a code view and the 100,000-line
-//! stress patch in a diff view, one at a time. Side by side, a scroll
-//! of either took 4.9 to 5.1 ms a frame at p95, over the 3.0 ms that
-//! R12 and R15 give each view.
-
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::query::With;
@@ -23,15 +18,12 @@ use super::diff::{STRESS_PATCH, patch};
 use super::{control, find_under};
 use crate::{Build, PageView};
 
-/// Both sources, made on the first visit and kept, since each takes
-/// a while to make.
 #[derive(Resource)]
 struct Sources {
     code: CodeSource,
     diff: DiffSource,
 }
 
-/// The view on show.
 #[derive(Resource, Clone, Copy, Default, PartialEq, Eq)]
 enum Shown {
     #[default]
@@ -85,8 +77,6 @@ pub fn build() -> PageView {
     .boxed()
 }
 
-/// The `stress` log line: the view on show, and the last of its rows
-/// that shows, counted from 1.
 pub fn log(world: &mut World) -> String {
     let Some(page) = world
         .query_filtered::<Entity, With<StressPage>>()

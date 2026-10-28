@@ -19,8 +19,7 @@ use bevy_fynix::tokens::{SurfaceTokens, TextTokens, Tone};
 use bevy_fynix::views::{FrameProps, column};
 use bevy_fynix::{FynixPlugin, Theme, ViewExt, mount};
 use bevy_rubrix::{
-    CODE_FONT, CodeSource, DiffSource, Lang, RubrixPlugin,
-    SyntaxTokens, code_view,
+    CODE_FONT, CodeSource, DiffSource, Lang, SyntaxTokens, code_view,
 };
 use hamlet_rich::{CODE_SIZE, HEADING_SIZE, Sample, Streamed};
 use support::diff::{Plain, line_text, set, showing};
@@ -44,7 +43,6 @@ fn rich_page() -> App {
     app
 }
 
-/// What a span draws with, as the test reads it off the entity.
 #[derive(Debug, PartialEq)]
 struct Drawn {
     text: String,

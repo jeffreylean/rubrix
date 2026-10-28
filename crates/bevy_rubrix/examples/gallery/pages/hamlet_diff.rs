@@ -1,9 +1,3 @@
-//! Hamlet's diff block, `block` at
-//! `crates/hamlet_ui/src/screens/chat/change.rs:90` in Hamlet
-//! 3b8cc93a, with its plate from `plate` beside it, rebuilt with
-//! rubrix's compact diff view: each line after its `+ `, `- ` or
-//! two-space mark, the first 16 lines, then a button for the rest.
-
 use bevy::color::{Alpha, Color, Luminance};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
@@ -20,11 +14,9 @@ use bevy_rubrix::{
     DiffDoc, DiffRow, DiffRowAt, DiffSource, SyntaxTokens, diff_view,
 };
 
-use super::{FitRows, find_under, under};
+use super::{FitRows, descendants_in_order, find_under};
 use crate::{Build, Mode, PageView};
 
-/// Hamlet's `change_lines`, the lines a change shows before its
-/// button.
 const LIMIT: u32 = 16;
 
 const FORTY_OLD: &str =
@@ -65,8 +57,6 @@ pub fn build() -> PageView {
     .boxed()
 }
 
-/// `source` in compact rows on a plate, as Hamlet's `plate` draws a
-/// change: 10 by 8 px in, with a 1 px border.
 fn plate(source: DiffSource, marker: impl Component) -> PageView {
     AnyView::new(move |cx: &mut Build| {
         let theme = cx.theme();
@@ -89,8 +79,6 @@ fn plate(source: DiffSource, marker: impl Component) -> PageView {
     .boxed()
 }
 
-/// The `diff-colours` log line, read off the small change: each line
-/// row's text, the colour of its text, and the fill of its row.
 pub fn colours_line(world: &mut World) -> String {
     let palette = world.resource::<Mode>().0;
     let Some(view) = view_under::<Small>(world) else {
@@ -123,9 +111,6 @@ pub fn colours_line(world: &mut World) -> String {
     format!("diff-colours {}", lines.join(", "))
 }
 
-/// The `diff-more` log line, read off the 40-line change: the lines
-/// its rows show, the lines its button hides, its rows, and how many
-/// of them are built.
 pub fn more_line(world: &mut World) -> String {
     let Some(view) = view_under::<Forty>(world) else {
         return "diff-more none".into();
@@ -158,10 +143,8 @@ fn view_under<M: Component>(world: &mut World) -> Option<Entity> {
     find_under::<DiffDoc>(world, fit)
 }
 
-/// The text of the spans under `row`, in order, and the colour of
-/// the first.
 fn text_of(world: &World, row: Entity) -> (String, Option<Color>) {
-    let spans = under(world, row)
+    let spans = descendants_in_order(world, row)
         .into_iter()
         .filter_map(|node| {
             let text = world.get::<TextSpan>(node)?;
@@ -172,15 +155,15 @@ fn text_of(world: &World, row: Entity) -> (String, Option<Color>) {
     (text, spans.first().map(|&(_, ink)| ink))
 }
 
-/// The first fill under `row` that is not clear.
 fn fill_of(world: &World, row: Entity) -> Option<Color> {
-    under(world, row).into_iter().find_map(|node| {
-        let fill = world.get::<BackgroundColor>(node)?.0;
-        (fill.alpha() > 0.0).then_some(fill)
-    })
+    descendants_in_order(world, row)
+        .into_iter()
+        .find_map(|node| {
+            let fill = world.get::<BackgroundColor>(node)?.0;
+            (fill.alpha() > 0.0).then_some(fill)
+        })
 }
 
-/// `ink` as the theme's diff colour or tone it is.
 fn name<T: SyntaxTokens>(theme: &T, ink: Color) -> String {
     if ink == theme.deletion() {
         "red".into()
@@ -195,8 +178,6 @@ fn name<T: SyntaxTokens>(theme: &T, ink: Color) -> String {
     }
 }
 
-/// A fill as `deep` when dark, then `red` or `green` by which channel
-/// leads.
 fn shade(fill: Color) -> String {
     let srgb = fill.to_srgba();
     let hue = if srgb.red > srgb.green {

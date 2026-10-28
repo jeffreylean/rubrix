@@ -975,8 +975,6 @@ def checked(topic, text):
 
 
 def to_end(csv):
-    # A jump lands against the estimated heights of the rows it passes,
-    # so the second jump covers what measuring the rows it lands on added.
     jump = ["scroll 0 -2000000", SETTLE]
     return [CENTER, "frames start", "wait 60", scroll(-18, 600), f"frames stop {csv}", jump, jump]
 
