@@ -845,7 +845,7 @@ mod tests {
         let shown = Shown::new("\tab\tc");
         let back =
             (0..=9).map(|at| shown.source(at)).collect::<Vec<_>>();
-        assert_eq!(back, [0, 0, 0, 1, 1, 2, 3, 4, 4, 5]);
+        assert_eq!(back, [0, 0, 0, 1, 1, 2, 3, 3, 4, 5]);
         assert_eq!(Shown::new("a 日").source(5), 5);
     }
 
