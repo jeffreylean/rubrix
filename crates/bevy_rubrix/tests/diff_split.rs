@@ -14,7 +14,6 @@ fn split(source: DiffSource) -> App {
     app
 }
 
-/// Whether each side of the row under `root` is hatched.
 fn hatched(app: &App, root: Entity) -> Vec<bool> {
     let world = app.world();
     let mut found = Vec::new();
@@ -98,7 +97,6 @@ fn a_realigned_block_pairs_the_similar_lines() {
     assert_eq!(rows[2].1, [false, true]);
 }
 
-/// The old and new line the first visible row shows.
 fn first_lines(app: &mut App) -> (Option<u32>, Option<u32>) {
     let first = first_visible(app);
     match doc(app).row(first) {

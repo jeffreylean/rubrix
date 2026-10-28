@@ -1166,9 +1166,6 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
     })
 }
 
-/// The diff view's shape and the first row it shows, such as
-/// `diff files 93 rows 11391 stacked first 0 header 0
-/// Cargo.lock`.
 fn diff(world: &mut World) -> String {
     let first = world
         .query::<&VirtualList>()

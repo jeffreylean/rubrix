@@ -39,16 +39,12 @@ const LINE_HEIGHT: f32 = 1.2;
 
 const OVERSCAN: f32 = 400.0;
 
-/// Unchanged lines kept around each change of a text pair, as git's
-/// default.
 const CONTEXT: u32 = 3;
 
 const HATCH_SIZE: u32 = 8;
 
 const HATCH_ALPHA: f32 = 0.35;
 
-/// The stripes an empty side of a split row is drawn with, which
-/// [`RubrixPlugin`](crate::RubrixPlugin) makes at startup.
 pub(crate) const HATCH: Handle<Image> =
     uuid_handle!("5c0e1d39-8a7f-4a5e-9a51-2b7f3f4d6e21");
 
@@ -168,7 +164,6 @@ fn streamed(lang: Lang, lines: &Lines) -> Highlights {
     stream.finish()
 }
 
-/// The largest line number a row of `diff` can show.
 fn last_number(diff: &FileDiff) -> u32 {
     if !diff.is_partial() {
         return diff.old_lines().len().max(diff.new_lines().len());
@@ -200,7 +195,7 @@ fn digits(number: u32) -> usize {
 ///
 /// A new source builds the rows again, with every file expanded and
 /// every gap collapsed, and shows its first row. Its colours come
-/// from the theme when it is built.
+/// from the theme when it is lists_built.
 pub fn diff_view(source: impl Into<Prop<DiffSource>>) -> DiffView {
     DiffView {
         source: source.into(),
@@ -285,16 +280,12 @@ pub struct DiffDoc {
     compact: bool,
     overflow: Overflow,
     limit: Option<u32>,
-    /// The index of each file's header.
-    starts: Vec<usize>,
+    header_rows: Vec<usize>,
     len: usize,
     more: Option<More>,
-    /// Counts the lists built, so that a new source or shape builds
-    /// a new one.
-    built: u64,
+    lists_built: u64,
     list: Option<Entity>,
-    /// The row a list built next scrolls to first.
-    land: Option<usize>,
+    pending_scroll: Option<usize>,
 }
 
 struct FileRows {
@@ -309,9 +300,8 @@ struct More {
     lines: u32,
 }
 
-/// A place in the source that survives a change of layout.
 #[derive(Clone, Copy)]
-enum Spot {
+enum Place {
     Header(usize),
     Body(usize, Anchor),
     More,
@@ -326,12 +316,12 @@ impl DiffDoc {
             compact: false,
             overflow: Overflow::Scroll,
             limit: None,
-            starts: Vec::new(),
+            header_rows: Vec::new(),
             len: 0,
             more: None,
-            built: 0,
+            lists_built: 0,
             list: None,
-            land: None,
+            pending_scroll: None,
         }
     }
 
@@ -380,8 +370,9 @@ impl DiffDoc {
         if index >= self.len {
             return None;
         }
-        let file = self.starts.partition_point(|&s| s <= index) - 1;
-        match index - self.starts[file] {
+        let file =
+            self.header_rows.partition_point(|&s| s <= index) - 1;
+        match index - self.header_rows[file] {
             0 => Some(DiffRow::Header { file }),
             at => {
                 let row = self.files[file].rows.get(at as u32 - 1)?;
@@ -434,19 +425,17 @@ impl DiffDoc {
             })
             .collect();
         self.source = source;
-        self.land = None;
-        self.built += 1;
+        self.pending_scroll = None;
+        self.lists_built += 1;
         self.index();
     }
 
-    /// Sets how it lays out its rows, and keeps `first`, the first
-    /// row that shows, where it is in the source.
-    fn shape(
+    fn relayout_keeping(
         &mut self,
         first: Option<usize>,
         set: impl FnOnce(&mut DiffDoc),
     ) {
-        let spot = first.and_then(|first| self.spot(first));
+        let place = first.and_then(|first| self.place(first));
         set(self);
         let layout = self.layout();
         for (shown, file) in
@@ -455,8 +444,9 @@ impl DiffDoc {
             shown.rows = rows(&file.diff, layout, &shown.expansion);
         }
         self.index();
-        self.land = spot.and_then(|spot| self.find(spot));
-        self.built += 1;
+        self.pending_scroll =
+            place.and_then(|place| self.find(place));
+        self.lists_built += 1;
     }
 
     fn set_limit(&mut self, limit: Option<u32>) {
@@ -465,25 +455,24 @@ impl DiffDoc {
     }
 
     fn index(&mut self) {
-        self.starts.clear();
+        self.header_rows.clear();
         let mut at = 0;
         for file in &self.files {
-            self.starts.push(at);
+            self.header_rows.push(at);
             at += 1;
             if !file.collapsed {
                 at += file.rows.len() as usize;
             }
         }
         self.len = at;
-        self.more = self.limit.and_then(|limit| self.cut(limit));
+        self.more =
+            self.limit.and_then(|limit| self.more_after(limit));
         if let Some(more) = self.more {
             self.len = more.row + 1;
         }
     }
 
-    /// Where a limit of `limit` line rows puts its button, and how
-    /// many line rows the button hides.
-    fn cut(&self, limit: u32) -> Option<More> {
+    fn more_after(&self, limit: u32) -> Option<More> {
         let mut lines = 0;
         let mut cut = None;
         for (file, shown) in self.files.iter().enumerate() {
@@ -495,7 +484,7 @@ impl DiffDoc {
                     continue;
                 }
                 if lines == limit && cut.is_none() {
-                    cut = Some(self.starts[file] + 1 + at);
+                    cut = Some(self.header_rows[file] + 1 + at);
                 }
                 lines += 1;
             }
@@ -506,27 +495,27 @@ impl DiffDoc {
         })
     }
 
-    fn spot(&self, index: usize) -> Option<Spot> {
+    fn place(&self, index: usize) -> Option<Place> {
         Some(match self.row(index)? {
-            DiffRow::Header { file } => Spot::Header(file),
+            DiffRow::Header { file } => Place::Header(file),
             DiffRow::Body { file, row } => {
-                Spot::Body(file, row.anchor())
+                Place::Body(file, row.anchor())
             }
-            DiffRow::More { .. } => Spot::More,
+            DiffRow::More { .. } => Place::More,
         })
     }
 
-    fn find(&self, spot: Spot) -> Option<usize> {
-        let index = match spot {
-            Spot::Header(file) => *self.starts.get(file)?,
-            Spot::Body(file, _) if self.is_collapsed(file) => {
-                *self.starts.get(file)?
+    fn find(&self, place: Place) -> Option<usize> {
+        let index = match place {
+            Place::Header(file) => *self.header_rows.get(file)?,
+            Place::Body(file, _) if self.is_collapsed(file) => {
+                *self.header_rows.get(file)?
             }
-            Spot::Body(file, anchor) => {
+            Place::Body(file, anchor) => {
                 let row = self.files.get(file)?.rows.find(anchor)?;
-                self.starts[file] + 1 + row as usize
+                self.header_rows[file] + 1 + row as usize
             }
-            Spot::More => self.more?.row,
+            Place::More => self.more?.row,
         };
         (index < self.len).then_some(index)
     }
@@ -592,7 +581,6 @@ impl Kind {
     }
 }
 
-/// What the rows of a diff view need of a theme.
 trait Tokens:
     SyntaxTokens
     + SpacingTokens
@@ -689,13 +677,15 @@ where
         cx.effect(root, self.limit, |world, root, &limit| {
             doc_mut(world, root).set_limit(limit);
         });
-        let built = component::<DiffDoc, u64>(root, |doc| {
-            doc.map_or(0, |doc| doc.built)
+        let lists_built = component::<DiffDoc, u64>(root, |doc| {
+            doc.map_or(0, |doc| doc.lists_built)
         });
         cx.under(root, |cx| {
             cx.build(
-                keyed(built, move |_| list(root, style.clone()))
-                    .within(filling()),
+                keyed(lists_built, move |_| {
+                    list(root, style.clone())
+                })
+                .within(filling()),
             )
         });
         root
@@ -715,7 +705,7 @@ fn reshape(
     let first = list
         .and_then(|list| world.get::<VirtualList>(list))
         .map(VirtualList::first_visible);
-    doc_mut(world, root).shape(first, set);
+    doc_mut(world, root).relayout_keeping(first, set);
 }
 
 fn filling() -> Stack<()> {
@@ -749,19 +739,17 @@ where
         );
         let mut doc = doc_mut(cx.world, root);
         doc.list = Some(list);
-        if let Some(land) = doc.land.take()
+        if let Some(pending_scroll) = doc.pending_scroll.take()
             && let Some(mut list) =
                 cx.world.get_mut::<VirtualList>(list)
         {
-            list.scroll_to(land);
+            list.scroll_to(pending_scroll);
         }
         list
     })
 }
 
-/// A read of the row a slot shows, done again when the slot moves to
-/// another row or the document changes.
-fn at<V: Default + 'static>(
+fn row_signal<V: Default + 'static>(
     root: Entity,
     slot: RowSlot,
     read: impl Fn(&DiffDoc, usize) -> V + Send + Sync + 'static,
@@ -787,8 +775,9 @@ fn slot_view<T>(
 where
     T: Tokens,
 {
-    let kind =
-        at(root, slot, |doc, index| doc.row(index).map(Kind::of));
+    let kind = row_signal(root, slot, |doc, index| {
+        doc.row(index).map(Kind::of)
+    });
     let style = style.clone();
     let content = keyed(kind, move |kind| {
         let style = &style;
@@ -824,8 +813,6 @@ fn code(spans: Signal<Vec<Span>>, style: &RowStyle) -> Rich {
     rich(spans).font(style.font.clone()).size(style.size)
 }
 
-/// The line numbers of a row, faint and still while the text beside
-/// them scrolls sideways.
 fn gutter(
     numbers: Signal<String>,
     style: &RowStyle,
@@ -858,7 +845,7 @@ where
 {
     let spans = style.clone();
     let text = code(
-        at(root, slot, move |doc, index| {
+        row_signal(root, slot, move |doc, index| {
             doc.body(index).map_or_else(Vec::new, |(file, row)| {
                 stacked_spans(file, row, &spans, compact)
             })
@@ -867,17 +854,18 @@ where
     )
     .wrap(wraps(root));
     let tints = style.clone();
-    let fill =
-        at(root, slot, move |doc, index| match doc.body(index) {
+    let fill = row_signal(root, slot, move |doc, index| {
+        match doc.body(index) {
             Some((_, Row::Deletion { .. })) => tints.delete.row,
             Some((_, Row::Addition { .. })) => tints.add.row,
             _ => Color::NONE,
-        });
+        }
+    });
     let text = slot.sideways(text.boxed());
     if compact {
         return row((text,)).gap(0.0).fill(fill).boxed();
     }
-    let numbers = at(root, slot, |doc, index| {
+    let numbers = row_signal(root, slot, |doc, index| {
         doc.body(index).map_or_else(String::new, |(file, row)| {
             let width = file.digits;
             let old = number(row.old_line(), width);
@@ -917,14 +905,14 @@ fn side<T>(
 where
     T: Tokens,
 {
-    let numbers = at(root, slot, move |doc, index| {
+    let numbers = row_signal(root, slot, move |doc, index| {
         doc.body(index).map_or_else(String::new, |(file, row)| {
             number(line_of(row, lane), file.digits)
         })
     });
     let spans = style.clone();
     let text = code(
-        at(root, slot, move |doc, index| {
+        row_signal(root, slot, move |doc, index| {
             doc.body(index).map_or_else(Vec::new, |(file, row)| {
                 side_spans(file, row, lane, &spans)
             })
@@ -933,7 +921,7 @@ where
     )
     .wrap(wraps(root));
     let tints = style.clone();
-    let fill = at(root, slot, move |doc, index| {
+    let fill = row_signal(root, slot, move |doc, index| {
         match doc.body(index).map(|(_, row)| (row, lane)) {
             Some((
                 Row::Paired { .. } | Row::Deletion { .. },
@@ -955,7 +943,7 @@ where
             .min_width(px(0.0))
             .fill(fill);
     let hatch = style.faint.with_alpha(HATCH_ALPHA);
-    let empty = at(root, slot, move |doc, index| {
+    let empty = row_signal(root, slot, move |doc, index| {
         doc.body(index).is_some_and(|(_, row)| {
             !matches!(row, Row::Gap { .. })
                 && line_of(row, lane).is_none()
@@ -1036,8 +1024,6 @@ fn side_spans(
     })
 }
 
-/// The spans of `line` on `lane` as `row` shows it, with its changed
-/// words marked when the row pairs it with a line on the other side.
 fn line_text(
     file: &SourceFile,
     row: Row,
@@ -1076,9 +1062,6 @@ fn line_text(
     mark(spans, &marks, style.tint(lane).word)
 }
 
-/// `spans`, split where `marks` start and end, with the marked parts
-/// on `fill`. `marks` are sorted, disjoint byte ranges of the text
-/// the spans join into.
 fn mark(
     spans: Vec<Span>,
     marks: &[Range<usize>],
@@ -1124,13 +1107,15 @@ where
 {
     let spans = style.clone();
     let text = code(
-        at(root, slot, move |doc, index| match doc.row(index) {
-            Some(DiffRow::Header { file }) => header_spans(
-                &doc.file(file).diff,
-                doc.is_collapsed(file),
-                &spans,
-            ),
-            _ => Vec::new(),
+        row_signal(root, slot, move |doc, index| {
+            match doc.row(index) {
+                Some(DiffRow::Header { file }) => header_spans(
+                    &doc.file(file).diff,
+                    doc.is_collapsed(file),
+                    &spans,
+                ),
+                _ => Vec::new(),
+            }
         }),
         style,
     )
@@ -1217,7 +1202,7 @@ where
     T: Tokens,
 {
     let text = code(
-        at(root, slot, |doc, index| match doc.body(index) {
+        row_signal(root, slot, |doc, index| match doc.body(index) {
             Some((_, Row::Gap { hidden, .. })) => {
                 let lines =
                     if hidden == 1 { "line" } else { "lines" };
@@ -1230,13 +1215,9 @@ where
     .tone(Tone::Faint)
     .wrap(false);
     row((
-        expand::<T>(root, slot, "↑ up", Side::Up, |up, _| up),
-        expand::<T>(root, slot, "↓ down", Side::Down, |_, down| {
-            down
-        }),
-        expand::<T>(root, slot, "↕ all", Side::All, |up, down| {
-            up || down
-        }),
+        expand::<T>(root, slot, "↑ up", Side::Up),
+        expand::<T>(root, slot, "↓ down", Side::Down),
+        expand::<T>(root, slot, "↕ all", Side::All),
         text,
     ))
     .align(AlignItems::Center)
@@ -1245,27 +1226,25 @@ where
     .boxed()
 }
 
-/// A gap row's button that reveals from `side`, shown when `offered`
-/// holds for the gap's `up` and `down`.
 fn expand<T>(
     root: Entity,
     slot: RowSlot,
     text: &'static str,
     side: Side,
-    offered: fn(bool, bool) -> bool,
 ) -> AnyView<Bevy, T>
 where
     T: Tokens,
 {
-    let display =
-        at(root, slot, move |doc, index| match doc.body(index) {
-            Some((_, Row::Gap { up, down, .. }))
-                if offered(up, down) =>
-            {
-                Display::Flex
-            }
-            _ => Display::None,
-        });
+    let display = row_signal(root, slot, move |doc, index| match doc
+        .body(index)
+    {
+        Some((_, Row::Gap { up, down, .. }))
+            if offers(side, up, down) =>
+        {
+            Display::Flex
+        }
+        _ => Display::None,
+    });
     button(label(text))
         .display(display)
         .rules(ghost)
@@ -1285,24 +1264,31 @@ where
         .boxed()
 }
 
+fn offers(side: Side, up: bool, down: bool) -> bool {
+    match side {
+        Side::Up => up,
+        Side::Down => down,
+        Side::All => up || down,
+    }
+}
+
 fn more<T>(root: Entity, slot: RowSlot) -> AnyView<Bevy, T>
 where
     T: Tokens,
 {
-    let text = at(root, slot, |doc, index| match doc.row(index) {
-        Some(DiffRow::More { lines }) => {
-            format!("... {lines} more lines")
-        }
-        _ => String::new(),
-    });
+    let text =
+        row_signal(root, slot, |doc, index| match doc.row(index) {
+            Some(DiffRow::More { lines }) => {
+                format!("... {lines} more lines")
+            }
+            _ => String::new(),
+        });
     button(label(text))
         .rules(ghost)
         .on_activate(move |world| doc_mut(world, root).show_all())
         .boxed()
 }
 
-/// Makes [`HATCH`]: white diagonal stripes on clear, which an image
-/// node tints.
 pub(crate) fn load_hatch(images: Option<ResMut<Assets<Image>>>) {
     let Some(mut images) = images else {
         return;
@@ -1358,7 +1344,8 @@ mod tests {
     #[test]
     fn a_mark_across_spans_marks_both_parts() {
         let spans = vec![Span::new("ab"), Span::new("cd")];
-        let marked = mark(spans, &[1..3], Color::WHITE);
+        let across = 1..3;
+        let marked = mark(spans, &[across], Color::WHITE);
         assert_eq!(
             texts(&marked),
             [("a", false), ("b", true), ("c", true), ("d", false)]

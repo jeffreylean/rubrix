@@ -1,5 +1,3 @@
-//! The headless app and the queries both diff test files share.
-
 #![allow(dead_code)]
 
 use core::time::Duration;
@@ -168,7 +166,6 @@ pub fn first_visible(app: &mut App) -> usize {
     list(app).first_visible()
 }
 
-/// Every row slot built, by the index of the row it shows.
 pub fn slots(app: &mut App) -> Vec<(usize, Entity)> {
     let mut slots = app
         .world_mut()
@@ -201,7 +198,6 @@ fn descendants(app: &App, root: Entity) -> Vec<Entity> {
     found
 }
 
-/// The text of each rich text or label under `root`, in order.
 pub fn texts(app: &App, root: Entity) -> Vec<String> {
     let world = app.world();
     descendants(app, root)
@@ -221,7 +217,6 @@ pub fn texts(app: &App, root: Entity) -> Vec<String> {
         .collect()
 }
 
-/// Presses the button under `root` labelled `text`.
 pub fn press(app: &mut App, root: Entity, text: &str) {
     let world = app.world();
     let node = descendants(app, root)
@@ -242,8 +237,6 @@ pub fn press(app: &mut App, root: Entity, text: &str) {
     settle(app);
 }
 
-/// The rows a view of `source` shows with every file expanded, the
-/// expansions given, and no limit.
 pub fn expected(
     source: &DiffSource,
     layout: Layout,
@@ -265,7 +258,6 @@ pub fn expected(
         .collect()
 }
 
-/// A line's text as a view shows it, tabs to four-column stops.
 pub fn shown(line: &str) -> String {
     let mut out = String::new();
     for c in line.chars() {

@@ -13,10 +13,11 @@ UP, ALL = "click 252 252", "click 420 252"
 SPLIT_UP = "click 252 235"
 MORE = "click 740 439"
 ROW = 17
-# From the end of large.patch.txt up to the top of its last file's
-# header: the header's 33 px and 284 rows of 17 px stacked, 268 split.
-LAST_HEADER_STACKED = 33 + 284 * ROW
-LAST_HEADER_SPLIT = 33 + 268 * ROW
+HEADER = 33
+LAST_FILE_ROWS_ABOVE_END_STACKED = 284
+LAST_FILE_ROWS_ABOVE_END_SPLIT = 268
+LAST_HEADER_STACKED = HEADER + LAST_FILE_ROWS_ABOVE_END_STACKED * ROW
+LAST_HEADER_SPLIT = HEADER + LAST_FILE_ROWS_ABOVE_END_SPLIT * ROW
 STRESS_MIDDLE = 850_000
 
 

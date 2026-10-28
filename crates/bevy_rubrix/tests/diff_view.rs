@@ -18,8 +18,6 @@ fn gap_pair() -> DiffSource {
     DiffSource::texts("numbers.txt", &old, &new)
 }
 
-/// Checks that every built slot shows the row `want` holds at its
-/// index, numbers and text included.
 fn assert_slots_show(app: &mut App, want: &[DiffRow]) {
     let source = doc(app).source().clone();
     let files = source.files().collect::<Vec<_>>();

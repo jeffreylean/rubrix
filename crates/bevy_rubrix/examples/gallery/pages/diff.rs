@@ -20,7 +20,6 @@ const STRESS_PATCH: &str =
 const LARGE_RS: &str =
     include_str!("../../../../../bench/fixtures/rust/large.rs.txt");
 
-/// What `compact` limits the view to, as Hamlet's diff block shows.
 const COMPACT_LIMIT: u32 = 16;
 
 #[derive(Resource)]
@@ -90,7 +89,7 @@ fn controls() -> PageView {
             let source = DiffSource::texts(
                 "large.rs",
                 LARGE_RS,
-                &edited(LARGE_RS),
+                &with_review_edits(LARGE_RS),
             );
             show(world, "large.rs.txt, edited", source);
         }),
@@ -145,10 +144,7 @@ fn show(world: &mut World, name: &str, source: DiffSource) {
     file.source = source;
 }
 
-/// `text` with a few edits a reviewer would make: a renamed
-/// identifier, a removed block, an added block and a changed line,
-/// far enough apart that gaps sit between them.
-fn edited(text: &str) -> String {
+fn with_review_edits(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for (at, line) in text.lines().enumerate() {
         match at {
@@ -185,8 +181,6 @@ fn name(path: &Path) -> String {
     )
 }
 
-/// Shows a patch for one path, or the change between two files for
-/// two.
 pub fn open(
     world: &mut World,
     paths: &[PathBuf],

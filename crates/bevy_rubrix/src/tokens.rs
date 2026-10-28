@@ -80,7 +80,6 @@ pub trait SyntaxTokens: TextTokens {
     }
 }
 
-/// `dark` on a theme whose body text is light, else `light`.
 fn pick<T: TextTokens + ?Sized>(
     theme: &T,
     dark: u32,
@@ -141,11 +140,6 @@ pub fn resolve<T: SyntaxTokens + ?Sized>(
     (theme.tone(Tone::Body), face.unwrap_or_default())
 }
 
-/// The fill of a changed row and the stronger fill of its changed
-/// words, as Pierre's `style.css` mixes them. The row mixes `base`
-/// into `background` in Lab, 20% on a dark background and 12% on a
-/// light one. The words take `base` at alpha 0.2 or 0.15, over the
-/// row.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Tint {
     pub(crate) row: Color,
@@ -305,8 +299,6 @@ mod tests {
             .map(|channel| (channel * 255.0).round() as u8)
     }
 
-    /// The expected values come from a CIE Lab (D65) mix computed
-    /// apart from Bevy's.
     #[test]
     fn add_and_delete_rows_mix_the_background_with_their_colour() {
         struct Body(Color);
