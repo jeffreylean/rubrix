@@ -32,6 +32,12 @@ const SHOWN: f64 = 0.5;
 
 const MAX_SLOTS: usize = 199;
 
+/// How far the view may fall short of the sum of its rows' heights
+/// and still fit them: a parent that takes the rows' spans, which sit
+/// on whole physical pixels, can end up to half a pixel under the
+/// sum.
+const FITS_WITHIN: f64 = 1.0;
+
 const ESTIMATE_TOLERANCE: core::ops::RangeInclusive<f32> = 0.8..=1.25;
 
 pub(crate) fn plugin(app: &mut App) {
@@ -65,7 +71,9 @@ pub struct VirtualListView<R> {
 /// Unless the view [follows the
 /// bottom](VirtualListView::follow_bottom), rows added keep its first
 /// visible row in place, so a list that grows from no rows shows its
-/// first.
+/// first. While every row fits the view, a frame that adds rows or
+/// grows them builds from the first row, so a parent that takes the
+/// height of the rows shows each of them on the frame it grows.
 ///
 /// A row that scrolls far out of sight is not despawned but shows
 /// another row instead, so `row` builds the view of a [`RowSlot`]
@@ -558,6 +566,8 @@ impl VirtualList {
                 };
         }
         let view = f64::from(view);
+        let fits =
+            view > 0.0 && self.heights.total() <= view + FITS_WITHIN;
         let scroll = f64::from(scroll);
         let mut anchor = self.shown_at(scroll);
         let mut within = scroll - self.heights.offset(anchor);
@@ -623,7 +633,7 @@ impl VirtualList {
         } else {
             Anchor::FirstRow
         });
-        self.fill(to, view);
+        self.fill(to, view, fits);
         Scroll {
             to: to as f32,
             jump,
@@ -677,10 +687,14 @@ impl VirtualList {
         }
     }
 
-    fn fill(&mut self, scroll: f64, view: f64) {
+    fn fill(&mut self, scroll: f64, view: f64, from_first: bool) {
         let count = self.heights.len();
         let top = (scroll - self.overscan).max(0.0);
-        let mut first = self.heights.index_at(top);
+        let mut first = if from_first {
+            0
+        } else {
+            self.heights.index_at(top)
+        };
         let mut end =
             (self.heights.index_at(top + view + 2.0 * self.overscan)
                 + 1)
