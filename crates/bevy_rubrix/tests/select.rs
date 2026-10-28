@@ -3,35 +3,21 @@ mod support;
 use core::ops::Range;
 
 use bevy::app::App;
-use bevy::camera::NormalizedRenderTarget;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
-use bevy::ecs::observer::On;
-use bevy::ecs::resource::Resource;
-use bevy::ecs::system::ResMut;
-use bevy::input::keyboard::{Key, KeyCode, KeyboardInput};
-use bevy::input::{ButtonInput, ButtonState};
+use bevy::input::keyboard::KeyCode;
 use bevy::math::{Rect, Vec2};
-use bevy::picking::backend::HitData;
-use bevy::picking::events::{
-    Pointer, PointerDrag, PointerDragEnd, PointerPress,
-    PointerRelease,
-};
-use bevy::picking::pointer::{Location, PointerButton, PointerId};
+use bevy::picking::events::{PointerDrag, PointerDragEnd};
+use bevy::picking::pointer::PointerButton;
 use bevy::text::TextLayoutInfo;
 use bevy::ui::{ComputedNode, Display, Node, UiGlobalTransform};
-use bevy_fynix::views::parley::{Affinity, Cursor};
-use bevy_fynix::views::{VirtualList, rich_layout};
-use bevy_rubrix::{
-    CodeCopied, CodeSelection, CodeSource, Lang, Overflow,
-};
+use bevy_fynix::views::VirtualList;
+use bevy_rubrix::{CodeSelection, CodeSource, Lang, Overflow};
 use support::{
-    Wrapping, doc, laid_out, line, list, list_state, mount_view,
-    spans_of, view,
+    Wrapping, copy, corner, ctrl, doc, hold_on, keep_copies,
+    laid_out, line, list, list_state, mount_view, point_in, pointer,
+    press_on, shift, spans_of, view,
 };
-
-#[derive(Resource, Default)]
-struct Copied(Vec<String>);
 
 fn selecting(source: CodeSource) -> App {
     selecting_in(source, 600.0)
@@ -39,11 +25,7 @@ fn selecting(source: CodeSource) -> App {
 
 fn selecting_in(source: CodeSource, width: f32) -> App {
     let mut app = laid_out();
-    app.init_resource::<Copied>().add_observer(
-        |copied: On<CodeCopied>, mut all: ResMut<Copied>| {
-            all.0.push(copied.text.clone());
-        },
-    );
+    keep_copies(&mut app);
     mount_view(&mut app, source, width, 400.0);
     settle(&mut app);
     app
@@ -55,39 +37,9 @@ fn settle(app: &mut App) {
     }
 }
 
-fn corner(app: &App, root: Entity) -> Vec2 {
-    let world = app.world();
-    let node = world.get::<ComputedNode>(root).expect("a node");
-    world
-        .get::<UiGlobalTransform>(root)
-        .expect("a transform")
-        .translation
-        + node.content_box().min
-}
-
 fn point_of(app: &mut App, row: usize, byte: usize) -> Vec2 {
     let root = line(app, row);
-    let corner = corner(app, root);
-    let layout = &rich_layout(app.world(), root).expect("a layout");
-    let caret =
-        Cursor::from_byte_index(layout, byte, Affinity::Downstream)
-            .geometry(layout, 1.0);
-    corner
-        + Vec2::new(
-            caret.x0 as f32 + 1.0,
-            ((caret.y0 + caret.y1) / 2.0) as f32,
-        )
-}
-
-fn pointer(at: Vec2) -> Pointer {
-    let location = Location {
-        target: NormalizedRenderTarget::None {
-            width: 1000,
-            height: 1000,
-        },
-        position: at,
-    };
-    Pointer::new(PointerId::Mouse, location)
+    point_in(app, root, byte)
 }
 
 fn press_at(app: &mut App, row: usize, byte: usize, count: u8) {
@@ -96,72 +48,14 @@ fn press_at(app: &mut App, row: usize, byte: usize, count: u8) {
 }
 
 fn press_point(app: &mut App, row: usize, at: Vec2, count: u8) {
-    hold_point(app, row, at, count);
     let on = line(app, row);
-    app.world_mut().trigger(PointerRelease {
-        entity: on,
-        pointer: pointer(at),
-        button: PointerButton::Primary,
-        hit: HitData::new(Entity::PLACEHOLDER, 0.0, None, None),
-    });
-    app.update();
+    press_on(app, on, at, count);
 }
 
 fn hold_at(app: &mut App, row: usize, byte: usize, count: u8) {
     let at = point_of(app, row, byte);
-    hold_point(app, row, at, count);
-}
-
-fn hold_point(app: &mut App, row: usize, at: Vec2, count: u8) {
     let on = line(app, row);
-    app.world_mut().trigger(PointerPress {
-        entity: on,
-        pointer: pointer(at),
-        button: PointerButton::Primary,
-        hit: HitData::new(Entity::PLACEHOLDER, 0.0, None, None),
-        count,
-    });
-    app.update();
-}
-
-fn shift(app: &mut App, held: bool) {
-    let mut keys =
-        app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
-    if held {
-        keys.press(KeyCode::ShiftLeft);
-    } else {
-        keys.release(KeyCode::ShiftLeft);
-    }
-}
-
-fn ctrl(app: &mut App, key: KeyCode, letter: &str) {
-    let send = |app: &mut App, key_code, logical_key, state| {
-        app.world_mut().write_message(KeyboardInput {
-            key_code,
-            logical_key,
-            state,
-            text: None,
-            repeat: false,
-            window: Entity::PLACEHOLDER,
-        });
-    };
-    let letter = Key::Character(letter.into());
-    send(
-        app,
-        KeyCode::ControlLeft,
-        Key::Control,
-        ButtonState::Pressed,
-    );
-    send(app, key, letter.clone(), ButtonState::Pressed);
-    app.update();
-    send(app, key, letter, ButtonState::Released);
-    send(
-        app,
-        KeyCode::ControlLeft,
-        Key::Control,
-        ButtonState::Released,
-    );
-    app.update();
+    hold_on(app, on, at, count);
 }
 
 fn selected(app: &mut App) -> Range<usize> {
@@ -170,16 +64,6 @@ fn selected(app: &mut App) -> Range<usize> {
         .get::<CodeSelection>(view)
         .expect("a selection")
         .range()
-}
-
-fn copy(app: &mut App) -> String {
-    ctrl(app, KeyCode::KeyC, "c");
-    app.world()
-        .resource::<Copied>()
-        .0
-        .last()
-        .cloned()
-        .unwrap_or_default()
 }
 
 const SNIPPET: &str =

@@ -7,23 +7,36 @@ use core::time::Duration;
 use bevy::app::App;
 use bevy::asset::AssetApp;
 use bevy::camera::{
-    Camera, Camera2d, ComputedCameraValues, RenderTargetInfo,
+    Camera, Camera2d, ComputedCameraValues, NormalizedRenderTarget,
+    RenderTargetInfo,
 };
 use bevy::color::Color;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::Children;
+use bevy::ecs::observer::On;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
-use bevy::math::UVec2;
+use bevy::ecs::system::ResMut;
+use bevy::input::keyboard::{Key, KeyCode, KeyboardInput};
+use bevy::input::{ButtonInput, ButtonState};
+use bevy::math::{UVec2, Vec2};
+use bevy::picking::backend::HitData;
+use bevy::picking::events::{
+    Pointer, PointerDrag, PointerPress, PointerRelease,
+};
+use bevy::picking::pointer::{Location, PointerButton, PointerId};
 use bevy::text::{TextColor, TextSpan};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
-use bevy::ui::{UiPlugin, px};
+use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin, px};
 use bevy_fynix::tokens::{SpacingTokens, TextTokens, Tone};
-use bevy_fynix::views::{FrameProps, VirtualList, column};
+use bevy_fynix::views::parley::{Affinity, Cursor};
+use bevy_fynix::views::{
+    FrameProps, VirtualList, column, rich_layout,
+};
 use bevy_fynix::{FynixPlugin, Theme, mount, resource};
 use bevy_rubrix::{
-    CodeDoc, CodeLine, CodeSource, Kind, Overflow, RubrixPlugin,
-    SyntaxStyle, SyntaxTokens, code_view, resolve,
+    CodeCopied, CodeDoc, CodeLine, CodeSource, Kind, Overflow,
+    RubrixPlugin, SyntaxStyle, SyntaxTokens, code_view, resolve,
 };
 
 pub const BODY: Color = Color::WHITE;
@@ -101,6 +114,13 @@ pub fn app() -> App {
 
 pub fn laid_out_at(scale_factor: f32) -> App {
     let mut app = plain();
+    lay_out(&mut app, scale_factor);
+    app
+}
+
+/// Adds what lays out and picks UI to `app`, under a 1000 by 1000
+/// camera, then runs one update.
+pub fn lay_out(app: &mut App, scale_factor: f32) {
     app.add_plugins((
         bevy::asset::AssetPlugin::default(),
         bevy::transform::TransformPlugin,
@@ -126,7 +146,6 @@ pub fn laid_out_at(scale_factor: f32) -> App {
         },
     ));
     app.update();
-    app
 }
 
 pub fn laid_out() -> App {
@@ -230,4 +249,140 @@ pub fn line(app: &mut App, row: usize) -> Entity {
 pub fn row_spans(app: &mut App, row: usize) -> Vec<(String, Color)> {
     let root = line(app, row);
     spans_of(app, root)
+}
+
+#[derive(Resource, Default)]
+pub struct Copied(pub Vec<String>);
+
+/// Keeps every text a view copies in [`Copied`].
+pub fn keep_copies(app: &mut App) {
+    app.init_resource::<Copied>().add_observer(
+        |copied: On<CodeCopied>, mut all: ResMut<Copied>| {
+            all.0.push(copied.text.clone());
+        },
+    );
+}
+
+/// What `Ctrl+C` copies, or an empty string when it copies nothing.
+pub fn copy(app: &mut App) -> String {
+    let before = app.world().resource::<Copied>().0.len();
+    ctrl(app, KeyCode::KeyC, "c");
+    let copied = &app.world().resource::<Copied>().0;
+    copied.get(before).cloned().unwrap_or_default()
+}
+
+pub fn corner(app: &App, root: Entity) -> Vec2 {
+    let world = app.world();
+    let node = world.get::<ComputedNode>(root).expect("a node");
+    world
+        .get::<UiGlobalTransform>(root)
+        .expect("a transform")
+        .translation
+        + node.content_box().min
+}
+
+/// The window point just right of byte `byte` of rich text `root`,
+/// halfway down its line.
+pub fn point_in(app: &App, root: Entity, byte: usize) -> Vec2 {
+    let corner = corner(app, root);
+    let layout = &rich_layout(app.world(), root).expect("a layout");
+    let caret =
+        Cursor::from_byte_index(layout, byte, Affinity::Downstream)
+            .geometry(layout, 1.0);
+    corner
+        + Vec2::new(
+            caret.x0 as f32 + 1.0,
+            ((caret.y0 + caret.y1) / 2.0) as f32,
+        )
+}
+
+pub fn pointer(at: Vec2) -> Pointer {
+    let location = Location {
+        target: NormalizedRenderTarget::None {
+            width: 1000,
+            height: 1000,
+        },
+        position: at,
+    };
+    Pointer::new(PointerId::Mouse, location)
+}
+
+/// Presses the primary button on `on` at `at`, the `count`th press in
+/// a row, and keeps it held.
+pub fn hold_on(app: &mut App, on: Entity, at: Vec2, count: u8) {
+    app.world_mut().trigger(PointerPress {
+        entity: on,
+        pointer: pointer(at),
+        button: PointerButton::Primary,
+        hit: HitData::new(Entity::PLACEHOLDER, 0.0, None, None),
+        count,
+    });
+    app.update();
+}
+
+pub fn release_on(app: &mut App, on: Entity, at: Vec2) {
+    app.world_mut().trigger(PointerRelease {
+        entity: on,
+        pointer: pointer(at),
+        button: PointerButton::Primary,
+        hit: HitData::new(Entity::PLACEHOLDER, 0.0, None, None),
+    });
+    app.update();
+}
+
+pub fn press_on(app: &mut App, on: Entity, at: Vec2, count: u8) {
+    hold_on(app, on, at, count);
+    release_on(app, on, at);
+}
+
+/// Moves the held pointer pressed on `on` to `at`.
+pub fn drag_on(app: &mut App, on: Entity, from: Vec2, at: Vec2) {
+    app.world_mut().trigger(PointerDrag {
+        entity: on,
+        pointer: pointer(at),
+        button: PointerButton::Primary,
+        distance: at - from,
+        delta: at - from,
+    });
+    app.update();
+}
+
+pub fn shift(app: &mut App, held: bool) {
+    let mut keys =
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+    if held {
+        keys.press(KeyCode::ShiftLeft);
+    } else {
+        keys.release(KeyCode::ShiftLeft);
+    }
+}
+
+pub fn ctrl(app: &mut App, key: KeyCode, letter: &str) {
+    let send = |app: &mut App, key_code, logical_key, state| {
+        app.world_mut().write_message(KeyboardInput {
+            key_code,
+            logical_key,
+            state,
+            text: None,
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+    };
+    let letter = Key::Character(letter.into());
+    send(
+        app,
+        KeyCode::ControlLeft,
+        Key::Control,
+        ButtonState::Pressed,
+    );
+    send(app, key, letter.clone(), ButtonState::Pressed);
+    app.update();
+    send(app, key, letter, ButtonState::Released);
+    send(
+        app,
+        KeyCode::ControlLeft,
+        Key::Control,
+        ButtonState::Released,
+    );
+    app.update();
 }

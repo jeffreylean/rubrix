@@ -7,19 +7,22 @@ use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::resource::Resource;
 use bevy::text::{TextColor, TextSpan};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
+use bevy::ui::px;
 use bevy::ui::widget::Text;
 use bevy::ui_widgets::{Activate, Button};
 use bevy_fynix::tokens::{
     Curve, Motion, MotionTokens, SpacingTokens, SurfaceTokens,
     TextTokens, Tone,
 };
-use bevy_fynix::views::VirtualList;
+use bevy_fynix::views::{FrameProps, VirtualList, column};
 use bevy_fynix::{FynixPlugin, Theme, mount, resource};
 use bevy_rubrix::{
-    DiffDoc, DiffRow, DiffRowAt, DiffSource, Layout, Overflow,
-    RubrixPlugin, SyntaxTokens, diff_view,
+    DiffDoc, DiffRow, DiffRowAt, DiffSource, DiffView, Layout,
+    Overflow, RubrixPlugin, SyntaxTokens, diff_view,
 };
 use rubrix_diff::{Expansion, FileDiff, Row, rows};
+
+use super::{keep_copies, lay_out};
 
 pub const LARGE_PATCH: &str =
     include_str!("../../../../bench/patch/large.patch.txt");
@@ -100,6 +103,28 @@ pub struct Showing {
 }
 
 pub fn showing(source: DiffSource) -> App {
+    let mut app = plain(source);
+    app.update();
+    mount::<Plain>(app.world_mut(), view());
+    settle(&mut app);
+    app
+}
+
+/// A diff view of `source`, laid out in a `width` by `height` box,
+/// that keeps what it copies in [`Copied`].
+pub fn laid_out(source: DiffSource, width: f32, height: f32) -> App {
+    let mut app = plain(source);
+    lay_out(&mut app, 1.0);
+    keep_copies(&mut app);
+    mount::<Plain>(
+        app.world_mut(),
+        column((view(),)).width(px(width)).height(px(height)),
+    );
+    settle(&mut app);
+    app
+}
+
+fn plain(source: DiffSource) -> App {
     let mut app = App::new();
     app.add_plugins((
         TimePlugin,
@@ -116,17 +141,25 @@ pub fn showing(source: DiffSource) -> App {
         compact: false,
         limit: None,
     });
-    app.update();
-    mount::<Plain>(
-        app.world_mut(),
-        diff_view(resource::<Showing, _>(|s| s.source.clone()))
-            .layout(resource::<Showing, _>(|s| s.layout))
-            .compact(resource::<Showing, _>(|s| s.compact))
-            .limit(resource::<Showing, _>(|s| s.limit))
-            .overflow(Overflow::Scroll),
-    );
-    settle(&mut app);
     app
+}
+
+fn view() -> DiffView {
+    diff_view(resource::<Showing, _>(|s| s.source.clone()))
+        .layout(resource::<Showing, _>(|s| s.layout))
+        .compact(resource::<Showing, _>(|s| s.compact))
+        .limit(resource::<Showing, _>(|s| s.limit))
+        .overflow(Overflow::Scroll)
+}
+
+/// The rich texts under `root`, in order: in a split row, the old
+/// gutter, the old line, the new gutter and the new line.
+pub fn rich_texts(app: &App, root: Entity) -> Vec<Entity> {
+    let world = app.world();
+    descendants(app, root)
+        .into_iter()
+        .filter(|&node| world.get::<Text>(node).is_some())
+        .collect()
 }
 
 pub fn settle(app: &mut App) {
