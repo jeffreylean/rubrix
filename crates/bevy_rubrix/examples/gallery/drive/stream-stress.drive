@@ -1,0 +1,10 @@
+page stream
+wait 120
+click 734 68
+click 1178 68
+wait 150
+screenshot r13-stress.png
+log rows
+log stream
+expect rows total 100000
+exit

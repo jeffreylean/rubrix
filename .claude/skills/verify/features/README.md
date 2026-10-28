@@ -28,3 +28,5 @@ The gallery lists its pages on the left. Each page has one file here when it shi
 - [virtual-list.md](virtual-list.md): the `virtual_list` page, a list that builds only the rows near its view.
 - [code.md](code.md): the `code` page, a highlighted file in a virtual list.
 - [diff.md](diff.md): the `diff` page, a multi-file diff in stacked and split rows.
+- [stream.md](stream.md): the `stream` page, a file streamed into a code view.
+- [select.md](select.md): selecting and copying text in a code view, on the `code` and `stream` pages.

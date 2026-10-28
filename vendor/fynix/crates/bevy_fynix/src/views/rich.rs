@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use bevy::camera::Camera;
@@ -11,7 +12,7 @@ use bevy::ecs::world::{EntityWorldMut, World};
 use bevy::math::Vec2;
 use bevy::text::{
     ComputedTextBlock, FontSize, FontSource, FontStyle, FontWeight,
-    InlineBox, InlineBoxKind, LineHeight, Strikethrough,
+    InlineBox, InlineBoxKind, LineBreak, LineHeight, Strikethrough,
     StrikethroughColor, TextBackgroundColor, TextBrush, TextColor,
     TextFont, TextLayout, TextSpan, Underline, UnderlineColor,
 };
@@ -20,7 +21,7 @@ use bevy::ui::{
     ComputedNode, ComputedUiRenderTargetInfo, UiGlobalTransform,
 };
 use fynix::{Patch, element};
-use parley::Layout;
+use parley::{AlignmentOptions, Layout};
 
 use super::label::PatchWrap;
 use crate::patch::{Paint, PatchInk, PatchOpacity, PatchScale};
@@ -200,18 +201,41 @@ impl PartialEq for Spans {
     }
 }
 
-/// The parley layout of the rich text `root` as Bevy last laid it
-/// out, in physical pixels from the top left of its content box. Its
-/// byte offsets index the text of the spans joined in order. A rich
-/// text with no text lays out one line and no bytes, so every point
-/// in it is byte 0.
+/// The parley layout of the rich text `root` as Bevy drew it, in
+/// physical pixels from the top left of its content box. Its byte
+/// offsets index the text of the spans joined in order. A rich text
+/// with no text lays out one line and no bytes, so every point in it
+/// is byte 0. See [`drawn_layout`].
 pub fn rich_layout(
     world: &World,
     root: Entity,
-) -> Option<&Layout<TextBrush>> {
-    world
-        .get::<ComputedTextBlock>(root)
-        .map(ComputedTextBlock::buffer)
+) -> Option<Cow<'_, Layout<TextBrush>>> {
+    Some(drawn_layout(
+        world.get::<ComputedTextBlock>(root)?,
+        world.get::<TextLayout>(root)?,
+        world.get::<ComputedNode>(root)?,
+    ))
+}
+
+/// The layout of a text as Bevy drew it on `node`. Bevy's UI layout
+/// breaks a text's [`ComputedTextBlock`] at each width it measures,
+/// and breaks it again at the node's width only when the node
+/// changes, so the block of a text that wraps can hold lines of
+/// another width. This breaks a copy at the node's width. A text
+/// that does not wrap is the block's own layout.
+pub fn drawn_layout<'a>(
+    block: &'a ComputedTextBlock,
+    text: &TextLayout,
+    node: &ComputedNode,
+) -> Cow<'a, Layout<TextBrush>> {
+    let layout = block.buffer();
+    if text.linebreak == LineBreak::NoWrap {
+        return Cow::Borrowed(layout);
+    }
+    let mut drawn = layout.clone();
+    drawn.break_all_lines(Some(node.content_box().width()));
+    drawn.align(text.justify.into(), AlignmentOptions::default());
+    Cow::Owned(drawn)
 }
 
 /// Where `at`, a point in logical pixels of the window such as a

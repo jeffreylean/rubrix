@@ -1,0 +1,11 @@
+page code
+wait 120
+open ../fixtures/unicode.rs
+wait 30
+drag 235 160 1250 177
+key ctrl+c
+log selection
+clipboard
+wait 30
+screenshot r14-unicode.png
+exit

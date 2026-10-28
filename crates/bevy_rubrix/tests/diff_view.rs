@@ -8,7 +8,7 @@ use bevy::ui::{Display, Node};
 use bevy::ui_widgets::Button;
 use bevy_rubrix::{DiffRow, DiffSource, Layout, Row, Side};
 use rubrix_diff::Expansion;
-use support::*;
+use support::diff::*;
 
 fn gap_pair() -> DiffSource {
     let old = numbered(400);

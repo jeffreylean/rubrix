@@ -1,0 +1,14 @@
+page code
+wait 120
+drag 235 279 1250 449
+log selection
+move 740 400
+scroll 0 -85000
+wait 30
+log rows
+scroll 0 85000
+wait 30
+log rows
+log selection
+screenshot r14-survive.png
+exit

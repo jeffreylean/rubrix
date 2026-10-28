@@ -1,19 +1,23 @@
 use std::path::PathBuf;
 
 use bevy::app::App;
+use bevy::ecs::observer::On;
+use bevy::ecs::system::ResMut;
 use bevy::ecs::world::World;
 use bevy::ui::{FlexWrap, Node, px};
 use bevy_fynix::views::{
     BehaviorExt, FrameProps, button, ghost, label,
 };
 use bevy_fynix::{AnyView, Prop, ScopedExt, ViewExt};
+use bevy_rubrix::CodeCopied;
 
-use crate::{Build, PageView};
+use crate::{Build, Copied, PageView};
 
 mod about;
 mod code;
 mod diff;
 pub mod rich;
+pub mod stream;
 pub mod virtual_list;
 
 const BUTTON_WIDTH: f32 = 140.0;
@@ -48,6 +52,11 @@ pub const PAGES: &[Page] = &[
         open: Some(code::open),
     },
     Page {
+        name: "stream",
+        build: stream::build,
+        open: Some(stream::open),
+    },
+    Page {
         name: "diff",
         build: diff::build,
         open: Some(diff::open),
@@ -58,7 +67,13 @@ pub fn plugin(app: &mut App) {
     rich::plugin(app);
     virtual_list::plugin(app);
     code::plugin(app);
+    stream::plugin(app);
     diff::plugin(app);
+    app.add_observer(
+        |copied: On<CodeCopied>, mut last: ResMut<Copied>| {
+            last.0 = Some(copied.text.clone());
+        },
+    );
 }
 
 fn control(

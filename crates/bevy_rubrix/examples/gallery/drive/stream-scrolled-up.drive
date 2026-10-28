@@ -1,0 +1,17 @@
+page stream
+wait 120
+click 438 68
+click 1030 68
+wait 900
+move 740 400
+scroll 0 300
+scroll 0 300
+wait 10
+log rows
+expect rows following false
+log stream
+wait 200
+log stream
+log rows
+screenshot r13-scrolled-up.png
+exit

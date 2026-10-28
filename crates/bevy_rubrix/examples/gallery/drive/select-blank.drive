@@ -1,0 +1,9 @@
+page code
+wait 120
+drag 235 126 1250 160
+key ctrl+c
+log selection
+clipboard
+wait 30
+screenshot r14-blank.png
+exit

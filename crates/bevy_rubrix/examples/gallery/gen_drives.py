@@ -13,11 +13,16 @@ TEN_K, HUNDRED_K, APPEND, PLAIN, FOLLOW = BUTTONS
 FOLLOW_ON = [FOLLOW, "wait 2"]
 
 
-def write(name, *steps):
-    lines = []
+def flat(steps):
     for step in steps:
-        lines.extend(step if isinstance(step, list) else [step])
-    (out / f"{name}.drive").write_text("\n".join(lines) + "\n")
+        if isinstance(step, list):
+            yield from flat(step)
+        else:
+            yield step
+
+
+def write(name, *steps):
+    (out / f"{name}.drive").write_text("\n".join(flat(steps)) + "\n")
 
 
 def scroll(dy, frames):
@@ -437,3 +442,278 @@ code(
     "log rows",
 )
 
+
+ONE_B, SIXTY_FOUR_B, FOUR_KIB, SIXTY_FOUR_KIB, PAUSE, RESTART, STREAM_100K = [
+    f"click {x} 68" for x in (290, 438, 586, 734, 882, 1030, 1178)
+]
+LINE_1 = 126
+TEXT_X = 271
+GUTTER_X = 235
+LINE_END_X = 1250
+
+
+def at_line(line_number, x=TEXT_X):
+    return f"{x} {LINE_1 + (line_number - 1) * ROW}"
+
+
+def stream(name, *steps):
+    write(f"stream-{name}", "page stream", SETTLE, *steps, "exit")
+
+
+def at_rate(rate):
+    return [rate, RESTART]
+
+
+stream(
+    "final",
+    FOUR_KIB,
+    "frames start",
+    "wait 60",
+    RESTART,
+    "wait 85",
+    "frames stop stream-4k.csv",
+    SIXTY_FOUR_KIB,
+    "frames start",
+    "wait 60",
+    [[RESTART, "wait 8"] for _ in range(10)],
+    "frames stop stream-64k.csv",
+    "wait 30",
+    "screenshot r13-final.png",
+    "log stream",
+    "log rows",
+    "page code",
+    SETTLE,
+    CENTER,
+    "scroll 0 -200000",
+    "wait 30",
+    "screenshot r13-final-code.png",
+    "log rows",
+)
+stream(
+    "mid",
+    at_rate(SIXTY_FOUR_B),
+    "wait 300",
+    "log stream",
+    "wait 100",
+    "log stream",
+    "screenshot r13-mid.png",
+    "log rows",
+    "expect rows following true",
+)
+scrolled_up = [
+    at_rate(SIXTY_FOUR_B),
+    "wait 900",
+    CENTER,
+    "scroll 0 300",
+    "scroll 0 300",
+    "wait 10",
+    "log rows",
+    "expect rows following false",
+    "log stream",
+    "wait 200",
+    "log stream",
+    "log rows",
+]
+stream("scrolled-up", scrolled_up, "screenshot r13-scrolled-up.png")
+stream(
+    "refollow",
+    scrolled_up,
+    "wheel 0 -400",
+    "wait 400",
+    "log rows",
+    "expect rows following true",
+    "log stream",
+    "wait 100",
+    "log stream",
+    "log rows",
+    "screenshot r13-refollow.png",
+)
+stream(
+    "open-string",
+    "open ../fixtures/open-string.rs",
+    SETTLE,
+    "screenshot r13-open-string.png",
+    "log stream",
+    "log runs 3",
+    "expect runs 3 string",
+)
+stream(
+    "closed-string",
+    "open ../fixtures/closed-string.rs",
+    at_rate(ONE_B),
+    SETTLE,
+    "screenshot r13-closed-string.png",
+    "log stream",
+    "log runs 1",
+    "log runs 2",
+    "expect runs 2 keyword",
+)
+stream(
+    "respawn",
+    at_rate(SIXTY_FOUR_B),
+    [["wait 100", "log stream"] for _ in range(12)],
+    "screenshot r13-respawn.png",
+)
+stream(
+    "restart",
+    "log entities",
+    PAUSE,
+    RESTART,
+    "wait 30",
+    "screenshot r13-restart-empty.png",
+    "log stream",
+    PAUSE,
+    "wait 200",
+    "log entities",
+    RESTART,
+    "wait 200",
+    "log entities",
+    RESTART,
+    "wait 200",
+    "log entities",
+    "screenshot r13-restart.png",
+)
+stream(
+    "stress",
+    SIXTY_FOUR_KIB,
+    STREAM_100K,
+    "wait 150",
+    "screenshot r13-stress.png",
+    "log rows",
+    "log stream",
+    "expect rows total 100000",
+)
+stream(
+    "crlf",
+    "open ../fixtures/crlf.rs",
+    at_rate(ONE_B),
+    "wait 2000",
+    "screenshot r13-crlf.png",
+    "log stream",
+    "log runs 3",
+    "log rows",
+)
+(out.parent / "fixtures/open-string.rs").write_text(
+    'fn main() {\n    let t = 1;\nlet s = "open'
+)
+(out.parent / "fixtures/closed-string.rs").write_text('let s = "ab\nc"; let t = 1;\n')
+(out.parent / "fixtures/crlf.rs").write_bytes(
+    "".join(line + "\r\n" for line in LARGE_RS_LINES[:300]).encode()
+)
+
+
+def select(name, *steps):
+    write(f"select-{name}", "page code", SETTLE, *steps, "exit")
+
+
+copy = ["key ctrl+c", "log selection", "clipboard"]
+select(
+    "drag",
+    f"drag {at_line(10, GUTTER_X)} {at_line(20, LINE_END_X)}",
+    copy,
+    "wait 30",
+    "screenshot r14-drag.png",
+)
+# The held drag scrolls past line 400, then a pixel scroll, still
+# held, puts line 400 on view row 18, where the pointer lets go.
+LINE_400_ROW = 18
+select(
+    "autoscroll",
+    "frames start",
+    "wait 60",
+    f"press {at_line(10, GUTTER_X)}",
+    "move 700 799",
+    "wait 360",
+    "frames stop select-drag.csv",
+    "log rows",
+    f"move 700 {LINE_1 + LINE_400_ROW * ROW}",
+    "scroll 0 1000000",
+    f"scroll 0 -{(400 - 1 - LINE_400_ROW) * ROW}",
+    "wait 5",
+    f"move {LINE_END_X} {LINE_1 + LINE_400_ROW * ROW}",
+    "wait 5",
+    "release",
+    "log rows",
+    copy,
+    "wait 30",
+    "screenshot r14-autoscroll.png",
+)
+select(
+    "blank",
+    f"drag {at_line(1, GUTTER_X)} {at_line(3, LINE_END_X)}",
+    copy,
+    "wait 30",
+    "screenshot r14-blank.png",
+)
+select(
+    "word",
+    f"click {at_line(3, TEXT_X + round(19.5 * 8.4))} double",
+    "log selection",
+    "expect selection length 8",
+    copy,
+    "wait 30",
+    "screenshot r14-word.png",
+)
+select(
+    "line",
+    f"click {at_line(6, TEXT_X + 40)} triple",
+    copy,
+    "wait 30",
+    "screenshot r14-line.png",
+)
+select(
+    "all",
+    "key ctrl+a",
+    "log selection",
+    "expect selection length 313933",
+    "frames start",
+    "wait 60",
+    "key ctrl+c",
+    "wait 10",
+    "frames stop select-copy.csv",
+    "clipboard",
+    "wait 30",
+    "screenshot r14-all.png",
+)
+select(
+    "survive",
+    f"drag {at_line(10, GUTTER_X)} {at_line(20, LINE_END_X)}",
+    "log selection",
+    CENTER,
+    f"scroll 0 -{5000 * ROW}",
+    "wait 30",
+    "log rows",
+    f"scroll 0 {5000 * ROW}",
+    "wait 30",
+    "log rows",
+    "log selection",
+    "screenshot r14-survive.png",
+)
+select(
+    "extend",
+    f"click {at_line(10, GUTTER_X)}",
+    f"click {at_line(20, LINE_END_X)} shift",
+    copy,
+    "wait 30",
+    "screenshot r14-extend.png",
+)
+select(
+    "gutter-wrap",
+    "open ../fixtures/long-line.rs",
+    "wait 30",
+    WRAP,
+    "wait 60",
+    f"drag {at_line(1, GUTTER_X)} {at_line(8, LINE_END_X)}",
+    copy,
+    "wait 30",
+    "screenshot r14-gutter-wrap.png",
+)
+select(
+    "unicode",
+    "open ../fixtures/unicode.rs",
+    "wait 30",
+    f"drag {at_line(3, GUTTER_X)} {at_line(4, LINE_END_X)}",
+    copy,
+    "wait 30",
+    "screenshot r14-unicode.png",
+)

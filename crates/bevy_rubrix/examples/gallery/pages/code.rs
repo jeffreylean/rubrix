@@ -16,7 +16,7 @@ use bevy_rubrix::{
 use super::{control, wrapping};
 use crate::{PageView, Palette};
 
-const LARGE_RS: &str =
+pub(super) const LARGE_RS: &str =
     include_str!("../../../../../bench/fixtures/rust/large.rs.txt");
 const LARGE_TS: &str =
     include_str!("../../../../../bench/fixtures/ts/large.ts.txt");
@@ -34,10 +34,14 @@ impl Default for CodeFile {
     fn default() -> Self {
         Self {
             name: "large.rs.txt".into(),
-            source: CodeSource::new(Lang::Rust, LARGE_RS),
+            source: large_rs(),
             overflow: Overflow::Scroll,
         }
     }
+}
+
+fn large_rs() -> CodeSource {
+    CodeSource::new(Lang::Rust, LARGE_RS)
 }
 
 pub fn plugin(app: &mut App) {
@@ -86,11 +90,7 @@ pub fn build() -> PageView {
 fn controls() -> PageView {
     let buttons = row((
         control("large.rs", |world| {
-            show(
-                world,
-                "large.rs.txt",
-                CodeSource::new(Lang::Rust, LARGE_RS),
-            );
+            show(world, "large.rs.txt", large_rs());
         }),
         control("large.ts", |world| {
             let source = CodeSource::new(Lang::TypeScript, LARGE_TS);
@@ -124,7 +124,7 @@ fn show(world: &mut World, name: &str, source: CodeSource) {
     file.source = source;
 }
 
-fn stress() -> String {
+pub(super) fn stress() -> String {
     let mut text = String::with_capacity(LARGE_RS.len() * 10);
     for line in LARGE_RS.lines().cycle().take(STRESS_LINES) {
         text.push_str(line);
@@ -137,9 +137,19 @@ pub fn open(
     world: &mut World,
     paths: &[PathBuf],
 ) -> Result<(), String> {
+    let (name, text) = read("code", paths)?;
+    let source = CodeSource::detect(&name, text);
+    show(world, &name, source);
+    Ok(())
+}
+
+pub(super) fn read(
+    page: &str,
+    paths: &[PathBuf],
+) -> Result<(String, String), String> {
     let [path] = paths else {
         return Err(format!(
-            "the code page opens one file, not {}",
+            "the {page} page opens one file, not {}",
             paths.len()
         ));
     };
@@ -154,7 +164,5 @@ pub fn open(
         || path.display().to_string(),
         |name| name.to_string_lossy().into_owned(),
     );
-    let source = CodeSource::detect(&name, text);
-    show(world, &name, source);
-    Ok(())
+    Ok((name, text))
 }

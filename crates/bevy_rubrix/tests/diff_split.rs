@@ -7,7 +7,7 @@ use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::Children;
 use bevy::ui::widget::{ImageNode, Text};
 use bevy_rubrix::{DiffRow, DiffSource, Layout, Row};
-use support::*;
+use support::diff::*;
 
 fn split(source: DiffSource) -> App {
     let mut app = showing(source);
