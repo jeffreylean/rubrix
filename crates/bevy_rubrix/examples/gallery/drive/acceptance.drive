@@ -33,7 +33,9 @@ click 290 68
 wait 240
 screenshot hamlet-code-stream.png
 log code-grow
-expect code-grow shrinks 0 empty 0
+expect code-grow rows 1 to 17 grows yes shrinks 0 empty 0
+log code-blank
+expect code-blank blank 0
 frames start
 wait 70
 click 100 342
@@ -56,6 +58,7 @@ screenshot hamlet-diff-more-end.png
 click 100 377
 wait 120
 screenshot stress.png
+log stress-blank
 move 740 400
 frames start
 wait 60
@@ -667,8 +670,11 @@ wait 120
 screenshot stress-code-end.png
 log stress
 expect stress code last 100000 of 100000
+log stress-blank
+expect stress-blank blank 0
 click 438 68
 wait 120
+log stress-blank
 move 740 400
 frames start
 wait 60
@@ -1280,4 +1286,6 @@ wait 120
 screenshot stress-diff-end.png
 log stress
 expect stress diff last 97072 of 97072
+log stress-blank
+expect stress-blank blank 0
 exit

@@ -20,7 +20,7 @@ Three pages rebuild Hamlet's chat blocks from rubrix's views, and a fourth loads
 
 ## Driving it with launch.sh
 
-Run `scripts/acceptance.sh <out dir>`. It runs `drive/acceptance.drive` through `launch.sh`, prints each `accept:` line and the frame stats of each CSV, and exits 0 only when the gallery exits 0 and every `expect` in the script passes. It prints `acceptance: <n> of <n> checks pass` last. `gen_drives.py` writes the script.
+Run `scripts/acceptance.sh <out dir>`. It runs `drive/acceptance.drive` through `launch.sh`, prints each `accept:` line and the frame stats of each CSV, judges the p95 of each stress CSV, and exits 0 only when the gallery exits 0, every `expect` in the script passes, and both p95 checks pass. It prints `acceptance: <n> of <n> checks pass` last. `gen_drives.py` writes the script.
 
 The script visits each page by a click on the page list, and checks:
 
@@ -28,10 +28,11 @@ The script visits each page by a click on the page list, and checks:
 - **Rich stream.** After `stream` and 80 frames, `expect rich-stream` passes with `"Second " 14 sans | "grows" 14 italic sans sample kept`. The two `log entities` lines list the same `sample` ids. `hamlet-rich-stream.png` shows `Second grows`.
 - **Code plate.** `expect code-plate caption above text 13 mono sideways off rows 4 tallest 2 lines` passes. `hamlet-code.png` shows the caption, the code, and line 3 wrapped inside the plate.
 - **Copy a line.** A triple press on line 1 (300 127) and `Ctrl+C`. `clipboard` prints `fn main() {` and `expect copied "fn main() {"` passes.
-- **Code stream.** After `stream` and 240 frames, `expect code-grow shrinks 0 empty 0` passes. `hamlet-code-stream.png` shows the 17 streamed lines on the second plate.
+- **Code stream.** After `stream` and 240 frames, `expect code-grow rows 1 to 17 grows yes shrinks 0 empty 0` passes, so the plate grew as lines arrived and never shrank or showed no text. `expect code-blank blank 0` passes, so no frame left a row of the plate's view without a glyph. `hamlet-code-stream.png` shows the 17 streamed lines on the second plate.
 - **Diff colours.** `expect diff-colours` passes with the five rows of the small change. `hamlet-diff.png` shows both plates.
 - **More lines.** `expect diff-more lines 16 more 24 rows 18 built 18` passes, then after the button `expect diff-more lines 40 more none rows 41 built 41`. `hamlet-diff-more.png` shows the 40 lines down to the window's bottom edge, and `hamlet-diff-more-end.png`, after a 200 px scroll of the page, shows the last of them.
-- **Stress.** Each view scrolls 18 px a frame for 600 frames into `stress-code.csv` and `stress-diff.csv`, then jumps to its end. `expect stress code last 100000 of 100000` and `expect stress diff last 97072 of 97072` pass. `stress-code-end.png` and `stress-diff-end.png` show the last rows.
+- **Stress.** Each view scrolls 18 px a frame for 600 frames into `stress-code.csv` and `stress-diff.csv`, then jumps to its end. `expect stress code last 100000 of 100000` and `expect stress diff last 97072 of 97072` pass. After each, `expect stress-blank blank 0` passes, so no frame from the first scroll to the end left a row of the view without a glyph.
+- **Stress p95.** `acceptance.sh` runs `frame-stats.sh` on `stress-code.csv` and `stress-diff.csv` and prints `accept: stress-code-p95 pass` or `fail`, and the same for `stress-diff-p95`. It passes at a p95 of 3.0 ms or less, the R12 and R15 budget. A machine running another build, gallery, or test fails it, so run `acceptance.sh` alone. `stress-code-end.png` and `stress-diff-end.png` show the last rows.
 
 Each Hamlet page's visit is timed from 70 frames before the click to 120 frames after it, into `first-paint-<page>.csv`. `frame-stats.sh` drops the first 60 frames, so its `max` is the frame of the page switch.
 
@@ -43,16 +44,19 @@ Each Hamlet page's visit is timed from 70 frames before the click to 120 frames 
 - `rich-stream` lists the second block's spans the same way, then `sample kept` when the sample has the span entities it had when `stream` was pressed, `sample changed` when not, or `sample not streamed`.
 - `entities` adds `sample <id>...` on `hamlet_rich`, the ids of the sample's spans in order.
 - `code-plate` reads the sample plate: `caption above` or `below`, the code's size and font, `sideways on` or `off`, its rows, and the most lines one row wraps onto.
-- `code-grow` reads the streamed plate since `stream`: `frames <n> from <px> to <px> shrinks <n> empty <n>`. A shrink is a frame laid out shorter than the frame before. An empty frame shows no text.
+- `code-grow` reads the streamed plate since `stream`: `frames <n> from <px> to <px> rows <n> to <n> grows <yes|no> shrinks <n> empty <n>`. `grows yes` means the last frame is taller and has more rows than the first. A shrink is a frame laid out shorter than the frame before. An empty frame shows no text.
+- `code-blank` reads the streamed plate since `stream`: `frames <n> blank <n>`, where a blank frame has a row in the plate's view, as that frame lays it out, with no glyph on it. A row's line number counts, so an empty line is not blank.
 - `copied` prints `copied "<text>"`, quoted as Rust debug text, or `copied none`. It reads what `clipboard` prints, so `expect copied` can match the whole copy.
 - `diff-colours` reads each line row of the small change: its text, its ink (`red`, `green`, `dim`, `body`, or a hex colour), and its fill (`on deep red`, `on deep green`, or `no fill`).
 - `diff-more` reads the 40-line change: `lines <n> more <n|none> rows <n> built <n>`, where `built` counts the rows the list built.
 - `stress` prints `stress code last <row> of <rows>` or `stress diff last <row> of <rows>`, the last row of the view on show that shows, counted from 1.
+- `stress-blank` prints `stress-blank frames <n> blank <n>` for the view on show, blank as in `code-blank`, and starts counting again. It counts from the view's first frame or the last `stress-blank` read, whichever is later. The acceptance script reads it once before each view's scroll, so the frames it judges start at the scroll.
 
 ## Gotchas
 
 - The diff view's `diff` topic and `log selection` read the first diff view and the first code view. On `hamlet_code` the first code view is the sample, and on `hamlet_diff` the first diff view is the small change.
 - `stress` builds both sources on its first visit, so that click takes longer than one frame. It is not a Hamlet page, and the 16.7 ms first-paint rule does not apply to it.
+- The first frame of the stress diff view, after `diff`, builds 12 rows of a 687 px view, so `stress-blank` read before the scroll prints `blank 1`. It does not show in the screenshots, and the acceptance script does not judge it.
 - A stream keeps going when you leave its page, and `stream` starts it again from the start.
 - After `... 24 more lines`, a band of 9 to 43 px shows between old lines 16 and 17, where the button was, and narrows over the next frames. The `diff` page's compact rows show it too.
 - The positions above hold only at 1280 by 800 with the page scrolled to the top.

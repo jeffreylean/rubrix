@@ -1,9 +1,13 @@
+use std::mem;
+
+use bevy::app::{App, PostUpdate};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
+use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::world::World;
-use bevy::ui::{ComputedNode, percent, px};
+use bevy::ui::{ComputedNode, UiSystems, percent, px};
 use bevy_fynix::views::{
     FrameProps, VirtualList, column, label, row,
 };
@@ -15,7 +19,7 @@ use bevy_rubrix::{
 
 use super::code::stress;
 use super::diff::{STRESS_PATCH, patch};
-use super::{control, find_under};
+use super::{blank_rows, control, find_under};
 use crate::{Build, PageView};
 
 #[derive(Resource)]
@@ -34,6 +38,46 @@ enum Shown {
 #[derive(Component)]
 struct StressPage;
 
+#[derive(Resource, Default)]
+struct Blank {
+    frames: u32,
+    blank: u32,
+}
+
+pub fn plugin(app: &mut App) {
+    app.init_resource::<Blank>().add_systems(
+        PostUpdate,
+        measure.after(UiSystems::PostLayout),
+    );
+}
+
+fn show(world: &mut World, shown: Shown) {
+    world.insert_resource(shown);
+    world.insert_resource(Blank::default());
+}
+
+fn measure(world: &mut World) {
+    let Some(list) = shown_list(world) else {
+        return;
+    };
+    let blank = blank_rows(world, list);
+    let mut count = world.resource_mut::<Blank>();
+    count.frames += 1;
+    count.blank += u32::from(blank > 0);
+}
+
+fn shown_list(world: &mut World) -> Option<Entity> {
+    let page = world
+        .query_filtered::<Entity, With<StressPage>>()
+        .iter(world)
+        .next()?;
+    let view = match *world.resource::<Shown>() {
+        Shown::Code => find_under::<CodeDoc>(world, page),
+        Shown::Diff => find_under::<DiffDoc>(world, page),
+    }?;
+    find_under::<VirtualList>(world, view)
+}
+
 pub fn build() -> PageView {
     AnyView::new(|cx: &mut Build| {
         if !cx.world.contains_resource::<Sources>() {
@@ -43,6 +87,7 @@ pub fn build() -> PageView {
             });
             cx.world.init_resource::<Shown>();
         }
+        cx.world.insert_resource(Blank::default());
         let sources = cx.world.resource::<Sources>();
         let (code, diff) =
             (sources.code.clone(), sources.diff.clone());
@@ -58,12 +103,8 @@ pub fn build() -> PageView {
             column((
                 label("Stress").size(20.0),
                 row((
-                    control("code", |world| {
-                        world.insert_resource(Shown::Code);
-                    }),
-                    control("diff", |world| {
-                        world.insert_resource(Shown::Diff);
-                    }),
+                    control("code", |world| show(world, Shown::Code)),
+                    control("diff", |world| show(world, Shown::Diff)),
                 ))
                 .gap(8.0),
                 shown,
@@ -78,37 +119,32 @@ pub fn build() -> PageView {
 }
 
 pub fn log(world: &mut World) -> String {
-    let Some(page) = world
-        .query_filtered::<Entity, With<StressPage>>()
-        .iter(world)
-        .next()
-    else {
+    let Some(list) = shown_list(world) else {
         return "stress none".into();
     };
-    match *world.resource::<Shown>() {
-        Shown::Code => format!(
-            "stress code last {}",
-            last_shown::<CodeDoc>(world, page)
-        ),
-        Shown::Diff => format!(
-            "stress diff last {}",
-            last_shown::<DiffDoc>(world, page)
-        ),
-    }
+    let name = match *world.resource::<Shown>() {
+        Shown::Code => "code",
+        Shown::Diff => "diff",
+    };
+    let shown =
+        last_shown(world, list).unwrap_or_else(|| "none".into());
+    format!("stress {name} last {shown}")
 }
 
-fn last_shown<D: Component>(world: &World, page: Entity) -> String {
-    let shown = find_under::<D>(world, page)
-        .and_then(|view| find_under::<VirtualList>(world, view))
-        .and_then(|list| {
-            let rows = world.get::<VirtualList>(list)?;
-            let node = world.get::<ComputedNode>(list)?;
-            let view =
-                node.content_box().size() - node.scrollbar_size;
-            let bottom = (node.scroll_position.y + view.y)
-                * node.inverse_scale_factor();
-            let last = rows.row_at(bottom - 0.5)?;
-            Some(format!("{} of {}", last + 1, rows.count()))
-        });
-    shown.unwrap_or_else(|| "none".into())
+pub fn blank_line(world: &mut World) -> String {
+    let blank = mem::take(&mut *world.resource_mut::<Blank>());
+    format!(
+        "stress-blank frames {} blank {}",
+        blank.frames, blank.blank
+    )
+}
+
+fn last_shown(world: &World, list: Entity) -> Option<String> {
+    let rows = world.get::<VirtualList>(list)?;
+    let node = world.get::<ComputedNode>(list)?;
+    let view = node.content_box().size() - node.scrollbar_size;
+    let bottom = (node.scroll_position.y + view.y)
+        * node.inverse_scale_factor();
+    let last = rows.row_at(bottom - 0.5)?;
+    Some(format!("{} of {}", last + 1, rows.count()))
 }

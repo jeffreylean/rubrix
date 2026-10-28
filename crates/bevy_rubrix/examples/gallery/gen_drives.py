@@ -955,6 +955,7 @@ SAMPLE_LINE_1 = "click 300 127 triple"
 MORE_LINES = "click 1003 382"
 STRESS_DIFF_BUTTON = "click 438 68"
 STRESS_CODE_ROWS, STRESS_DIFF_ROWS = 100_000, 97_072
+FENCE_ROWS = 17
 SAMPLE_STYLES = (
     '"Plan" 20 bold sans | "Use " 14 sans | "care" 14 bold sans | " with " 14 sans | '
     '"rm" 13 mono plate | ", " 14 sans | "old" 14 sans struck | " and " 14 sans | '
@@ -976,7 +977,7 @@ def checked(topic, text):
 
 def to_end(csv):
     jump = ["scroll 0 -2000000", SETTLE]
-    return [CENTER, "frames start", "wait 60", scroll(-18, 600), f"frames stop {csv}", jump, jump]
+    return ["log stress-blank", CENTER, "frames start", "wait 60", scroll(-18, 600), f"frames stop {csv}", jump, jump]
 
 
 write(
@@ -1003,7 +1004,8 @@ write(
     STREAM,
     "wait 240",
     "screenshot hamlet-code-stream.png",
-    checked("code-grow", "shrinks 0 empty 0"),
+    checked("code-grow", f"rows 1 to {FENCE_ROWS} grows yes shrinks 0 empty 0"),
+    checked("code-blank", "blank 0"),
     first_paint("hamlet_diff"),
     "screenshot hamlet-diff.png",
     checked("diff-colours", SMALL_CHANGE),
@@ -1022,11 +1024,13 @@ write(
     to_end("stress-code.csv"),
     "screenshot stress-code-end.png",
     checked("stress", f"code last {STRESS_CODE_ROWS} of {STRESS_CODE_ROWS}"),
+    checked("stress-blank", "blank 0"),
     STRESS_DIFF_BUTTON,
     SETTLE,
     to_end("stress-diff.csv"),
     "screenshot stress-diff-end.png",
     checked("stress", f"diff last {STRESS_DIFF_ROWS} of {STRESS_DIFF_ROWS}"),
+    checked("stress-blank", "blank 0"),
     "exit",
 )
 write(

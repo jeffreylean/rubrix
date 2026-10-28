@@ -9,7 +9,10 @@ use bevy::ecs::query::With;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Query, ResMut};
 use bevy::ecs::world::World;
-use bevy::ui::{FlexWrap, Node, UiSystems, px};
+use bevy::text::TextLayoutInfo;
+use bevy::ui::{
+    ComputedNode, FlexWrap, Node, UiGlobalTransform, UiSystems, px,
+};
 use bevy_fynix::views::{
     BehaviorExt, FrameProps, VirtualList, button, ghost, label,
 };
@@ -105,6 +108,7 @@ pub fn plugin(app: &mut App) {
     diff::plugin(app);
     hamlet_rich::plugin(app);
     hamlet_code::plugin(app);
+    stress::plugin(app);
     app.add_systems(PostUpdate, fit_rows.before(UiSystems::Layout))
         .add_observer(
             |copied: On<CodeCopied>, mut last: ResMut<Copied>| {
@@ -161,6 +165,46 @@ fn fit_rows(
             node.height = height;
         }
     }
+}
+
+/// The rows of `list` that show in its viewport, as the frame lays it
+/// out, with no glyph drawn on them.
+pub fn blank_rows(world: &World, list: Entity) -> usize {
+    let (Some(rows), Some(node), Some(at)) = (
+        world.get::<VirtualList>(list),
+        world.get::<ComputedNode>(list),
+        world.get::<UiGlobalTransform>(list),
+    ) else {
+        return 0;
+    };
+    let view = node.content_box();
+    if rows.count() == 0 || view.height() <= 0.0 {
+        return 0;
+    }
+    let scale = node.inverse_scale_factor();
+    let scroll = node.scroll_position.y;
+    let top = at.translation.y + view.min.y - scroll;
+    let row_at = |y: f32| rows.row_at((y - top) * scale);
+    let (Some(first), Some(last)) = (
+        row_at(top + scroll + 0.5),
+        row_at(top + scroll + view.height() - 0.5),
+    ) else {
+        return 0;
+    };
+    let drawn = descendants_in_order(world, list)
+        .into_iter()
+        .filter(|&node| {
+            world
+                .get::<TextLayoutInfo>(node)
+                .is_some_and(|text| !text.glyphs.is_empty())
+        })
+        .filter_map(|node| {
+            row_at(
+                world.get::<UiGlobalTransform>(node)?.translation.y,
+            )
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    (first..=last).filter(|row| !drawn.contains(row)).count()
 }
 
 pub fn descendants_in_order(

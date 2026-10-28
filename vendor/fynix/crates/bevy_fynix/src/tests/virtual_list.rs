@@ -5,7 +5,7 @@ use core::ops::Range;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use bevy::app::App;
+use bevy::app::{App, PostUpdate};
 use bevy::camera::{
     Camera, NormalizedRenderTarget, RenderTargetInfo,
 };
@@ -14,6 +14,8 @@ use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
+use bevy::ecs::schedule::IntoScheduleConfigs;
+use bevy::ecs::system::{Query, Single};
 use bevy::ecs::world::World;
 use bevy::input::mouse::MouseScrollUnit;
 use bevy::input::touch::TouchPhase;
@@ -23,7 +25,7 @@ use bevy::picking::events::{Pointer, PointerScroll};
 use bevy::picking::pointer::{Location, PointerId};
 use bevy::ui::{
     ComputedNode, Display, Node, OverflowAxis, ScrollPosition,
-    UiGlobalTransform, Val, percent, px,
+    UiGlobalTransform, UiSystems, Val, percent, px,
 };
 
 use super::layout::laid_out;
@@ -1892,4 +1894,66 @@ fn a_wheel_flung_to_the_end_follows_the_rows_arriving() {
     }
     let last = app.world().resource::<Count>().0 - 1;
     assert_eq!(shown_at(&mut app, area, last), Some(VIEW - 20.0));
+}
+
+#[derive(Component)]
+struct FitsRows;
+
+fn fit_rows(
+    list: Single<&VirtualList>,
+    mut fits: Query<&mut Node, With<FitsRows>>,
+) {
+    let rows = list
+        .count()
+        .checked_sub(1)
+        .and_then(|last| list.row_span(last))
+        .map_or(0.0, |last| last.top + last.height);
+    for mut node in &mut fits {
+        node.height = px(rows.ceil());
+    }
+}
+
+#[test]
+fn a_following_list_its_parent_fits_draws_every_row_as_it_grows() {
+    for scale_factor in [1.0, 2.0] {
+        let mut app = at_scale(scale_factor);
+        app.add_systems(
+            PostUpdate,
+            fit_rows.before(UiSystems::Layout),
+        );
+        app.insert_resource(Count(0));
+        mount::<Plain>(
+            app.world_mut(),
+            column((virtual_list(
+                resource::<Count, _>(|count| count.0),
+                15.6,
+                row(|_, _| 15.6),
+            )
+            .overscan(0.0)
+            .follow_bottom(true),))
+            .width(px(300.0))
+            .with(FitsRows),
+        );
+        let area = app
+            .world_mut()
+            .query_filtered::<Entity, With<VirtualList>>()
+            .single(app.world())
+            .expect("one list");
+        settle(&mut app);
+        for added in [1, 2, 1, 1, 3, 1, 2, 1] {
+            app.world_mut().resource_mut::<Count>().0 += added;
+            app.update();
+            let count = app.world().resource::<Count>().0;
+            let built = rows(&mut app, area)
+                .into_iter()
+                .map(|(index, ..)| index)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                built,
+                (0..count).collect::<Vec<_>>(),
+                "{scale_factor}x, {count} rows in {} px",
+                height(&app, area)
+            );
+        }
+    }
 }

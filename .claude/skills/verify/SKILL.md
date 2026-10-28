@@ -29,7 +29,7 @@ It creates `<out dir>` if it is missing, builds the gallery in release, runs it 
 .claude/skills/verify/scripts/acceptance.sh <out dir>
 ```
 
-It runs `drive/acceptance.drive` through `launch.sh`, which visits the Hamlet pages and the stress page and checks each pass condition with `expect`. It prints one `accept:` line per check, the frame stats of each CSV the script writes, and `acceptance: <n> of <n> checks pass`. It exits 0 only when the gallery exits 0 and every check passes. `features/hamlet.md` lists the checks.
+It runs `drive/acceptance.drive` through `launch.sh`, which visits the Hamlet pages and the stress page and checks each pass condition with `expect`. It prints one `accept:` line per check, the frame stats of each CSV the script writes, and `acceptance: <n> of <n> checks pass`. Two of the checks compare the stress views' p95 frame times with 3.0 ms, which a loaded machine fails, so run it alone. It exits 0 only when the gallery exits 0 and every check passes. `features/hamlet.md` lists the checks.
 
 ## Doctor
 
@@ -60,7 +60,7 @@ resize <w> <h>     open <path>...
 - Stable handles, at 1280 by 800. The page list entry `about` is at 100 62. The theme toggle is at 100 771. They move when `resize` changes the window.
 - `resize <w> <h>` asks Hyprland for the size, and prints `ok` once the window reports it. Without Hyprland, or when the window does not take the size within 2 seconds, it exits with code 2 and names the size the window has.
 - The theme toggle builds the page again and puts each scroll offset back, so a page keeps its scroll through a toggle.
-- `log` topics are `entities`, `page`, `present_mode`, `scroll`, `theme`, `rows`, `spans`, `hit`, `diff`, `runs <line>`, `stream`, `selection`, `copied`, and the Hamlet pages' `rich-styles`, `rich-stream`, `code-plate`, `code-grow`, `diff-colours`, `diff-more`, and `stress`, which `features/hamlet.md` describes. Each prints one line such as `page about`.
+- `log` topics are `entities`, `page`, `present_mode`, `scroll`, `theme`, `rows`, `spans`, `hit`, `diff`, `runs <line>`, `stream`, `selection`, `copied`, and the Hamlet pages' `rich-styles`, `rich-stream`, `code-plate`, `code-grow`, `code-blank`, `diff-colours`, `diff-more`, `stress`, and `stress-blank`, which `features/hamlet.md` describes. Each prints one line such as `page about`.
   - `present_mode` prints the mode the window asked for, as `present_mode requested AutoNoVsync`, not the mode the driver settled on.
   - `scroll` prints the offset of the first scroll area on the current page, in pixels.
   - `rows` reads the first virtual list: `rows first_visible <n> spawned <a>..=<b> rows <slots> total <count> following <bool> x <px>`, where `x` is its sideways offset. It prints `rows empty total 0` for a list with no rows and `rows none` with no list.

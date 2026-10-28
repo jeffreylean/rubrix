@@ -2,11 +2,10 @@ use bevy::app::{App, First, PostUpdate};
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::hierarchy::Children;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::system::{Query, Res, ResMut};
+use bevy::ecs::system::ResMut;
 use bevy::ecs::world::World;
 use bevy::text::{FontSize, FontSource, TextFont};
 use bevy::ui::{
@@ -21,7 +20,7 @@ use bevy_rubrix::{
     Overflow, code_view,
 };
 
-use super::{FitRows, control, find_under};
+use super::{FitRows, blank_rows, control, find_under};
 use crate::{Build, PageView};
 
 const CODE_SIZE: f32 = 13.0;
@@ -62,8 +61,11 @@ struct Growth {
     frames: u32,
     shrinks: u32,
     empty: u32,
+    blank: u32,
     first: f32,
     last: f32,
+    first_rows: usize,
+    rows: usize,
 }
 
 #[derive(Component)]
@@ -79,7 +81,10 @@ pub fn plugin(app: &mut App) {
     app.init_resource::<Fence>()
         .init_resource::<Growth>()
         .add_systems(First, send)
-        .add_systems(PostUpdate, measure.after(UiSystems::Layout));
+        .add_systems(
+            PostUpdate,
+            measure.after(UiSystems::PostLayout),
+        );
 }
 
 struct Sending {
@@ -111,34 +116,42 @@ fn start(world: &mut World) {
     *world.resource_mut::<Growth>() = Growth::default();
 }
 
-fn measure(
-    fence: Res<Fence>,
-    mut growth: ResMut<Growth>,
-    plates: Query<(Entity, &ComputedNode), With<FencePlate>>,
-    children: Query<&Children>,
-    docs: Query<&CodeDoc>,
-) {
-    if fence.0.is_none() {
+fn measure(world: &mut World) {
+    if world.resource::<Fence>().0.is_none() {
         return;
     }
-    let Ok((plate, node)) = plates.single() else {
+    let Some(plate) = world
+        .query_filtered::<Entity, With<FencePlate>>()
+        .iter(world)
+        .next()
+    else {
+        return;
+    };
+    let Some(node) = world.get::<ComputedNode>(plate) else {
         return;
     };
     let height = node.size().y * node.inverse_scale_factor();
-    let empty = children
-        .iter_descendants(plate)
-        .find_map(|node| docs.get(node).ok())
-        .is_none_or(|doc| doc.text().is_empty());
-    let growth = &mut *growth;
+    let doc = find_under::<CodeDoc>(world, plate)
+        .and_then(|view| world.get::<CodeDoc>(view));
+    let empty = doc.is_none_or(|doc| doc.text().is_empty());
+    let rows = doc.map_or(0, CodeDoc::rows);
+    let blank = find_under::<VirtualList>(world, plate)
+        .map_or(0, |list| blank_rows(world, list));
+    let mut growth = world.resource_mut::<Growth>();
     if growth.frames == 0 {
         growth.first = height;
+        growth.first_rows = rows;
     } else if height < growth.last {
         growth.shrinks += 1;
     }
     if empty || height < 1.0 {
         growth.empty += 1;
     }
+    if blank > 0 {
+        growth.blank += 1;
+    }
     growth.last = height;
+    growth.rows = rows;
     growth.frames += 1;
 }
 
@@ -269,12 +282,26 @@ pub fn plate_line(world: &mut World) -> String {
 
 pub fn growth_line(world: &mut World) -> String {
     let growth = world.resource::<Growth>();
+    let grows =
+        growth.last > growth.first && growth.rows > growth.first_rows;
     format!(
-        "code-grow frames {} from {} to {} shrinks {} empty {}",
+        "code-grow frames {} from {} to {} rows {} to {} grows {} \
+         shrinks {} empty {}",
         growth.frames,
         growth.first,
         growth.last,
+        growth.first_rows,
+        growth.rows,
+        if grows { "yes" } else { "no" },
         growth.shrinks,
         growth.empty
+    )
+}
+
+pub fn blank_line(world: &mut World) -> String {
+    let growth = world.resource::<Growth>();
+    format!(
+        "code-blank frames {} blank {}",
+        growth.frames, growth.blank
     )
 }

@@ -1213,6 +1213,7 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
         }
         "code-plate" => pages::hamlet_code::plate_line(world),
         "code-grow" => pages::hamlet_code::growth_line(world),
+        "code-blank" => pages::hamlet_code::blank_line(world),
         "copied" => match &world.resource::<Copied>().0 {
             Some(text) => format!("copied {text:?}"),
             None => "copied none".into(),
@@ -1220,6 +1221,7 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
         "diff-colours" => pages::hamlet_diff::colours_line(world),
         "diff-more" => pages::hamlet_diff::more_line(world),
         "stress" => pages::stress::log(world),
+        "stress-blank" => pages::stress::blank_line(world),
         "selection" => selection(world),
         "theme" => {
             format!("theme {}", world.resource::<Mode>().0.name())
