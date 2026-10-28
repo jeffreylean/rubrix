@@ -596,3 +596,50 @@ impl Patch<Bevy, f32> for PatchBodySize {
         rebody(world, node, |body| body.size = *size);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use core::time::Duration;
+    use std::sync::mpsc;
+    use std::thread;
+
+    use bevy::text::LineHeight;
+
+    use super::line_box;
+
+    fn line_box_in_time(
+        size: f32,
+        relative: f32,
+        scale_factor: f32,
+    ) -> f32 {
+        let (sent, received) = mpsc::channel();
+        thread::spawn(move || {
+            let held = line_box(
+                size,
+                LineHeight::RelativeToFont(relative),
+                scale_factor,
+            );
+            let _ = sent.send(held);
+        });
+        received
+            .recv_timeout(Duration::from_secs(30))
+            .expect("a line box within 30 s")
+    }
+
+    #[test]
+    fn a_line_box_at_a_negative_scale_factor_is_found() {
+        line_box_in_time(296.0, 1.3, -1.25);
+    }
+
+    #[test]
+    fn a_huge_line_box_at_a_fractional_scale_is_found() {
+        let size = 6_990_511.0;
+        let held = line_box_in_time(size, 1.2, 1.25);
+        let line = 1.2 * (size * 1.25);
+        assert!(
+            (held * 1.25 - line).abs() <= 1.0,
+            "{} against {line}",
+            held * 1.25
+        );
+    }
+}

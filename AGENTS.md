@@ -45,6 +45,7 @@ A crate opts into the no_std check with `no_std = true` under `[package.metadata
 - fynix changes are rubrix PRs that edit the files under `vendor/fynix`.
 - Nothing is pushed to voxell-tech/fynix or to any fork of it.
 - `vendor/fynix` is excluded from the root workspace and has its own `Cargo.lock`. Run its tests from inside that directory.
+- CI skips the virtual list's slow landing, count-change, and reveal sweeps, which are marked `#[ignore]`. After you change `views/virtual_list.rs` or `scroll.rs` in `bevy_fynix`, also run `cargo test --workspace -- --ignored` inside `vendor/fynix`. It takes about 30 s.
 - Pin `bevy` to one exact version in the root `Cargo.toml`. `scripts/check-bevy-pin.sh` fails when two versions of a `bevy*` crate resolve on any target, when `bevy` resolves at another version, or when `cargo tree` itself fails.
 
 ## References

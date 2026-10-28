@@ -1,34 +1,30 @@
-use core::time::Duration;
-use std::sync::mpsc;
-use std::thread;
-
 use bevy::app::App;
 use bevy::asset::AssetApp;
-use bevy::camera::{
-    Camera, Camera2d, ComputedCameraValues, RenderTargetInfo,
-};
+use bevy::camera::Camera;
 use bevy::color::{Alpha, Color};
 use bevy::ecs::change_detection::Tick;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
+use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
-use bevy::math::{UVec2, Vec2};
+use bevy::math::Vec2;
 use bevy::text::{
-    FontSize, InlineBox, LineHeight, StrikethroughColor,
-    TextBackgroundColor, TextColor, TextFont, TextSpan, Underline,
-    UnderlineColor,
+    ComputedTextBlock, FontSize, InlineBox, LineHeight,
+    StrikethroughColor, TextBackgroundColor, TextColor, TextFont,
+    TextLayoutInfo, TextSpan, Underline, UnderlineColor,
 };
-use bevy::time::TimeUpdateStrategy;
-use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin, UiScale};
+use bevy::ui::{ComputedNode, UiGlobalTransform, px};
 use fynix::{Motion, ScopedExt};
 use parley::{Affinity, Cluster, Cursor};
 
+use super::layout::laid_out_at;
 use crate::tests::{Plain, app, kids};
 use crate::tokens::Tone;
 use crate::views::{
-    LineColor, Rich, Span, rich, rich_layout, rich_point,
+    FrameProps, LineColor, Rich, RowSlot, Span, column, rich,
+    rich_layout, rich_point, row, virtual_list,
 };
-use crate::{StateExt, hidden, mount, resource};
+use crate::{ViewExt, mount, resource};
 
 #[derive(Resource)]
 struct Line(Vec<Span>);
@@ -113,39 +109,57 @@ fn editing_span_3_of_10_changes_only_its_components() {
     }
     assert_eq!(text(&app, spans[3]), "three ");
     assert_eq!(color(&app, spans[3]), Color::srgb(1.0, 0.0, 0.0));
-}
-
-#[test]
-fn growing_from_10_to_12_spans_spawns_2() {
-    let mut app = app();
-    let root = line(&mut app, words(10));
-    let first = kids(&app, root);
 
     set_line(&mut app, words(12));
-
     let grown = kids(&app, root);
-    assert_eq!(grown.len(), 12);
-    assert_eq!(grown[..10], first[..], "the first 10 kept");
+    assert_eq!(grown.len(), 12, "grown to 12 spans");
+    assert_eq!(
+        grown[..10],
+        spans[..],
+        "grown to 12, the first 10 kept"
+    );
     assert_eq!(text(&app, grown[11]), "w11 ");
-    assert_eq!(span_count(&mut app), 12, "no span left over");
+    assert_eq!(
+        span_count(&mut app),
+        12,
+        "grown to 12, none left over"
+    );
 }
 
 #[test]
 fn shrinking_to_no_spans_leaves_one_empty_span() {
     let mut app = app();
     let root = line(&mut app, words(10));
-    let first = kids(&app, root)[0];
+    let first = kids(&app, root);
+
+    set_line(&mut app, vec![Span::new(""); 5]);
+    assert_eq!(
+        kids(&app, root),
+        first[..5],
+        "five empty spans keep an entity each"
+    );
+    assert!(
+        first[..5].iter().all(|&span| text(&app, span).is_empty()),
+        "five empty spans"
+    );
 
     set_line(&mut app, Vec::new());
-
-    assert_eq!(kids(&app, root), vec![first]);
-    assert_eq!(text(&app, first), "");
-    assert_eq!(span_count(&mut app), 1, "the other 9 despawned");
+    assert_eq!(
+        kids(&app, root),
+        [first[0]],
+        "no spans keep the first"
+    );
+    assert_eq!(text(&app, first[0]), "", "no spans");
+    assert_eq!(
+        span_count(&mut app),
+        1,
+        "no spans, the other 9 despawned"
+    );
 
     set_line(&mut app, words(5));
     let grown = kids(&app, root);
-    assert_eq!(grown.len(), 5);
-    assert_eq!(grown[0], first);
+    assert_eq!(grown.len(), 5, "grown back to five");
+    assert_eq!(grown[0], first[0], "grown back from the span kept");
     assert_eq!(text(&app, grown[4]), "w4 ");
 }
 
@@ -212,9 +226,13 @@ fn a_theme_fade_changes_every_span_colour() {
     assert_eq!(color(&app, spans[2]), orange);
 }
 
+#[derive(Resource)]
+struct Opacity(f32);
+
 #[test]
 fn opacity_fades_every_span_and_its_plate() {
     let mut app = app();
+    app.insert_resource(Opacity(0.25));
     let own = Color::srgb(0.0, 0.0, 1.0);
     let plate = Color::srgb(0.2, 0.2, 0.2);
     let root = mount::<Plain>(
@@ -223,31 +241,34 @@ fn opacity_fades_every_span_and_its_plate() {
             Span::new("a "),
             Span::new("b ").color(own).background(plate),
         ])
-        .opacity(0.25),
+        .opacity(resource::<Opacity, _>(|opacity| opacity.0)),
     );
+    app.update();
     let spans = kids(&app, root);
+    let assert_faded = |app: &App, alpha: f32, when: &str| {
+        assert_eq!(
+            color(app, spans[0]),
+            Color::WHITE.with_alpha(alpha),
+            "{when}"
+        );
+        assert_eq!(
+            color(app, spans[1]),
+            own.with_alpha(alpha),
+            "{when}"
+        );
+        let background =
+            app.world().get::<TextBackgroundColor>(spans[1]);
+        assert_eq!(
+            background.unwrap().0,
+            plate.with_alpha(alpha),
+            "{when}"
+        );
+    };
 
-    assert_eq!(color(&app, spans[0]), Color::WHITE.with_alpha(0.25));
-    assert_eq!(color(&app, spans[1]), own.with_alpha(0.25));
-    let background = app.world().get::<TextBackgroundColor>(spans[1]);
-    assert_eq!(background.unwrap().0, plate.with_alpha(0.25));
-}
-
-#[test]
-fn a_rich_text_built_hidden_starts_with_every_span_unseen() {
-    let mut app = app();
-    let root = mount::<Plain>(
-        app.world_mut(),
-        rich(vec![
-            Span::new("a "),
-            Span::new("b").color(Color::srgb(0.0, 0.0, 1.0)),
-        ])
-        .appear::<Plain>(hidden),
-    );
-
-    for span in kids(&app, root) {
-        assert_eq!(color(&app, span).alpha(), 0.0);
-    }
+    assert_faded(&app, 0.25, "as built");
+    app.world_mut().resource_mut::<Opacity>().0 = 0.5;
+    app.update();
+    assert_faded(&app, 0.5, "faded again once built");
 }
 
 #[test]
@@ -266,39 +287,14 @@ fn the_root_size_reaches_spans_with_no_size_of_their_own() {
     assert_eq!(size(spans[1]), FontSize::Px(20.0));
 }
 
-fn laid_out() -> App {
-    laid_out_at(1.0)
+fn with_text() -> App {
+    with_text_at(1.0)
 }
 
-fn laid_out_at(scale_factor: f32) -> App {
-    let mut app = app();
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(
-        Duration::from_millis(10),
-    ));
-    app.add_plugins((
-        bevy::asset::AssetPlugin::default(),
-        bevy::transform::TransformPlugin,
-        bevy::input::InputPlugin,
-        bevy::picking::PickingPlugin,
-        bevy::picking::InteractionPlugin,
-        bevy::text::TextPlugin,
-    ))
-    .init_asset::<bevy::image::Image>()
-    .init_asset::<bevy::image::TextureAtlasLayout>()
-    .add_plugins(UiPlugin);
-    app.world_mut().spawn((
-        Camera2d,
-        Camera {
-            computed: ComputedCameraValues {
-                target_info: Some(RenderTargetInfo {
-                    physical_size: UVec2::new(1000, 1000),
-                    scale_factor,
-                }),
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-    ));
+fn with_text_at(scale_factor: f32) -> App {
+    let mut app = laid_out_at(scale_factor);
+    app.add_plugins(bevy::text::TextPlugin)
+        .init_asset::<bevy::image::TextureAtlasLayout>();
     app
 }
 
@@ -317,7 +313,7 @@ fn mixed(app: &mut App) -> Entity {
 
 #[test]
 fn rich_layout_maps_every_character_boundary_to_a_point_and_back() {
-    let mut app = laid_out();
+    let mut app = with_text();
     let root = mixed(&mut app);
 
     let full = MIXED.concat();
@@ -370,7 +366,7 @@ fn cursor_at(
 
 #[test]
 fn rich_layout_point_of_a_window_position_is_the_byte_under_it() {
-    let mut app = laid_out();
+    let mut app = with_text();
     let root = mixed(&mut app);
     let world = app.world();
     let layout = &rich_layout(world, root).expect("a layout");
@@ -389,6 +385,65 @@ fn rich_layout_point_of_a_window_position_is_the_byte_under_it() {
     assert_eq!(cursor.index(), wörld);
 }
 
+#[derive(Resource)]
+struct Sideways(bool);
+
+#[test]
+fn rich_layout_breaks_a_wrapped_text_where_bevy_drew_it() {
+    let mut app = with_text();
+    app.insert_resource(Sideways(true));
+    let words = (0..30)
+        .map(|index| Span::new(format!("word{index} ")))
+        .collect::<Vec<_>>();
+    let wrapped = move |slot: RowSlot| {
+        row((slot.sideways(rich(words.clone()).boxed()),)).boxed()
+    };
+    let sideways = resource::<Sideways, _>(|on| on.0);
+    mount::<Plain>(
+        app.world_mut(),
+        column((virtual_list(1, 20.0, wrapped).sideways(sideways),))
+            .width(px(300.0))
+            .height(px(400.0)),
+    );
+    app.update();
+    app.update();
+    app.world_mut().resource_mut::<Sideways>().0 = false;
+    for _ in 0..3 {
+        app.update();
+    }
+
+    let world = app.world_mut();
+    let root = world
+        .query_filtered::<Entity, With<ComputedTextBlock>>()
+        .single(world)
+        .expect("one rich text");
+    let world = app.world();
+    let layout = rich_layout(world, root).expect("a layout");
+    let drawn = world.get::<TextLayoutInfo>(root).expect("drawn");
+    let drawn_lines = drawn
+        .glyphs
+        .iter()
+        .map(|glyph| glyph.line_index as usize + 1)
+        .max();
+    let width = world
+        .get::<ComputedNode>(root)
+        .unwrap()
+        .content_box()
+        .width();
+    assert!(layout.len() > 1, "the text wraps");
+    assert_eq!(
+        Some(layout.len()),
+        drawn_lines,
+        "as many lines as Bevy drew, after a switch out of sideways \
+         scrolling left lines of other widths in the block"
+    );
+    for line in layout.lines() {
+        let metrics = line.metrics();
+        let ink = metrics.advance - metrics.trailing_whitespace;
+        assert!(ink <= width, "a line {ink} wide in {width}");
+    }
+}
+
 fn height(app: &App, node: Entity) -> f32 {
     app.world()
         .get::<ComputedNode>(node)
@@ -397,73 +452,51 @@ fn height(app: &App, node: Entity) -> f32 {
         .y
 }
 
-#[test]
-fn rich_layout_of_no_text_is_one_line_high() {
-    let mut app = laid_out();
-    let empty = mount::<Plain>(app.world_mut(), rich(Vec::new()));
-    let blanks = mount::<Plain>(
-        app.world_mut(),
-        rich(vec![Span::new(""), Span::new("")]),
-    );
-    let worded =
-        mount::<Plain>(app.world_mut(), rich(vec![Span::new("x")]));
-    app.update();
-    app.update();
-
-    let line = height(&app, worded);
-    assert!(line > 0.0);
-    assert_eq!(height(&app, empty), line);
-    assert_eq!(height(&app, blanks), line);
-}
-
 #[derive(Resource)]
 struct Size(f32);
 
 #[test]
 fn a_rich_text_with_no_text_is_one_line_of_its_size_high() {
-    let mut app = laid_out();
-    app.insert_resource(Size(10.0));
-    let sized = || resource::<Size, _>(|size| size.0);
-    let empty = mount::<Plain>(
-        app.world_mut(),
-        rich(Vec::new()).size(sized()),
-    );
-    let worded = mount::<Plain>(
-        app.world_mut(),
-        rich(vec![Span::new("x")]).size(sized()),
-    );
+    let mut app = with_text();
+    app.insert_resource(Size(30.0));
+    let mut sized = |spans: Vec<Span>| {
+        mount::<Plain>(
+            app.world_mut(),
+            rich(spans).size(resource::<Size, _>(|size| size.0)),
+        )
+    };
+    let empty = sized(Vec::new());
+    let blanks = sized(vec![Span::new(""); 2]);
+    let first_sized =
+        sized(vec![Span::new("").size(30.0), Span::new("")]);
+    let worded = sized(vec![Span::new("x")]);
+    app.update();
+    app.update();
+    let big = height(&app, worded);
+    assert_eq!(height(&app, empty), big, "no spans");
+    assert_eq!(height(&app, blanks), big, "empty spans");
+
+    app.world_mut().resource_mut::<Size>().0 = 10.0;
     app.update();
     app.update();
     let small = height(&app, worded);
-    assert_eq!(height(&app, empty), small);
-
-    app.world_mut().resource_mut::<Size>().0 = 30.0;
-    app.update();
-    app.update();
-    assert!(height(&app, worded) > small);
-    assert_eq!(height(&app, empty), height(&app, worded));
-}
-
-#[test]
-fn a_blank_line_is_as_high_as_its_first_span_size() {
-    let mut app = laid_out();
-    let blank = mount::<Plain>(
-        app.world_mut(),
-        rich(vec![Span::new("").size(30.0), Span::new("")]),
+    assert!(small < big, "resized to 10");
+    assert_eq!(height(&app, empty), small, "resized to 10, no spans");
+    assert_eq!(
+        height(&app, blanks),
+        small,
+        "resized to 10, empty spans"
     );
-    let worded = mount::<Plain>(
-        app.world_mut(),
-        rich(vec![Span::new("x").size(30.0)]),
+    assert_eq!(
+        height(&app, first_sized),
+        big,
+        "resized to 10, a blank line as high as its first span size"
     );
-    app.update();
-    app.update();
-
-    assert_eq!(height(&app, blank), height(&app, worded));
 }
 
 #[test]
 fn every_point_of_a_rich_text_with_no_text_is_byte_0() {
-    let mut app = laid_out();
+    let mut app = with_text();
     let empty = mount::<Plain>(app.world_mut(), rich(Vec::new()));
     let blanks =
         mount::<Plain>(app.world_mut(), rich(vec![Span::new(""); 3]));
@@ -498,21 +531,6 @@ fn every_point_of_a_rich_text_with_no_text_is_byte_0() {
 }
 
 #[test]
-fn a_list_of_empty_spans_keeps_a_span_entity_each() {
-    let mut app = app();
-    let root = line(&mut app, words(5));
-    let first = kids(&app, root);
-
-    set_line(&mut app, vec![Span::new(""); 5]);
-    assert_eq!(kids(&app, root), first, "one entity per span");
-    assert!(first.iter().all(|&span| text(&app, span).is_empty()));
-
-    set_line(&mut app, words(5));
-    assert_eq!(kids(&app, root), first, "the same five");
-    assert_eq!(text(&app, first[4]), "w4 ");
-}
-
-#[test]
 fn a_fade_leaves_the_font_of_a_span_sized_nan_alone() {
     let mut app = app();
     app.insert_resource(Shade(Tone::Body));
@@ -543,31 +561,50 @@ fn an_empty_rich_text_is_one_line_high_at_each_scale_factor() {
         [9.0, 12.0, 13.0, 14.0, 15.0, 16.0, 20.0, 24.0, 30.0, 42.0];
     let mut uneven = Vec::new();
     for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
+        let mut app = with_text_at(scale);
+        let mut pairs = Vec::new();
         for size in [None].into_iter().chain(sizes.map(Some)) {
-            let mut app = laid_out_at(scale);
             let sized = |rich: Rich| match size {
                 Some(size) => rich.size(size),
                 None => rich,
             };
-            let empty = mount::<Plain>(
-                app.world_mut(),
-                sized(rich(Vec::new())),
+            let [empty, blanks, worded] = [
+                rich(Vec::new()),
+                rich(vec![Span::new(""); 3]),
+                rich(vec![Span::new("x")]),
+            ]
+            .map(|rich| mount::<Plain>(app.world_mut(), sized(rich)));
+            let label = format!("size {size:?}");
+            pairs.push((label.clone(), empty, worded));
+            pairs.push((label, blanks, worded));
+        }
+        let [empty, worded] =
+            [rich(Vec::new()), rich(vec![Span::new("x")])].map(
+                |rich| {
+                    let root = mount::<Plain>(
+                        app.world_mut(),
+                        rich.size(15.0),
+                    );
+                    let span = kids(&app, root)[0];
+                    app.world_mut()
+                        .entity_mut(span)
+                        .insert(LineHeight::RelativeToFont(1.5));
+                    root
+                },
             );
-            let blanks = mount::<Plain>(
-                app.world_mut(),
-                sized(rich(vec![Span::new(""); 3])),
-            );
-            let worded = mount::<Plain>(
-                app.world_mut(),
-                sized(rich(vec![Span::new("x")])),
-            );
-            app.update();
-            app.update();
+        pairs.push(("line height 1.5".to_owned(), empty, worded));
+        app.update();
+        app.update();
+        for (label, blank, worded) in pairs {
             let line = height(&app, worded);
-            assert!(line > 0.0);
-            let heights = [height(&app, empty), height(&app, blanks)];
-            if heights != [line; 2] {
-                uneven.push((scale, size, heights, line));
+            assert!(line > 0.0, "{label} at {scale}");
+            if height(&app, blank) != line {
+                uneven.push((
+                    scale,
+                    label,
+                    height(&app, blank),
+                    line,
+                ));
             }
         }
     }
@@ -575,83 +612,8 @@ fn an_empty_rich_text_is_one_line_high_at_each_scale_factor() {
 }
 
 #[test]
-fn an_empty_rich_text_is_as_high_as_its_span_line_height() {
-    let mut app = laid_out_at(1.2);
-    let empty =
-        mount::<Plain>(app.world_mut(), rich(Vec::new()).size(15.0));
-    let worded = mount::<Plain>(
-        app.world_mut(),
-        rich(vec![Span::new("x")]).size(15.0),
-    );
-    app.update();
-    for root in [empty, worded] {
-        let span = kids(&app, root)[0];
-        app.world_mut()
-            .entity_mut(span)
-            .insert(LineHeight::RelativeToFont(1.5));
-    }
-    app.update();
-    app.update();
-
-    assert_eq!(height(&app, empty), height(&app, worded));
-}
-
-fn a_huge_blank_line_lays_out_at(scale_factor: f32) {
-    let size: f32 = 6_990_511.0;
-    let (sent, received) = mpsc::channel();
-    thread::spawn(move || {
-        let mut app = laid_out_at(scale_factor);
-        let empty = mount::<Plain>(
-            app.world_mut(),
-            rich(Vec::new()).size(size),
-        );
-        app.update();
-        app.update();
-        let _ = sent.send(height(&app, empty));
-    });
-    let shown = received
-        .recv_timeout(Duration::from_secs(30))
-        .expect("two frames within 30 s");
-    let line = 1.2 * (size * scale_factor);
-    assert!((shown - line).abs() <= 1.0, "{shown} against {line}");
-}
-
-#[test]
-fn a_blank_line_lays_out_at_a_negative_ui_scale() {
-    let (sent, received) = mpsc::channel();
-    thread::spawn(move || {
-        let mut app = laid_out();
-        app.insert_resource(UiScale(-1.25));
-        let empty = mount::<Plain>(
-            app.world_mut(),
-            rich(Vec::new()).size(296.0),
-        );
-        let span = kids(&app, empty)[0];
-        app.world_mut()
-            .entity_mut(span)
-            .insert(LineHeight::RelativeToFont(1.3));
-        app.update();
-        app.update();
-        let _ = sent.send(());
-    });
-    received
-        .recv_timeout(Duration::from_secs(30))
-        .expect("two frames within 30 s");
-}
-
-#[test]
-fn a_huge_empty_rich_text_lays_out_at_a_fractional_scale() {
-    a_huge_blank_line_lays_out_at(1.25);
-}
-
-#[test]
-fn a_huge_empty_rich_text_lays_out_at_scale_1() {
-    a_huge_blank_line_lays_out_at(1.0);
-}
-
-#[test]
 fn a_nan_root_size_takes_the_theme_size() {
-    let mut app = laid_out();
+    let mut app = with_text();
     let nan = mount::<Plain>(
         app.world_mut(),
         rich(vec![Span::new("x")]).size(f32::NAN),
