@@ -5,9 +5,11 @@ use bevy::asset::Handle;
 use bevy::color::Alpha;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::Children;
+use bevy::math::Vec2;
 use bevy::ui::widget::{ImageNode, Text};
 use bevy_rubrix::{DiffRow, DiffSource, Layout, Row};
 use support::diff::*;
+use support::{copy, drag_on, hold_on, point_in, release_on};
 
 fn split(source: DiffSource) -> App {
     let mut app = showing(source);
@@ -152,4 +154,35 @@ fn switching_layouts_keeps_the_first_visible_source_line() {
         let back = first_lines(&mut app);
         assert!(keeps(split, back), "row {row}: {split:?} {back:?}");
     }
+}
+
+const REALIGN_OLD: &str =
+    include_str!("../examples/gallery/fixtures/diff/realign-old.rs");
+const REALIGN_NEW: &str =
+    include_str!("../examples/gallery/fixtures/diff/realign-new.rs");
+
+#[test]
+fn a_drag_that_starts_on_the_left_copies_only_old_text() {
+    let mut app = laid_out(
+        DiffSource::texts("main.rs", REALIGN_OLD, REALIGN_NEW),
+        800.0,
+        400.0,
+    );
+    set(&mut app, |showing| showing.layout = Layout::Split);
+    let started = slot(&mut app, 2);
+    let old = rich_texts(&app, started)[1];
+    let from = point_in(&app, old, 0);
+    hold_on(&mut app, old, from, 1);
+    let paired = slot(&mut app, 3);
+    let new = rich_texts(&app, paired)[3];
+    let printed = slot(&mut app, 4);
+    let below = rich_texts(&app, printed)[1];
+    let to = Vec2::new(
+        point_in(&app, new, 10).x,
+        point_in(&app, below, 0).y,
+    );
+    drag_on(&mut app, old, from, to);
+    release_on(&mut app, old, to);
+    let lines = REALIGN_OLD.lines().collect::<Vec<_>>();
+    assert_eq!(copy(&mut app), lines[1..4].join("\n"));
 }

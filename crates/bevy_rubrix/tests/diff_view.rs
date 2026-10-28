@@ -9,6 +9,7 @@ use bevy::ui_widgets::Button;
 use bevy_rubrix::{DiffRow, DiffSource, Layout, Row, Side};
 use rubrix_diff::Expansion;
 use support::diff::*;
+use support::{copy, point_in, press_on, shift};
 
 fn gap_pair() -> DiffSource {
     let old = numbered(400);
@@ -272,3 +273,69 @@ diff --git a/lib.rs b/lib.rs
     let code = slot(&mut app, 5);
     assert_eq!(colour_of(&app, code, "fn"), ACCENT);
 }
+
+fn one_change() -> DiffSource {
+    DiffSource::texts("letters.txt", "a\nb\nc\n", "a\nB\nc\n")
+}
+
+fn line_text(app: &mut App, index: usize) -> Entity {
+    let slot = slot(app, index);
+    *rich_texts(app, slot).last().expect("a line")
+}
+
+fn select_lines(app: &mut App, from: usize, to: usize) {
+    let first = line_text(app, from);
+    let at = point_in(app, first, 0);
+    press_on(app, first, at, 3);
+    let last = line_text(app, to);
+    let at = point_in(app, last, 0);
+    shift(app, true);
+    press_on(app, last, at, 1);
+    shift(app, false);
+}
+
+#[test]
+fn a_compact_copy_takes_each_selected_line_with_its_prefix() {
+    let mut app = laid_out(one_change(), 600.0, 400.0);
+    set(&mut app, |showing| showing.compact = true);
+    select_lines(&mut app, 1, 3);
+    assert_eq!(copy(&mut app), "  a\n- b\n+ B");
+}
+
+#[test]
+fn a_stacked_copy_takes_each_selected_line_without_a_prefix() {
+    let mut app = laid_out(one_change(), 600.0, 400.0);
+    select_lines(&mut app, 1, 4);
+    assert_eq!(copy(&mut app), "a\nb\nB\nc");
+}
+
+#[test]
+fn a_copy_across_a_header_takes_no_header_text() {
+    let mut app =
+        laid_out(DiffSource::patch(TWO_FILES).unwrap(), 600.0, 400.0);
+    select_lines(&mut app, 2, 4);
+    assert_eq!(copy(&mut app), "X\ny");
+}
+
+#[test]
+fn rows_that_change_drop_the_selection() {
+    let mut app = laid_out(one_change(), 600.0, 400.0);
+    select_lines(&mut app, 1, 3);
+    set(&mut app, |showing| showing.compact = true);
+    assert_eq!(copy(&mut app), "");
+}
+
+const TWO_FILES: &str = "\
+diff --git a/one.txt b/one.txt
+--- a/one.txt
++++ b/one.txt
+@@ -1 +1 @@
+-x
++X
+diff --git a/two.txt b/two.txt
+--- a/two.txt
++++ b/two.txt
+@@ -1 +1 @@
+-y
++Y
+";
