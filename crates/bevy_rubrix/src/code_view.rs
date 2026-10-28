@@ -9,9 +9,8 @@ use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::system::Query;
 use bevy::ecs::world::World;
-use bevy::picking::Pickable;
 use bevy::text::FontSource;
-use bevy::ui::{AlignItems, Display, Node, PositionType, UiRect, px};
+use bevy::ui::{AlignItems, UiRect, px};
 use bevy_fynix::tokens::{SpacingTokens, Tone};
 use bevy_fynix::views::{
     FrameProps, RowSlot, Span, Stack, column, rich, row, virtual_list,
@@ -619,23 +618,10 @@ where
     }));
     let color = style.selected;
     let text = AnyView::new(move |cx: &mut Cx<'_, Bevy, T>| {
-        let cell = cx.spawn();
-        *cx.world.get_mut::<Node>(cell).expect("a node") = Node {
-            flex_grow: 1.0,
-            min_width: px(0.0),
-            ..Node::default()
-        };
-        let layer = cx.under(cell, Cx::spawn);
-        let node = cx.under(cell, |cx| cx.build(line));
-        cx.world.entity_mut(layer).insert((
-            Node {
-                position_type: PositionType::Absolute,
-                display: Display::None,
-                ..Node::default()
-            },
-            Pickable::IGNORE,
-            SelectionRects { text: node, color },
-        ));
+        let node = cx.build(line);
+        cx.world
+            .entity_mut(node)
+            .insert(SelectionRects { color, layer: None });
         cx.effect(
             node,
             slot.index().into(),
@@ -645,7 +631,7 @@ where
                     .insert(CodeLine { view: root, row });
             },
         );
-        cell
+        node
     });
     row((gutter, slot.sideways(text)))
         .align(AlignItems::FlexStart)

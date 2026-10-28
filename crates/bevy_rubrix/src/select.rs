@@ -8,7 +8,7 @@ use bevy::ecs::entity::Entity;
 use bevy::ecs::event::EntityEvent;
 use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::observer::On;
-use bevy::ecs::query::Without;
+use bevy::ecs::query::{With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{
     Commands, ParamSet, Query, Res, ResMut, SystemParam,
@@ -89,11 +89,17 @@ pub struct CodeCopied {
 #[derive(Resource, Default)]
 pub(crate) struct KeyTarget(Option<Entity>);
 
+/// On a row's text: the colour of its selection rectangles, and the
+/// layer behind the text that holds them, spawned at its first
+/// selection.
 #[derive(Component)]
 pub(crate) struct SelectionRects {
-    pub(crate) text: Entity,
     pub(crate) color: Color,
+    pub(crate) layer: Option<Entity>,
 }
+
+#[derive(Component)]
+pub(crate) struct Layer;
 
 #[derive(SystemParam)]
 pub(crate) struct Hits<'w, 's> {
@@ -439,26 +445,23 @@ pub(crate) fn keys(
 }
 
 pub(crate) fn draw(
-    mut layers: Query<(
-        Entity,
-        &SelectionRects,
-        &mut Node,
-        Option<&Children>,
+    mut lines: Query<(
+        &CodeLine,
+        &ComputedNode,
+        &ComputedTextBlock,
+        &mut SelectionRects,
+        &ChildOf,
     )>,
-    lines: Query<(&CodeLine, &ComputedNode, &ComputedTextBlock)>,
     views: Query<(&CodeDoc, &CodeSelection)>,
-    mut rects: Query<
-        (&mut Node, &mut BackgroundColor),
-        Without<SelectionRects>,
-    >,
+    mut layers: Query<(&mut Node, Option<&Children>), With<Layer>>,
+    mut rects: Query<&mut Node, Without<Layer>>,
     mut commands: Commands,
 ) {
-    for (layer, highlight, mut shown, children) in &mut layers {
-        let boxes = lines
-            .get(highlight.text)
+    for (line, node, block, mut drawn, cell) in &mut lines {
+        let boxes = views
+            .get(line.view)
             .ok()
-            .and_then(|(line, node, block)| {
-                let (doc, selection) = views.get(line.view).ok()?;
+            .and_then(|(doc, selection)| {
                 let selected = selection.range();
                 let bytes = doc.line_range(line.row);
                 let from = selected.start.max(bytes.start);
@@ -491,15 +494,42 @@ pub(crate) fn draw(
                 )
             })
             .unwrap_or_default();
+        let layer = match drawn.layer {
+            Some(layer) => layer,
+            None if boxes.is_empty() => continue,
+            None => {
+                let layer = commands
+                    .spawn((
+                        Node {
+                            position_type: PositionType::Absolute,
+                            ..Node::default()
+                        },
+                        Pickable::IGNORE,
+                        Layer,
+                    ))
+                    .id();
+                commands
+                    .entity(cell.parent())
+                    .insert_children(0, &[layer]);
+                drawn.layer = Some(layer);
+                layer
+            }
+        };
+        let (mut shown, kids) = match layers.get_mut(layer) {
+            Ok((shown, kids)) => (Some(shown), kids),
+            Err(_) => (None, None),
+        };
         let display = if boxes.is_empty() {
             Display::None
         } else {
             Display::Flex
         };
-        if shown.display != display {
+        if let Some(shown) = &mut shown
+            && shown.display != display
+        {
             shown.display = display;
         }
-        let kids = children.map_or(&[][..], |kids| &kids[..]);
+        let kids = kids.map_or(&[][..], |kids| &kids[..]);
         for (index, [x0, y0, x1, y1]) in
             boxes.iter().copied().enumerate()
         {
@@ -515,7 +545,7 @@ pub(crate) fn draw(
                 .get(index)
                 .and_then(|&kid| rects.get_mut(kid).ok())
             {
-                Some((mut node, _)) => {
+                Some(mut node) => {
                     if *node != placed {
                         *node = placed;
                     }
@@ -523,7 +553,7 @@ pub(crate) fn draw(
                 None => {
                     commands.spawn((
                         placed,
-                        BackgroundColor(highlight.color),
+                        BackgroundColor(drawn.color),
                         Pickable::IGNORE,
                         ChildOf(layer),
                     ));
@@ -531,7 +561,7 @@ pub(crate) fn draw(
             }
         }
         for &kid in kids.iter().skip(boxes.len()) {
-            if let Ok((mut node, _)) = rects.get_mut(kid)
+            if let Ok(mut node) = rects.get_mut(kid)
                 && node.display != Display::None
             {
                 node.display = Display::None;
