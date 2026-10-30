@@ -4706,6 +4706,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rubrix_edit"
+version = "0.0.3"
+dependencies = [
+ "rubrix_highlight",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "rubrix_highlight"
 version = "0.0.3"
 dependencies = [
