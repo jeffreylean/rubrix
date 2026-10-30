@@ -2516,3 +2516,58 @@ fn random_splices_match_a_fresh_list() {
         }
     }
 }
+
+fn reveal_x(app: &mut App, area: Entity, x: Range<f32>) {
+    app.world_mut()
+        .get_mut::<VirtualList>(area)
+        .expect("a list")
+        .scroll_x_into_view(x);
+}
+
+fn x(app: &App, area: Entity) -> f32 {
+    app.world().get::<ScrollPosition>(area).unwrap().x
+}
+
+#[test]
+fn a_sideways_reveal_moves_the_least_even_onto_a_row_spliced_wide() {
+    let mut app = laid_out();
+    let wide = HashMap::from([(7, 900.0)]);
+    let area = sideways_modelled_list(&mut app, model(2_100), wide);
+    let room = room(&mut app);
+
+    reveal_x(&mut app, area, 500.0..600.0);
+    settle(&mut app);
+    assert_eq!(
+        x(&app, area),
+        600.0 - room,
+        "the right end at the edge"
+    );
+    reveal_x(&mut app, area, 400.0..500.0);
+    settle(&mut app);
+    assert_eq!(x(&app, area), 600.0 - room, "a range in view stays");
+
+    splice_rows(&mut app, area, 5, 0, 1);
+    let id = app.world().resource::<Model>().0[5].0;
+    app.world_mut().resource_mut::<Wide>().0.insert(id, 3_000.0);
+    reveal_x(&mut app, area, 2_900.0..3_000.0);
+    settle(&mut app);
+    assert_eq!(
+        x(&app, area),
+        3_000.0 - room,
+        "a row wide this frame"
+    );
+    let row = shows(&mut app, 5);
+    let cell = app.world().get::<ChildOf>(row).unwrap().parent();
+    let cell = app.world().get::<ChildOf>(cell).unwrap().parent();
+    assert_eq!(right(&app, row), right(&app, cell));
+}
+
+#[test]
+fn a_sideways_reveal_without_a_splice_does_nothing_unless_sideways() {
+    let mut app = laid_out();
+    let area = list(&mut app, 10_000, uniform);
+
+    reveal_x(&mut app, area, 500.0..600.0);
+    settle(&mut app);
+    assert_eq!(x(&app, area), 0.0);
+}

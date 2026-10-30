@@ -358,6 +358,9 @@ pub struct VirtualList {
     /// the last update.
     shift: f64,
     widths: Option<Widths>,
+    /// The width of the rows' sideways cells, once one is laid out.
+    room: Option<f32>,
+    reveal_x: Option<RevealX>,
     sideways_switched: bool,
     /// The area's width when its rows were measured.
     across: f32,
@@ -391,6 +394,13 @@ enum Target {
 enum RevealFrom {
     Row(usize, f64),
     End,
+}
+
+#[derive(Clone, Copy)]
+struct RevealX {
+    x: (f32, f32),
+    /// The sideways offset it left last frame.
+    placed: Option<f32>,
 }
 
 #[derive(Default)]
@@ -429,6 +439,8 @@ impl VirtualList {
             placed_at: 0.0,
             shift: 0.0,
             widths: None,
+            room: None,
+            reveal_x: None,
             sideways_switched: false,
             across: 0.0,
             physical_per_logical: 1.0,
@@ -471,6 +483,24 @@ impl VirtualList {
             from_top: (range.start, range.end),
             from: None,
         });
+    }
+
+    /// Scrolls sideways as little as shows `x` of the rows'
+    /// [`sideways`](RowSlot::sideways) content, in pixels from its
+    /// left, at the next update. A range wider than the cells scrolls
+    /// as little as fills them with it. It goes no further than the
+    /// widest row laid out so far overflows, and is placed again each
+    /// frame until a frame leaves the offset where the frame before
+    /// did, so a row that grows wide in the same frame shows. A
+    /// sideways scroll before then stops it. It does nothing unless
+    /// the list scrolls [sideways](VirtualListView::sideways).
+    pub fn scroll_x_into_view(&mut self, x: Range<f32>) {
+        if self.widths.is_some() {
+            self.reveal_x = Some(RevealX {
+                x: (x.start, x.end),
+                placed: None,
+            });
+        }
     }
 
     fn land(&mut self, mut target: Target) {
@@ -926,9 +956,12 @@ fn place_rows(
             list.physical_per_logical = f64::from(scale.recip());
         }
         let view = area.content_box().height() * scale;
-        let wide = list.widths.is_some().then(|| {
+        let (wide, room) = if list.widths.is_some() {
             overflows(entity, &list.slots, &cells, &nodes, scale)
-        });
+        } else {
+            (Vec::new(), None)
+        };
+        list.room = room.or(list.room);
         let mut measured = list
             .slots
             .iter()
@@ -965,12 +998,33 @@ fn place_rows(
         }
         let mut width = percent(100.0);
         let mut x = 0.0;
-        if let Some(widths) = &mut list.widths {
-            for (index, by) in wide.into_iter().flatten() {
+        let reveal = list.reveal_x.take();
+        let room = list.room.unwrap_or(across);
+        let widest = list.widths.as_mut().map(|widths| {
+            for (index, by) in wide {
                 widths.set(index, by);
             }
-            x = position.x.clamp(0.0, widths.widest);
-            width = px(across + widths.widest);
+            widths.widest
+        });
+        if let Some(widest) = widest {
+            x = position.x.clamp(0.0, widest);
+            if let Some(reveal) = reveal
+                && reveal
+                    .placed
+                    .is_none_or(|placed| placed == position.x)
+            {
+                let (lo, hi) = (reveal.x.0, reveal.x.1 - room);
+                x = x
+                    .clamp(lo.min(hi), lo.max(hi))
+                    .clamp(0.0, widest);
+                if reveal.placed != Some(x) {
+                    list.reveal_x = Some(RevealX {
+                        placed: Some(x),
+                        ..reveal
+                    });
+                }
+            }
+            width = px(across + widest);
         }
         if position.x != x {
             position.x = x;
@@ -1019,8 +1073,9 @@ fn overflows(
     )>,
     nodes: &Query<(&ComputedNode, &mut Node)>,
     scale: f32,
-) -> Vec<(usize, f32)> {
+) -> (Vec<(usize, f32)>, Option<f32>) {
     let mut wide = vec![None::<f32>; slots.len()];
+    let mut width = None;
     for (_, cell, room, content, _) in cells {
         let RowSlot { list: of, slot } = cell.0;
         let Ok((room, _)) = nodes.get(room.parent()) else {
@@ -1029,17 +1084,19 @@ fn overflows(
         if of != list || room.size().x <= 0.0 {
             continue;
         }
-        let by = (content.size().x - room.content_box().width())
-            .max(0.0)
-            * scale;
+        let room = room.content_box().width();
+        width = Some(room * scale);
+        let by = (content.size().x - room).max(0.0) * scale;
         if let Some(most) = wide.get_mut(slot) {
             *most = Some(most.map_or(by, |most| most.max(by)));
         }
     }
-    wide.into_iter()
+    let wide = wide
+        .into_iter()
         .zip(slots)
         .filter_map(|(by, placed)| Some((placed.index, by?)))
-        .collect()
+        .collect();
+    (wide, width)
 }
 
 fn track<T: 'static>() -> AnyView<Bevy, T> {
