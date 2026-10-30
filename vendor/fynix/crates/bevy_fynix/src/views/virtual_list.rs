@@ -555,7 +555,7 @@ impl VirtualList {
         let span = |heights: &Heights, rows: usize| {
             heights.offset(at + rows) - heights.offset(at)
         };
-        let above = end <= self.first_visible;
+        let above = self.count > 0 && end <= self.first_visible;
         let before = if above {
             span(&self.heights, removed)
         } else {

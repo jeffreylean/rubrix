@@ -2412,6 +2412,16 @@ fn a_splice_above_the_view_leaves_the_rows_on_screen_still() {
 }
 
 #[test]
+fn a_splice_into_an_empty_list_shows_its_first_row() {
+    let mut app = laid_out();
+    let area = modelled_list(&mut app, 0);
+    splice_rows(&mut app, area, 0, 0, 100);
+    settle(&mut app);
+    assert_eq!(scroll(&app, area), 0.0);
+    assert_eq!(state(&app, area).first_visible(), 0);
+}
+
+#[test]
 fn a_following_list_follows_through_a_splice_above() {
     let mut app = laid_out();
     app.insert_resource(Follow(true));
