@@ -118,7 +118,6 @@ pub struct Press {
     text: Option<String>,
 }
 
-/// The platform a script runs on, which picks the key `mod` holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Os {
     Linux,
@@ -156,8 +155,6 @@ pub enum Step {
     Wheel(Vec2),
     Key(Vec<Press>),
     Type(String),
-    /// The window in the message is a placeholder until the step
-    /// runs.
     Ime(Ime),
     Paste {
         text: String,
@@ -505,8 +502,6 @@ fn character(c: char) -> Press {
     }
 }
 
-/// The key a modifier name holds. `mod` is the command key, Ctrl on
-/// Linux and Cmd, which Bevy calls Super, on macOS.
 fn modifier(name: &str, os: Os) -> Option<Press> {
     let (code, key) = match (name, os) {
         ("ctrl" | "control", _) | ("mod", Os::Linux) => {
@@ -526,7 +521,6 @@ fn modifier(name: &str, os: Os) -> Option<Press> {
     })
 }
 
-/// The modifiers a `click` or a `drag` holds, each named once.
 fn held(
     names: &[&str],
     os: Os,
@@ -634,13 +628,9 @@ fn parse_ime(rest: &str) -> Result<Ime, String> {
     })
 }
 
-/// A preedit cursor's start and end, in bytes of its text.
-type Cursor = (usize, usize);
+type ByteCursor = (usize, usize);
 
-/// Splits `ime preedit` words into the text and its cursor. The last
-/// two words are the cursor, in bytes of the text, when at least one
-/// word comes before them and both are numbers.
-fn preedit(text: &str) -> Result<(&str, Option<Cursor>), String> {
+fn preedit(text: &str) -> Result<(&str, Option<ByteCursor>), String> {
     let words = text.split_whitespace().collect::<Vec<_>>();
     let [_, .., start, end] = words[..] else {
         return Ok((text, None));
@@ -755,8 +745,6 @@ pub struct Drive {
     ime_live: bool,
 }
 
-/// The last `Ime` message the gallery read, from the driver or from
-/// an input method.
 #[derive(Resource, Default)]
 struct LastIme(Option<Ime>);
 
@@ -1313,7 +1301,6 @@ impl Drive {
     }
 }
 
-/// Presses every key in order, then lets them go in reverse.
 fn chord(presses: Vec<Press>) -> VecDeque<Vec<Input>> {
     let down = presses
         .iter()
@@ -1327,8 +1314,6 @@ fn chord(presses: Vec<Press>) -> VecDeque<Vec<Input>> {
     [down, up].into()
 }
 
-/// Holds `held` down from the first frame of a gesture to a frame
-/// after its last.
 fn holding(
     held: Vec<Press>,
     mut frames: VecDeque<Vec<Input>>,
@@ -1352,8 +1337,6 @@ fn holding(
     frames
 }
 
-/// Types `text` through the OS into the focused window, which must be
-/// this gallery, so a lost focus never types into another app.
 fn wtype(text: &str) -> Result<(), String> {
     let active = Command::new("hyprctl")
         .arg("activewindow")
@@ -1574,7 +1557,6 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
     })
 }
 
-/// The page on show answers `ask`, or `n/a` when it has no answer.
 fn answer(world: &mut World, ask: Ask) -> String {
     let page = &PAGES[world.resource::<Selected>().0];
     page.answer

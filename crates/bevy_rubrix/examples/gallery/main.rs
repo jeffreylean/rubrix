@@ -253,9 +253,8 @@ fn toggle_theme(world: &mut World) {
 #[derive(Resource, Default)]
 pub struct Copied(pub Option<String>);
 
-/// The text the last `paste` drive step handed this gallery. A page
-/// pastes it in place of the shared system clipboard, which another
-/// gallery may hold.
+/// Stands in for the system clipboard, which another gallery may
+/// hold.
 #[derive(Resource, Default)]
 pub struct Paste(pub Option<String>);
 

@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-# Scripts that do not simply pass, one per row: the script, its kind,
-# and the reason. A kind is `fail=<code>`, the exit code the script
-# must end with, or `skip-darwin`, `skip-linux`, or `skip` everywhere.
-# A PR that adds such a script adds its row here.
 special='
 bad-script.drive           fail=2       an unknown step is a parse error
 driver-ime-bad.drive       fail=2       a preedit cursor past its text is a parse error
@@ -15,7 +11,6 @@ rich-wrap.drive            skip-darwin  resize asks Hyprland for the size
 virtual-list-resize.drive  skip-darwin  resize asks Hyprland for the size
 '
 
-# The file a replay script edits, when it is not large.rs.txt.
 replay_files='
 graphemes.keys  crates/rubrix_edit/tests/replay/graphemes.txt
 '
@@ -35,20 +30,18 @@ row() {
   printf '%-5s %-40s %s\n' "$1" "$2" "$3"
 }
 
-# Prints the kind and the reason of a script's row, or nothing.
 special_row() {
   awk -v name="$1" '$1 == name { $1 = ""; sub(/^ +/, ""); print; exit }' <<< "$special"
 }
 
-# Counts a script that ran: $1 is its name, $2 its exit code, $3 the
-# exit code it must end with, and $4 its check count.
 judge() {
+  local name=$1 rc=$2 want=$3 checked=$4
   ran=$((ran + 1))
-  if [ "$2" -eq "$3" ]; then
+  if [ "$rc" -eq "$want" ]; then
     passed=$((passed + 1))
-    row pass "$1" "exit=$2 $4"
+    row pass "$name" "exit=$rc $checked"
   else
-    row fail "$1" "exit=$2, wants $3, $4, see $out/$1.txt"
+    row fail "$name" "exit=$rc, wants $want, $checked, see $out/$name.txt"
   fi
 }
 

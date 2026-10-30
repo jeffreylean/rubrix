@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use bevy::app::{App, PostUpdate};
@@ -38,20 +39,15 @@ const BUTTON_WIDTH: f32 = 140.0;
 
 pub type Open = fn(&mut World, &[PathBuf]) -> Result<(), String>;
 
-/// A drive `log` topic that the page on show answers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ask {
     Caret,
-    /// A line of the page's text, counted from 1.
-    Text(usize),
+    Text(NonZeroUsize),
     Undo,
-    /// The page's half of the `ime` topic.
     Ime,
 }
 
 impl Ask {
-    /// The question a topic asks, for every topic but `ime`, which
-    /// the driver answers in part itself.
     pub fn of(topic: &str) -> Option<Self> {
         Some(match topic {
             "caret" => Self::Caret,
@@ -63,8 +59,6 @@ impl Ask {
     }
 }
 
-/// Answers an [`Ask`] with the text that follows the topic in its
-/// line, or `None` to print `n/a`.
 pub type Answer = fn(&mut World, Ask) -> Option<String>;
 
 pub struct Page {
