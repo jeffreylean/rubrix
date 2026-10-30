@@ -2368,14 +2368,16 @@ fn on_screen(app: &mut App, area: Entity) -> Vec<(u32, f32)> {
 
 #[test]
 fn a_splice_above_the_view_leaves_the_rows_on_screen_still() {
-    for (at, removed, inserted) in [
-        (1_000, 0, 20),
-        (1_000, 20, 0),
-        (1_000, 5, 7),
-        (4_970, 10, 3),
-        (4_970, 3, 10),
-    ] {
-        let when = format!("{removed} for {inserted} at {at}");
+    let cases: [&[(usize, usize, usize)]; 6] = [
+        &[(1_000, 0, 20)],
+        &[(1_000, 20, 0)],
+        &[(1_000, 5, 7)],
+        &[(4_970, 10, 3)],
+        &[(4_970, 3, 10)],
+        &[(1_000, 0, 20), (4_980, 15, 2)],
+    ];
+    for splices in cases {
+        let when = format!("{splices:?}");
         let mut app = laid_out();
         let area = modelled_list(&mut app, 10_000);
         scroll_to(&mut app, area, 5_000);
@@ -2384,10 +2386,12 @@ fn a_splice_above_the_view_leaves_the_rows_on_screen_still() {
             7.0;
         settle(&mut app);
         let shown = on_screen(&mut app, area);
-        let first = state(&app, area).first_visible();
+        let mut moved = state(&app, area).first_visible();
 
-        splice_rows(&mut app, area, at, removed, inserted);
-        let moved = first - removed + inserted;
+        for &(at, removed, inserted) in splices {
+            splice_rows(&mut app, area, at, removed, inserted);
+            moved = moved - removed + inserted;
+        }
         assert_eq!(
             state(&app, area).first_visible(),
             moved,

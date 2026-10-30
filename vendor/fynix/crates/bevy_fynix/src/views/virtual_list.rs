@@ -518,9 +518,12 @@ impl VirtualList {
     /// Replaces the rows `at..at + removed` with `inserted` rows of
     /// unknown height, and changes [`count`](Self::count) to match.
     /// Every other row keeps its height and the view built for it,
-    /// under its new index. Call it before
-    /// [`FynixSystems::Prepare`], in the frame the list's `count`
-    /// changes to the same number. A `count` that changes without a
+    /// under its new index. A row inserted can show in the view of a
+    /// row removed at the same index, which [`RowSlot::index`] does
+    /// not report, so a row binds what it shows to the app's data as
+    /// well. Call it in `PreUpdate`, before the list places its rows
+    /// in `Update`, in the frame the list's `count` changes to the
+    /// same number. A `count` that changes without a
     /// splice adds or removes rows at the end.
     ///
     /// A splice wholly above the first visible row keeps the rows on
