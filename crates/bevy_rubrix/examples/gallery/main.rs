@@ -253,6 +253,11 @@ fn toggle_theme(world: &mut World) {
 #[derive(Resource, Default)]
 pub struct Copied(pub Option<String>);
 
+/// Stands in for the system clipboard, which another gallery may
+/// hold.
+#[derive(Resource, Default)]
+pub struct Paste(pub Option<String>);
+
 #[derive(Resource)]
 pub struct Ready;
 
@@ -335,6 +340,7 @@ impl Plugin for ShellPlugin {
             .insert_resource(DARK.scrollbar())
             .insert_resource(Selected(0))
             .init_resource::<Copied>()
+            .init_resource::<Paste>()
             .add_plugins(pages::plugin)
             .add_systems(
                 Update,

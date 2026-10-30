@@ -1,0 +1,4 @@
+page about
+wait 1
+ime preedit abc 2 9
+exit

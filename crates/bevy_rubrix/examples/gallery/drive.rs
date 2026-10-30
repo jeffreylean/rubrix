@@ -9,19 +9,26 @@
 //! exit with code 2 and print its number. Steps:
 //!
 //! - `page <name>`, `wait <frames>`, `exit`
-//! - `move <x> <y>`, `click <x> <y> [double|triple|shift]`, `drag
-//!   <x0> <y0> <x1> <y1>`, `press <x> <y>`, `release`, `scroll <dx>
-//!   <dy>`, `wheel <dx> <dy>`
-//! - `key <combo>` such as `ctrl+a`, and `type <text>`
+//! - `move <x> <y>`, `click <x> <y> [double|triple] [shift] [mod]
+//!   [alt]`, `drag <x0> <y0> <x1> <y1> [shift] [mod] [alt]`, `press
+//!   <x> <y>`, `release`, `scroll <dx> <dy>`, `wheel <dx> <dy>`
+//! - `key <combo>` such as `mod+a`, and `type <text>`
+//! - `ime enable`, `ime disable`, `ime preedit [<text> [<start>
+//!   <end>]]`, `ime commit <text>`, `paste <text>`, `wtype <text>`
 //! - `screenshot <path>`, `record start <dir>`, `record stop`
 //! - `frames start`, `frames stop <csv>`
 //! - `log <topic>`, `expect <topic> <text>`, `clipboard`; the `diff`
 //!   topic names the diff view's first visible row
 //! - `resize <width> <height>`, `open <path>...`
 //!
-//! A topic is a word, but `runs <line>` takes a line number too, so
-//! `expect runs 75 comment` checks topic `runs 75` for `comment`.
-//! `open` reads a relative path from the script's directory.
+//! `mod` is the command key, Ctrl on Linux and Cmd on macOS. A topic
+//! is a word, but `runs <line>` and `text <line>` take a line number
+//! too, so `expect runs 75 comment` checks topic `runs 75` for
+//! `comment`. `open` reads a relative path from the script's
+//! directory. `paste` reads `\n`, `\t` and `\\` in its text as a
+//! newline, a tab and a backslash. `wtype` types through the OS, so
+//! it runs only under `launch.sh --ime-live`, which sets
+//! `RUBRIX_IME_LIVE=1` and gives the window focus.
 //!
 //! Positions are logical pixels in the window. A scroll `dy` below
 //! zero moves the content up, so the page scrolls down. A `scroll`
@@ -33,7 +40,9 @@
 //! page list leaves the pointer there until a `move` takes it back.
 //! `resize` asks Hyprland for the size and is done when the window
 //! reports it, or exits with code 2 after two seconds. `exit` stops
-//! a `record` still running.
+//! a `record` still running, prints `drive: <passed> of <checks>
+//! checks pass` for the `expect` steps, and exits with code 1 when
+//! one failed.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -42,13 +51,13 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 use std::{fmt, fs, mem};
 
-use bevy::app::{App, AppExit, First, Plugin};
+use bevy::app::{App, AppExit, First, Plugin, Update};
 use bevy::color::Srgba;
 use bevy::ecs::change_detection::Mut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::Children;
-use bevy::ecs::message::MessageUpdateSystems;
+use bevy::ecs::message::{MessageReader, MessageUpdateSystems};
 use bevy::ecs::observer::On;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
@@ -71,7 +80,9 @@ use bevy::render::view::screenshot::{
 };
 use bevy::text::{TextColor, TextSpan};
 use bevy::ui::ScrollPosition;
-use bevy::window::{CursorMoved, PrimaryWindow, Window, WindowEvent};
+use bevy::window::{
+    CursorMoved, Ime, PrimaryWindow, Window, WindowEvent,
+};
 use bevy_fynix::views::VirtualList;
 use bevy_rubrix::{
     CodeDoc, CodeLine, CodeSelection, DiffDoc, DiffRow, Layout, Row,
@@ -79,9 +90,10 @@ use bevy_rubrix::{
 use rubrix_highlight::spans;
 
 use crate::pages::rich::{Hit, HitLineRoot, LongLineRoot};
-use crate::pages::{self, PAGES};
+use crate::pages::{self, Ask, PAGES};
 use crate::{
-    Copied, Mode, PAGE_CENTER, Ready, Selected, page_areas, scrollers,
+    Copied, Mode, PAGE_CENTER, Paste, Ready, Selected, page_areas,
+    scrollers,
 };
 
 const DRAG_FRAMES: usize = 4;
@@ -106,30 +118,65 @@ pub struct Press {
     text: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Os {
+    Linux,
+    Macos,
+}
+
+impl Os {
+    fn host() -> Self {
+        if cfg!(target_os = "macos") {
+            Self::Macos
+        } else {
+            Self::Linux
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Step {
     Page(usize),
     Wait(u32),
     Move(Vec2),
-    Click { at: Vec2, count: u8 },
-    ShiftClick(Vec2),
+    Click {
+        at: Vec2,
+        count: u8,
+        held: Vec<Press>,
+    },
     Press(Vec2),
     Release,
-    Drag { from: Vec2, to: Vec2 },
+    Drag {
+        from: Vec2,
+        to: Vec2,
+        held: Vec<Press>,
+    },
     Scroll(Vec2),
     Wheel(Vec2),
     Key(Vec<Press>),
     Type(String),
+    Ime(Ime),
+    Paste {
+        text: String,
+        chord: Vec<Press>,
+    },
+    Wtype(String),
     Screenshot(PathBuf),
     Log(String),
     FramesStart,
     FramesStop(PathBuf),
     RecordStart(PathBuf),
     RecordStop,
-    Resize { width: u32, height: u32 },
+    Resize {
+        width: u32,
+        height: u32,
+    },
     Open(Vec<PathBuf>),
     Clipboard,
-    Expect { topic: String, text: String },
+    Expect {
+        topic: String,
+        text: String,
+    },
     Exit,
 }
 
@@ -139,7 +186,7 @@ impl Step {
             Self::Page(_) => "page",
             Self::Wait(_) => "wait",
             Self::Move(_) => "move",
-            Self::Click { .. } | Self::ShiftClick(_) => "click",
+            Self::Click { .. } => "click",
             Self::Press(_) => "press",
             Self::Release => "release",
             Self::Drag { .. } => "drag",
@@ -147,6 +194,9 @@ impl Step {
             Self::Wheel(_) => "wheel",
             Self::Key(_) => "key",
             Self::Type(_) => "type",
+            Self::Ime(_) => "ime",
+            Self::Paste { .. } => "paste",
+            Self::Wtype(_) => "wtype",
             Self::Screenshot(_) => "screenshot",
             Self::Log(_) => "log",
             Self::FramesStart => "frames start",
@@ -169,19 +219,24 @@ pub struct Line {
 }
 
 pub fn parse(script: &str) -> Result<Vec<Line>, ParseError> {
+    parse_for(script, Os::host())
+}
+
+fn parse_for(script: &str, os: Os) -> Result<Vec<Line>, ParseError> {
     let mut lines = Vec::new();
     for (index, text) in script.lines().enumerate() {
         let number = index + 1;
-        let step = parse_line(text).map_err(|reason| ParseError {
-            line: number,
-            reason,
-        })?;
+        let step =
+            parse_line(text, os).map_err(|reason| ParseError {
+                line: number,
+                reason,
+            })?;
         lines.extend(step.map(|step| Line { number, step }));
     }
     Ok(lines)
 }
 
-fn parse_line(text: &str) -> Result<Option<Step>, String> {
+fn parse_line(text: &str, os: Os) -> Result<Option<Step>, String> {
     let text = text.trim();
     if text.is_empty() || text.starts_with('#') {
         return Ok(None);
@@ -208,20 +263,20 @@ fn parse_line(text: &str) -> Result<Option<Step>, String> {
             Step::Move(Vec2::new(number(x)?, number(y)?))
         }
         "click" => {
-            let usage = "click <x> <y> [double|triple|shift]";
-            let (x, y, count) = match words[..] {
-                [x, y] => (x, y, 1),
-                [x, y, "double"] => (x, y, 2),
-                [x, y, "triple"] => (x, y, 3),
-                [x, y, "shift"] => {
-                    let at = Vec2::new(number(x)?, number(y)?);
-                    return Ok(Some(Step::ShiftClick(at)));
-                }
-                _ => return Err(format!("usage: {usage}")),
+            let usage =
+                "click <x> <y> [double|triple] [shift] [mod] [alt]";
+            let [x, y, ref after @ ..] = words[..] else {
+                return Err(format!("usage: {usage}"));
+            };
+            let (count, named) = match after {
+                ["double", named @ ..] => (2, named),
+                ["triple", named @ ..] => (3, named),
+                named => (1, named),
             };
             Step::Click {
                 at: Vec2::new(number(x)?, number(y)?),
                 count,
+                held: held(named, os, usage)?,
             }
         }
         "press" => {
@@ -233,11 +288,15 @@ fn parse_line(text: &str) -> Result<Option<Step>, String> {
             Step::Release
         }
         "drag" => {
-            let [x0, y0, x1, y1] =
-                exact(&words, "drag <x0> <y0> <x1> <y1>")?;
+            let usage =
+                "drag <x0> <y0> <x1> <y1> [shift] [mod] [alt]";
+            let [x0, y0, x1, y1, ref named @ ..] = words[..] else {
+                return Err(format!("usage: {usage}"));
+            };
             Step::Drag {
                 from: Vec2::new(number(x0)?, number(y0)?),
                 to: Vec2::new(number(x1)?, number(y1)?),
+                held: held(named, os, usage)?,
             }
         }
         "scroll" => {
@@ -250,13 +309,29 @@ fn parse_line(text: &str) -> Result<Option<Step>, String> {
         }
         "key" => {
             let [combo] = exact(&words, "key <combo>")?;
-            Step::Key(parse_combo(combo)?)
+            Step::Key(parse_combo(combo, os)?)
         }
         "type" => {
             if rest.is_empty() {
                 return Err("usage: type <text>".into());
             }
             Step::Type(rest.into())
+        }
+        "ime" => Step::Ime(parse_ime(rest)?),
+        "paste" => {
+            if rest.is_empty() {
+                return Err("usage: paste <text>".into());
+            }
+            Step::Paste {
+                text: unescape(rest)?,
+                chord: parse_combo("mod+v", os)?,
+            }
+        }
+        "wtype" => {
+            if rest.is_empty() {
+                return Err("usage: wtype <text>".into());
+            }
+            Step::Wtype(rest.into())
         }
         "screenshot" => {
             let [path] = exact(&words, "screenshot <path>")?;
@@ -325,7 +400,7 @@ fn parse_line(text: &str) -> Result<Option<Step>, String> {
 
 fn topic_args(name: &str) -> usize {
     match name {
-        "runs" => 1,
+        "runs" | "text" => 1,
         _ => 0,
     }
 }
@@ -427,7 +502,46 @@ fn character(c: char) -> Press {
     }
 }
 
-fn parse_combo(combo: &str) -> Result<Vec<Press>, String> {
+fn modifier(name: &str, os: Os) -> Option<Press> {
+    let (code, key) = match (name, os) {
+        ("ctrl" | "control", _) | ("mod", Os::Linux) => {
+            (KeyCode::ControlLeft, Key::Control)
+        }
+        ("super" | "meta", _) | ("mod", Os::Macos) => {
+            (KeyCode::SuperLeft, Key::Super)
+        }
+        ("alt", _) => (KeyCode::AltLeft, Key::Alt),
+        ("shift", _) => (KeyCode::ShiftLeft, Key::Shift),
+        _ => return None,
+    };
+    Some(Press {
+        code,
+        key,
+        text: None,
+    })
+}
+
+fn held(
+    names: &[&str],
+    os: Os,
+    usage: &str,
+) -> Result<Vec<Press>, String> {
+    let mut held = Vec::new();
+    for &name in names {
+        match modifier(name, os) {
+            Some(press)
+                if matches!(name, "shift" | "mod" | "alt")
+                    && !held.contains(&press) =>
+            {
+                held.push(press);
+            }
+            _ => return Err(format!("usage: {usage}")),
+        }
+    }
+    Ok(held)
+}
+
+fn parse_combo(combo: &str, os: Os) -> Result<Vec<Press>, String> {
     let mut parts = combo.split('+').collect::<Vec<_>>();
     let name = parts
         .pop()
@@ -436,32 +550,14 @@ fn parse_combo(combo: &str) -> Result<Vec<Press>, String> {
     let mut presses = Vec::new();
     let (mut shift, mut command) = (false, false);
     for part in parts {
-        let (code, key) = match part {
-            "ctrl" | "control" => {
-                command = true;
-                (KeyCode::ControlLeft, Key::Control)
-            }
-            "alt" => {
-                command = true;
-                (KeyCode::AltLeft, Key::Alt)
-            }
-            "super" | "meta" => {
-                command = true;
-                (KeyCode::SuperLeft, Key::Super)
-            }
-            "shift" => {
-                shift = true;
-                (KeyCode::ShiftLeft, Key::Shift)
-            }
-            other => {
-                return Err(format!("`{other}` is not a modifier"));
-            }
-        };
-        presses.push(Press {
-            code,
-            key,
-            text: None,
-        });
+        let press = modifier(part, os)
+            .ok_or_else(|| format!("`{part}` is not a modifier"))?;
+        if press.key == Key::Shift {
+            shift = true;
+        } else {
+            command = true;
+        }
+        presses.push(press);
     }
     let named = |code, key| Press {
         code,
@@ -504,12 +600,103 @@ fn parse_combo(combo: &str) -> Result<Vec<Press>, String> {
     Ok(presses)
 }
 
+fn parse_ime(rest: &str) -> Result<Ime, String> {
+    let window = Entity::PLACEHOLDER;
+    let (form, text) = first_word(rest);
+    let text = text.trim();
+    Ok(match form {
+        "enable" if text.is_empty() => Ime::Enabled { window },
+        "disable" if text.is_empty() => Ime::Disabled { window },
+        "commit" if !text.is_empty() => Ime::Commit {
+            window,
+            value: text.into(),
+        },
+        "preedit" => {
+            let (value, cursor) = preedit(text)?;
+            Ime::Preedit {
+                window,
+                value: value.into(),
+                cursor,
+            }
+        }
+        _ => {
+            return Err("usage: ime enable | ime disable | ime \
+                        preedit [<text> [<start> <end>]] | ime \
+                        commit <text>"
+                .into());
+        }
+    })
+}
+
+type ByteCursor = (usize, usize);
+
+fn preedit(text: &str) -> Result<(&str, Option<ByteCursor>), String> {
+    let words = text.split_whitespace().collect::<Vec<_>>();
+    let [_, .., start, end] = words[..] else {
+        return Ok((text, None));
+    };
+    let (Ok(from), Ok(to)) = (start.parse(), end.parse()) else {
+        return Ok((text, None));
+    };
+    let value = text
+        .strip_suffix(end)
+        .and_then(|text| text.trim_end().strip_suffix(start))
+        .map(str::trim_end)
+        .expect("the cursor words end the text");
+    for byte in [from, to] {
+        if byte > value.len() {
+            return Err(format!(
+                "preedit cursor {from}..{to} is past the {} bytes \
+                 of {value:?}",
+                value.len()
+            ));
+        }
+        if !value.is_char_boundary(byte) {
+            return Err(format!(
+                "preedit cursor byte {byte} is inside a character \
+                 of {value:?}"
+            ));
+        }
+    }
+    if from > to {
+        return Err(format!(
+            "preedit cursor {from}..{to} runs backwards"
+        ));
+    }
+    Ok((value, Some((from, to))))
+}
+
+fn unescape(text: &str) -> Result<String, String> {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        out.push(match chars.next() {
+            Some('n') => '\n',
+            Some('t') => '\t',
+            Some('\\') => '\\',
+            other => {
+                let shown = other.map_or(String::new(), String::from);
+                return Err(format!(
+                    "`\\{shown}` is not an escape, use \\n, \\t or \
+                     \\\\"
+                ));
+            }
+        });
+    }
+    Ok(out)
+}
+
 #[derive(Clone, Debug)]
 enum Input {
     Move(Vec2),
     Button(ButtonState),
     Wheel(Vec2, MouseScrollUnit),
     Key(Press, ButtonState),
+    Ime(Ime),
 }
 
 enum Busy {
@@ -553,29 +740,53 @@ pub struct Drive {
     pending_frames: usize,
     shot_this_frame: bool,
     said: Vec<String>,
+    checks: usize,
+    passed: usize,
+    ime_live: bool,
 }
 
-pub struct DrivePlugin(Vec<Line>);
+#[derive(Resource, Default)]
+struct LastIme(Option<Ime>);
+
+fn read_ime(mut read: MessageReader<Ime>, mut last: ResMut<LastIme>) {
+    if let Some(ime) = read.read().last() {
+        last.0 = Some(ime.clone());
+    }
+}
+
+pub struct DrivePlugin {
+    lines: Vec<Line>,
+    ime_live: bool,
+}
 
 impl Plugin for DrivePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Drive::new(self.0.clone())).add_systems(
+        app.insert_resource(Drive::new(
+            self.lines.clone(),
+            self.ime_live,
+        ))
+        .init_resource::<LastIme>()
+        .add_systems(
             First,
             advance
                 .after(MessageUpdateSystems)
                 .before(PickingSystems::Input)
                 .run_if(resource_exists::<Ready>),
-        );
+        )
+        .add_systems(Update, read_ime);
     }
 }
 
 impl DrivePlugin {
     pub fn new(script: &str) -> Result<Self, ParseError> {
-        parse(script).map(Self)
+        parse(script).map(|lines| Self {
+            lines,
+            ime_live: false,
+        })
     }
 
     fn opening_from(mut self, dir: &Path) -> Self {
-        for line in &mut self.0 {
+        for line in &mut self.lines {
             if let Step::Open(paths) = &mut line.step {
                 for path in paths {
                     *path = dir.join(&*path);
@@ -593,8 +804,15 @@ pub fn from_env() -> Result<Option<DrivePlugin>, String> {
     let script = fs::read_to_string(&path)
         .map_err(|error| format!("cannot read {path}: {error}"))?;
     let dir = Path::new(&path).parent().unwrap_or(Path::new(""));
+    let ime_live = std::env::var_os("RUBRIX_IME_LIVE")
+        .is_some_and(|live| live == "1");
     DrivePlugin::new(&script)
-        .map(|drive| Some(drive.opening_from(dir)))
+        .map(|drive| {
+            Some(DrivePlugin {
+                ime_live,
+                ..drive.opening_from(dir)
+            })
+        })
         .map_err(|error| error.to_string())
 }
 
@@ -605,7 +823,7 @@ fn advance(world: &mut World) {
 }
 
 impl Drive {
-    fn new(lines: Vec<Line>) -> Self {
+    fn new(lines: Vec<Line>, ime_live: bool) -> Self {
         Self {
             steps: lines.into(),
             busy: Busy::Idle,
@@ -616,6 +834,9 @@ impl Drive {
             pending_frames: 0,
             shot_this_frame: false,
             said: Vec::new(),
+            checks: 0,
+            passed: 0,
+            ime_live,
         }
     }
 
@@ -689,8 +910,17 @@ impl Drive {
                 self.busy = Busy::Exit
             }
             Busy::Exit => {
-                self.done("exit");
-                world.write_message(AppExit::Success);
+                self.say(format!(
+                    "drive: {} of {} checks pass",
+                    self.passed, self.checks
+                ));
+                if self.passed == self.checks {
+                    self.done("exit");
+                    world.write_message(AppExit::Success);
+                } else {
+                    self.say("drive: exit failed".into());
+                    world.write_message(AppExit::from_code(1));
+                }
                 self.busy = Busy::Done;
             }
             Busy::Done => self.busy = Busy::Done,
@@ -716,7 +946,7 @@ impl Drive {
                 [vec![Input::Move(at)]].into(),
                 name,
             ),
-            Step::Click { at, count } => {
+            Step::Click { at, count, held } => {
                 let mut frames =
                     VecDeque::from([vec![Input::Move(at)]]);
                 for _ in 0..count {
@@ -727,27 +957,7 @@ impl Drive {
                         ButtonState::Released,
                     )]);
                 }
-                self.put_in(world, frames, name);
-            }
-            Step::ShiftClick(at) => {
-                let shift = Press {
-                    code: KeyCode::ShiftLeft,
-                    key: Key::Shift,
-                    text: None,
-                };
-                let frames = VecDeque::from([
-                    vec![
-                        Input::Key(
-                            shift.clone(),
-                            ButtonState::Pressed,
-                        ),
-                        Input::Move(at),
-                    ],
-                    vec![Input::Button(ButtonState::Pressed)],
-                    vec![Input::Button(ButtonState::Released)],
-                    vec![Input::Key(shift, ButtonState::Released)],
-                ]);
-                self.put_in(world, frames, name);
+                self.put_in(world, holding(held, frames), name);
             }
             Step::Press(at) => self.put_in(
                 world,
@@ -763,7 +973,7 @@ impl Drive {
                 [vec![Input::Button(ButtonState::Released)]].into(),
                 name,
             ),
-            Step::Drag { from, to } => {
+            Step::Drag { from, to, held } => {
                 let mut frames = VecDeque::from([
                     vec![Input::Move(from)],
                     vec![Input::Button(ButtonState::Pressed)],
@@ -777,7 +987,7 @@ impl Drive {
                 frames.push_back(vec![Input::Button(
                     ButtonState::Released,
                 )]);
-                self.put_in(world, frames, name);
+                self.put_in(world, holding(held, frames), name);
             }
             Step::Scroll(by) | Step::Wheel(by) => {
                 let unit = match step {
@@ -792,23 +1002,7 @@ impl Drive {
                 self.put_in(world, frames, name);
             }
             Step::Key(presses) => {
-                let down = presses
-                    .iter()
-                    .map(|press| {
-                        Input::Key(
-                            press.clone(),
-                            ButtonState::Pressed,
-                        )
-                    })
-                    .collect();
-                let up = presses
-                    .into_iter()
-                    .rev()
-                    .map(|press| {
-                        Input::Key(press, ButtonState::Released)
-                    })
-                    .collect();
-                self.put_in(world, [down, up].into(), name);
+                self.put_in(world, chord(presses), name);
             }
             Step::Type(text) => {
                 let typed = text
@@ -826,6 +1020,26 @@ impl Drive {
                     .collect();
                 self.put_in(world, [typed].into(), name);
             }
+            Step::Ime(ime) => {
+                self.put_in(
+                    world,
+                    [vec![Input::Ime(ime)]].into(),
+                    name,
+                );
+            }
+            Step::Paste { text, chord: keys } => {
+                world.resource_mut::<Paste>().0 = Some(text);
+                self.put_in(world, chord(keys), name);
+            }
+            Step::Wtype(_) if !self.ime_live => self.fail(
+                world,
+                number,
+                "wtype needs launch.sh --ime-live",
+            ),
+            Step::Wtype(text) => match wtype(&text) {
+                Ok(()) => self.done(name),
+                Err(error) => self.fail(world, number, &error),
+            },
             Step::Screenshot(path) => match make_parent(&path) {
                 Ok(()) => {
                     let mut paths = vec![path];
@@ -850,7 +1064,9 @@ impl Drive {
             Step::Expect { topic, text } => {
                 match topic_line(world, &topic) {
                     Some(line) => {
+                        self.checks += 1;
                         let verdict = if line.contains(&text) {
+                            self.passed += 1;
                             "pass"
                         } else {
                             "fail"
@@ -1026,6 +1242,14 @@ impl Drive {
                     window,
                 },
             ),
+            Input::Ime(mut ime) => {
+                let (Ime::Preedit { window: to, .. }
+                | Ime::Commit { window: to, .. }
+                | Ime::Enabled { window: to }
+                | Ime::Disabled { window: to }) = &mut ime;
+                *to = window;
+                send(world, ime);
+            }
         }
     }
 
@@ -1074,6 +1298,69 @@ impl Drive {
         if let Some(path) = self.next_frame() {
             self.capture(world, vec![path], Shot::Frame);
         }
+    }
+}
+
+fn chord(presses: Vec<Press>) -> VecDeque<Vec<Input>> {
+    let down = presses
+        .iter()
+        .map(|press| Input::Key(press.clone(), ButtonState::Pressed))
+        .collect();
+    let up = presses
+        .into_iter()
+        .rev()
+        .map(|press| Input::Key(press, ButtonState::Released))
+        .collect();
+    [down, up].into()
+}
+
+fn holding(
+    held: Vec<Press>,
+    mut frames: VecDeque<Vec<Input>>,
+) -> VecDeque<Vec<Input>> {
+    if held.is_empty() {
+        return frames;
+    }
+    let first = frames.front_mut().expect("a gesture has a frame");
+    first.splice(
+        0..0,
+        held.iter().map(|press| {
+            Input::Key(press.clone(), ButtonState::Pressed)
+        }),
+    );
+    frames.push_back(
+        held.into_iter()
+            .rev()
+            .map(|press| Input::Key(press, ButtonState::Released))
+            .collect(),
+    );
+    frames
+}
+
+fn wtype(text: &str) -> Result<(), String> {
+    let active = Command::new("hyprctl")
+        .arg("activewindow")
+        .output()
+        .map_err(|error| format!("cannot run hyprctl: {error}"))?;
+    let pid =
+        String::from_utf8_lossy(&active.stdout).lines().find_map(
+            |line| line.trim().strip_prefix("pid: ")?.parse().ok(),
+        );
+    if pid != Some(std::process::id()) {
+        return Err(format!(
+            "wtype needs the gallery focused, the focused window is \
+             pid {}",
+            pid.map_or("none".into(), |pid: u32| pid.to_string())
+        ));
+    }
+    let status = Command::new("wtype")
+        .arg(text)
+        .status()
+        .map_err(|error| format!("cannot run wtype: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("wtype failed with {status}"))
     }
 }
 
@@ -1150,6 +1437,9 @@ fn write_file(path: &Path, contents: String) -> Result<(), String> {
 }
 
 fn topic_line(world: &mut World, topic: &str) -> Option<String> {
+    if let Some(ask) = Ask::of(topic) {
+        return Some(format!("{topic} {}", answer(world, ask)));
+    }
     Some(match topic {
         "entities" => {
             let count = world.entities().count_spawned();
@@ -1218,6 +1508,11 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
             Some(text) => format!("copied {text:?}"),
             None => "copied none".into(),
         },
+        "paste" => match &world.resource::<Paste>().0 {
+            Some(text) => format!("paste {text:?}"),
+            None => "paste none".into(),
+        },
+        "ime" => ime(world),
         "diff-colours" => pages::hamlet_diff::colours_line(world),
         "diff-more" => pages::hamlet_diff::more_line(world),
         "stress" => pages::stress::log(world),
@@ -1260,6 +1555,45 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
             runs(world, line)
         }
     })
+}
+
+fn answer(world: &mut World, ask: Ask) -> String {
+    let page = &PAGES[world.resource::<Selected>().0];
+    page.answer
+        .and_then(|answer| answer(world, ask))
+        .unwrap_or_else(|| "n/a".into())
+}
+
+fn ime(world: &mut World) -> String {
+    let (enabled, position) = world
+        .query_filtered::<&Window, With<PrimaryWindow>>()
+        .iter(world)
+        .next()
+        .map_or((false, Vec2::ZERO), |window| {
+            (window.ime_enabled, window.ime_position)
+        });
+    let last = match &world.resource::<LastIme>().0 {
+        None => "none".into(),
+        Some(Ime::Enabled { .. }) => "enabled".into(),
+        Some(Ime::Disabled { .. }) => "disabled".into(),
+        Some(Ime::Commit { value, .. }) => {
+            format!("commit {value:?}")
+        }
+        Some(Ime::Preedit {
+            value,
+            cursor: Some((from, to)),
+            ..
+        }) => format!("preedit {value:?} {from}..{to}"),
+        Some(Ime::Preedit { value, .. }) => {
+            format!("preedit {value:?}")
+        }
+    };
+    format!(
+        "ime enabled {enabled} position {} {} last {last} page {}",
+        position.x,
+        position.y,
+        answer(world, Ask::Ime)
+    )
 }
 
 fn diff(world: &mut World) -> String {
@@ -1418,9 +1752,9 @@ mod tests {
     use bevy::color::{Color, LinearRgba, Luminance};
     use bevy::ecs::message::Messages;
     use bevy::ecs::query::Added;
-    use bevy::ecs::system::{Commands, Local, Query};
+    use bevy::ecs::system::{Commands, Local, Query, Res};
     use bevy::image::Image;
-    use bevy::input::InputPlugin;
+    use bevy::input::{ButtonInput, InputPlugin};
     use bevy::math::UVec2;
     use bevy::picking::DefaultPickingPlugins;
     use bevy::text::Font;
@@ -1451,6 +1785,10 @@ mod tests {
             key,
             text: text.map(Into::into),
         }
+    }
+
+    fn shift() -> Press {
+        key(KeyCode::ShiftLeft, Key::Shift, None)
     }
 
     #[test]
@@ -1491,22 +1829,30 @@ exit
                 Step::Move(Vec2::new(1.5, 20.0)),
                 Step::Click {
                     at: Vec2::new(10.0, 20.0),
-                    count: 1
+                    count: 1,
+                    held: vec![]
                 },
                 Step::Click {
                     at: Vec2::new(10.0, 20.0),
-                    count: 2
+                    count: 2,
+                    held: vec![]
                 },
                 Step::Click {
                     at: Vec2::new(10.0, 20.0),
-                    count: 3
+                    count: 3,
+                    held: vec![]
                 },
-                Step::ShiftClick(Vec2::new(10.0, 20.0)),
+                Step::Click {
+                    at: Vec2::new(10.0, 20.0),
+                    count: 1,
+                    held: vec![shift()]
+                },
                 Step::Press(Vec2::new(5.0, 6.0)),
                 Step::Release,
                 Step::Drag {
                     from: Vec2::new(1.0, 2.0),
-                    to: Vec2::new(3.0, 4.0)
+                    to: Vec2::new(3.0, 4.0),
+                    held: vec![]
                 },
                 Step::Scroll(Vec2::new(0.0, -400.0)),
                 Step::Wheel(Vec2::new(0.0, -3.0)),
@@ -1543,6 +1889,211 @@ exit
                 Step::Exit,
             ]
         );
+    }
+
+    fn steps_on(os: Os, script: &str) -> Vec<Step> {
+        parse_for(script, os)
+            .expect("a valid script")
+            .into_iter()
+            .map(|line| line.step)
+            .collect()
+    }
+
+    fn ctrl() -> Press {
+        key(KeyCode::ControlLeft, Key::Control, None)
+    }
+
+    fn cmd() -> Press {
+        key(KeyCode::SuperLeft, Key::Super, None)
+    }
+
+    #[test]
+    fn mod_holds_ctrl_on_linux_and_cmd_on_macos() {
+        let a = key(KeyCode::KeyA, Key::Character("a".into()), None);
+        for (os, command) in [(Os::Linux, ctrl()), (Os::Macos, cmd())]
+        {
+            assert_eq!(
+                steps_on(os, "key mod+a"),
+                [Step::Key(vec![command.clone(), a.clone()])],
+                "{os:?}"
+            );
+            assert_eq!(
+                steps_on(os, "click 10 10 mod\ndrag 0 0 9 9 alt"),
+                [
+                    Step::Click {
+                        at: Vec2::new(10.0, 10.0),
+                        count: 1,
+                        held: vec![command.clone()]
+                    },
+                    Step::Drag {
+                        from: Vec2::ZERO,
+                        to: Vec2::new(9.0, 9.0),
+                        held: vec![key(
+                            KeyCode::AltLeft,
+                            Key::Alt,
+                            None
+                        )]
+                    },
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn a_mod_chord_parses_in_every_combo_form() {
+        let forms = [
+            "mod+shift+z",
+            "shift+mod+z",
+            "mod+alt+up",
+            "mod+enter",
+            "mod+backspace",
+            "mod+space",
+            "mod+1",
+            "mod+home",
+            "mod+pagedown",
+        ];
+        for os in [Os::Linux, Os::Macos] {
+            let command = modifier("mod", os).expect("mod");
+            for form in forms {
+                let [Step::Key(presses)] =
+                    &steps_on(os, &format!("key {form}"))[..]
+                else {
+                    panic!("{form} is one key step");
+                };
+                assert!(
+                    presses.contains(&command),
+                    "{form} on {os:?}"
+                );
+                let last = presses.last().expect("a key");
+                assert_eq!(last.text, None, "{form} types no text");
+            }
+        }
+    }
+
+    #[test]
+    fn click_and_drag_take_each_modifier_once() {
+        assert_eq!(
+            steps_on(Os::Linux, "click 1 2 triple alt mod shift"),
+            [Step::Click {
+                at: Vec2::new(1.0, 2.0),
+                count: 3,
+                held: vec![
+                    key(KeyCode::AltLeft, Key::Alt, None),
+                    ctrl(),
+                    shift()
+                ]
+            }]
+        );
+        for bad in [
+            "click 1 2 mod mod",
+            "click 1 2 ctrl",
+            "click 1 2 shift double",
+            "drag 1 2 3 4 super",
+            "drag 1 2 3",
+        ] {
+            let error = parse(bad).expect_err(bad);
+            assert!(
+                error.reason.starts_with("usage: "),
+                "{bad}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn each_ime_form_parses_to_the_message_it_writes() {
+        let window = Entity::PLACEHOLDER;
+        let preedit = |value: &str, cursor| {
+            Step::Ime(Ime::Preedit {
+                window,
+                value: value.into(),
+                cursor,
+            })
+        };
+        assert_eq!(
+            steps(
+                "ime enable\nime disable\nime preedit 你好 0 6\nime \
+                 preedit ni hao 2 2\nime preedit ni hao\nime \
+                 preedit\nime commit 你好 吗"
+            ),
+            [
+                Step::Ime(Ime::Enabled { window }),
+                Step::Ime(Ime::Disabled { window }),
+                preedit("你好", Some((0, 6))),
+                preedit("ni hao", Some((2, 2))),
+                preedit("ni hao", None),
+                preedit("", None),
+                Step::Ime(Ime::Commit {
+                    window,
+                    value: "你好 吗".into()
+                }),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_preedit_cursor_off_its_text_is_refused_with_its_line() {
+        for (script, reason) in [
+            ("page about\nime preedit abc 2 9", "past the 3 bytes"),
+            (
+                "page about\nime preedit 你好 1 3",
+                "inside a character",
+            ),
+            ("page about\nime preedit abc 2 1", "runs backwards"),
+            ("page about\nime commit", "usage: ime"),
+            ("page about\nime enable now", "usage: ime"),
+        ] {
+            let error = parse(script).expect_err(script);
+            assert_eq!(error.line, 2, "{script}");
+            assert!(error.reason.contains(reason), "{error}");
+        }
+    }
+
+    #[test]
+    fn a_paste_decodes_its_escapes_and_sends_mod_v() {
+        let v = key(KeyCode::KeyV, Key::Character("v".into()), None);
+        assert_eq!(
+            steps_on(Os::Macos, "paste a\\nb\\t\\\\c"),
+            [Step::Paste {
+                text: "a\nb\t\\c".into(),
+                chord: vec![cmd(), v]
+            }]
+        );
+        let error = parse("paste a\\qb").expect_err("a bad escape");
+        assert!(
+            error.reason.contains("`\\q` is not an escape"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn the_page_topics_parse_with_their_words() {
+        assert_eq!(
+            steps(
+                "log text 3\nexpect undo 2\nlog caret\nlog \
+                 paste\nlog ime"
+            ),
+            [
+                Step::Log("text 3".into()),
+                Step::Expect {
+                    topic: "undo".into(),
+                    text: "2".into()
+                },
+                Step::Log("caret".into()),
+                Step::Log("paste".into()),
+                Step::Log("ime".into()),
+            ]
+        );
+        for (script, reason) in [
+            ("log text", "takes a line number"),
+            ("log text three", "`three` is not a number"),
+            ("expect text 3", "usage: expect"),
+        ] {
+            let error = parse(script).expect_err(script);
+            assert!(
+                error.reason.contains(reason),
+                "{script}: {error}"
+            );
+        }
     }
 
     #[test]
@@ -1636,7 +2187,7 @@ exit
             .expect("a script")
             .opening_from(Path::new("/repo/drive"));
         assert_eq!(
-            drive.0[0].step,
+            drive.lines[0].step,
             Step::Open(vec![
                 "/repo/drive/../fixtures/a.rs".into(),
                 "/b.rs".into()
@@ -1955,10 +2506,16 @@ exit
         {
             let path = entry.expect("a directory entry").path();
             let text = fs::read_to_string(&path).expect("a script");
-            if path.file_name() == Some("bad-script.drive".as_ref()) {
+            let name =
+                path.file_name().and_then(|name| name.to_str());
+            if matches!(
+                name,
+                Some("bad-script.drive" | "driver-ime-bad.drive")
+            ) {
                 assert!(parse(&text).is_err());
                 continue;
             }
+
             seen += 1;
             let steps = steps(&text);
             let first = steps
@@ -2068,9 +2625,142 @@ exit
                 "drive: page ok",
                 "clipboard: (nothing copied)",
                 "drive: clipboard ok",
+                "drive: 0 of 0 checks pass",
                 "drive: exit ok",
             ]
         );
+    }
+
+    fn exits_and_said(script: &str) -> (Vec<AppExit>, Vec<String>) {
+        let mut app = headless(script);
+        let exits = run(&mut app);
+        (exits, app.world().resource::<Drive>().said.clone())
+    }
+
+    #[test]
+    fn a_failed_check_ends_the_drive_with_code_1() {
+        let (exits, said) = exits_and_said(
+            "expect page about\nexpect theme dark\nexpect page \
+             other\nexit",
+        );
+        assert_eq!(exits, [AppExit::from_code(1)]);
+        assert_eq!(
+            said[said.len() - 2..],
+            ["drive: 2 of 3 checks pass", "drive: exit failed"]
+        );
+    }
+
+    #[test]
+    fn every_check_passing_ends_the_drive_with_code_0() {
+        let (exits, said) = exits_and_said(
+            "expect page about\nexpect theme dark\nexit",
+        );
+        assert_eq!(exits, [AppExit::Success]);
+        assert_eq!(
+            said[said.len() - 2..],
+            ["drive: 2 of 2 checks pass", "drive: exit ok"]
+        );
+    }
+
+    #[test]
+    fn a_wtype_step_without_ime_live_exits_with_code_2() {
+        let (exits, said) =
+            exits_and_said("wait 1\nwtype hello\nexit");
+        assert_eq!(exits, [AppExit::from_code(2)]);
+        assert_eq!(
+            said.last().map(String::as_str),
+            Some("drive: line 2: wtype needs launch.sh --ime-live")
+        );
+    }
+
+    #[test]
+    fn a_page_without_an_answer_prints_n_a() {
+        let (_, said) = exits_and_said(
+            "log caret\nlog text 1\nlog undo\npage code\nwait \
+             3\nlog caret\nexpect text 7 n/a\nexit",
+        );
+        for line in ["caret n/a", "text 1 n/a", "undo n/a"] {
+            assert!(said.iter().any(|said| said == line), "{said:?}");
+        }
+        assert_eq!(
+            said.iter().filter(|s| *s == "caret n/a").count(),
+            2
+        );
+        assert!(said.contains(&"accept: text 7 pass".to_owned()));
+    }
+
+    #[test]
+    fn a_paste_step_hands_its_text_to_the_gallery() {
+        let mut app =
+            headless("log paste\npaste one\\ttwo\nlog paste\nexit");
+        run(&mut app);
+        assert_eq!(logged(&app, "paste "), ["none", "\"one\\ttwo\""]);
+        assert_eq!(
+            app.world().resource::<Paste>().0.as_deref(),
+            Some("one\ttwo")
+        );
+    }
+
+    #[test]
+    fn the_ime_log_names_the_last_message_the_gallery_read() {
+        let mut app = headless(
+            "log ime\nime enable\nlog ime\nime preedit 你好 0 \
+             6\nlog ime\nime commit 你好\nlog ime\nime preedit\nlog \
+             ime\nime disable\nlog ime\nexit",
+        );
+        run(&mut app);
+        let window = "enabled false position 0 0 last";
+        assert_eq!(
+            logged(&app, "ime "),
+            [
+                format!("{window} none page n/a"),
+                format!("{window} enabled page n/a"),
+                format!("{window} preedit \"你好\" 0..6 page n/a"),
+                format!("{window} commit \"你好\" page n/a"),
+                format!("{window} preedit \"\" page n/a"),
+                format!("{window} disabled page n/a"),
+            ]
+        );
+    }
+
+    #[derive(Resource, Default)]
+    struct HeldAtPress(Vec<Vec<KeyCode>>);
+
+    fn note_held(
+        mut buttons: MessageReader<MouseButtonInput>,
+        keys: Res<ButtonInput<KeyCode>>,
+        mut held: ResMut<HeldAtPress>,
+    ) {
+        for button in buttons.read() {
+            if button.state == ButtonState::Pressed {
+                held.0.push(keys.get_pressed().copied().collect());
+            }
+        }
+    }
+
+    #[test]
+    fn a_click_and_a_drag_hold_their_modifiers_for_the_gesture() {
+        let mut app = headless(
+            "click 10 10 mod\ndrag 0 0 9 9 alt\nclick 10 10 double \
+             shift\nclick 10 10\nexit",
+        );
+        app.init_resource::<HeldAtPress>()
+            .add_systems(Update, note_held);
+        run(&mut app);
+        let command = modifier("mod", Os::host()).expect("mod").code;
+        let shift = KeyCode::ShiftLeft;
+        assert_eq!(
+            app.world().resource::<HeldAtPress>().0,
+            [
+                vec![command],
+                vec![KeyCode::AltLeft],
+                vec![shift],
+                vec![shift],
+                vec![]
+            ]
+        );
+        let keys = app.world().resource::<ButtonInput<KeyCode>>();
+        assert_eq!(keys.get_pressed().count(), 0, "every key let go");
     }
 
     fn fixture(name: &str) -> String {

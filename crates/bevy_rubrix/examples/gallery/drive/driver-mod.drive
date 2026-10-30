@@ -1,0 +1,11 @@
+page code
+wait 120
+key mod+a
+key mod+c
+wait 10
+log selection
+log copied
+expect copied "//! The theme the examples share.\n
+wait 30
+screenshot g2-mod.png
+exit

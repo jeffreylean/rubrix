@@ -1,0 +1,16 @@
+page code
+wait 120
+click 311 211 triple
+key mod+c
+wait 2
+log copied
+paste hello\nworld
+wait 2
+log paste
+expect paste "hello\nworld"
+clipboard
+log copied
+expect copied "use bevy_fynix::tokens::{"
+wait 30
+screenshot g2-paste.png
+exit
