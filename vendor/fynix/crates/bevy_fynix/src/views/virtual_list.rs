@@ -354,12 +354,9 @@ pub struct VirtualList {
     anchor: Anchor,
     follow: bool,
     placed_at: f32,
-    /// How far splices above the first visible row moved it since
-    /// the last update.
-    shift: f64,
+    spliced_above: f64,
     widths: Option<Widths>,
-    /// The width of the rows' sideways cells, once one is laid out.
-    room: Option<f32>,
+    cell_width: Option<f32>,
     reveal_x: Option<RevealX>,
     sideways_switched: bool,
     /// The area's width when its rows were measured.
@@ -399,7 +396,6 @@ enum RevealFrom {
 #[derive(Clone, Copy)]
 struct RevealX {
     x: (f32, f32),
-    /// The sideways offset it left last frame.
     placed: Option<f32>,
 }
 
@@ -437,9 +433,9 @@ impl VirtualList {
             anchor: Anchor::FirstRow,
             follow,
             placed_at: 0.0,
-            shift: 0.0,
+            spliced_above: 0.0,
             widths: None,
-            room: None,
+            cell_width: None,
             reveal_x: None,
             sideways_switched: false,
             across: 0.0,
@@ -592,7 +588,8 @@ impl VirtualList {
             }
         }
         if above {
-            self.shift += span(&self.heights, inserted) - before;
+            self.spliced_above +=
+                span(&self.heights, inserted) - before;
             self.first_visible = moved(self.first_visible);
         } else if at <= self.first_visible {
             self.first_visible = at.min(self.count.saturating_sub(1));
@@ -691,7 +688,7 @@ impl VirtualList {
         end: f32,
         screen: f32,
     ) -> Scroll {
-        let shift = core::mem::take(&mut self.shift);
+        let shift = core::mem::take(&mut self.spliced_above);
         let scroll = scroll + shift as f32;
         self.placed_at += shift as f32;
         if let Anchor::Landing {
@@ -964,7 +961,7 @@ fn place_rows(
         } else {
             (Vec::new(), None)
         };
-        list.room = room.or(list.room);
+        list.cell_width = room.or(list.cell_width);
         let mut measured = list
             .slots
             .iter()
@@ -1002,7 +999,7 @@ fn place_rows(
         let mut width = percent(100.0);
         let mut x = 0.0;
         let reveal = list.reveal_x.take();
-        let room = list.room.unwrap_or(across);
+        let room = list.cell_width.unwrap_or(across);
         let widest = list.widths.as_mut().map(|widths| {
             for (index, by) in wide {
                 widths.set(index, by);
@@ -1233,25 +1230,17 @@ fn lower_median(heights: &mut [(usize, f32)]) -> Option<f32> {
     Some(height)
 }
 
-/// About how many rows a block of [`Heights`] holds.
-const BLOCK: usize = 512;
+const ROWS_PER_BLOCK: usize = 512;
+const MIN_BLOCK: usize = ROWS_PER_BLOCK / 2;
 
-/// Row heights in blocks of about [`BLOCK`] rows, under a Fenwick
-/// tree of the blocks' row counts and pixels. Every pixel prefix adds
-/// the tree's nodes in the order [`locate`](Self::locate) walks them,
-/// then the rows inside one block in order, so an offset is the same
-/// however it is reached.
 #[derive(Default)]
 struct Heights {
-    /// No block is empty.
     blocks: Vec<Block>,
-    /// 1-based; `tree[k]` sums blocks `k - lowest(k)..k`.
     tree: Vec<Sum>,
     len: usize,
 }
 
 struct Block {
-    /// Each row's height, and whether it has been laid out.
     rows: Vec<(f32, bool)>,
     px: f64,
 }
@@ -1299,12 +1288,6 @@ impl Heights {
         );
     }
 
-    /// Replaces rows `at..at + removed` with `inserted` rows of
-    /// `estimate`, not yet laid out. Only the blocks the rows sit in
-    /// are rebuilt, with a neighbour when they would hold under half
-    /// a block. The sums take a point update per block when as many
-    /// blocks come out as went in, and are rebuilt in O(blocks)
-    /// otherwise.
     fn splice(
         &mut self,
         at: usize,
@@ -1329,7 +1312,7 @@ impl Heights {
             .iter()
             .map(|block| block.rows.len())
             .sum::<usize>();
-        if run - removed + inserted < BLOCK / 2 {
+        if run - removed + inserted < MIN_BLOCK {
             if stop < self.blocks.len() {
                 stop += 1;
             } else if first > 0 {
@@ -1345,7 +1328,7 @@ impl Heights {
             at - start..end - start,
             core::iter::repeat_n((estimate, false), inserted),
         );
-        let pieces = pieces(rows);
+        let pieces = into_blocks(rows);
         let same = pieces.len() == stop - first;
         if same {
             for (block, piece) in (first..).zip(&pieces) {
@@ -1424,8 +1407,6 @@ impl Heights {
         }
     }
 
-    /// The block row `index` sits in, its row in that block and the
-    /// pixels above the block. Row `len` sits past the last block.
     fn locate(&self, index: usize) -> (usize, usize, f64) {
         let (mut block, mut rows, mut px) = (0, 0, 0.0);
         let mut step = self.top_step();
@@ -1443,8 +1424,6 @@ impl Heights {
         (block, index - rows, px)
     }
 
-    /// The pixels above `block`, added as [`locate`](Self::locate)
-    /// adds them.
     fn above(&self, block: usize) -> f64 {
         let (mut at, mut px) = (0, 0.0);
         let mut step = self.top_step();
@@ -1474,8 +1453,6 @@ impl Heights {
             .map_or(above, |block| block.offset(row, above))
     }
 
-    /// [`offset`](Self::offset) of each row from `from` on, then the
-    /// total, in O(1) a row and O(log blocks) a block.
     fn offsets(&self, from: usize) -> impl Iterator<Item = f64> + '_ {
         let (mut block, mut row, _) = self.locate(from);
         let mut at = self.offset(from);
@@ -1524,16 +1501,14 @@ impl Heights {
     }
 }
 
-/// `rows` cut into blocks: one, unless there are more than two
-/// blocks' worth, which are cut into equal pieces of about [`BLOCK`].
-fn pieces(rows: Vec<(f32, bool)>) -> Vec<Block> {
+fn into_blocks(rows: Vec<(f32, bool)>) -> Vec<Block> {
     if rows.is_empty() {
         return Vec::new();
     }
-    if rows.len() <= 2 * BLOCK {
+    if rows.len() <= 2 * ROWS_PER_BLOCK {
         return vec![Block::new(rows)];
     }
-    let count = rows.len().div_ceil(BLOCK);
+    let count = rows.len().div_ceil(ROWS_PER_BLOCK);
     (0..count)
         .map(|piece| {
             let from = piece * rows.len() / count;

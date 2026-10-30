@@ -21,8 +21,6 @@ const ABOVE: usize = 1_000;
 const JUMP: usize = 9_000;
 const WIDE: f32 = 3_000.0;
 
-/// What a row shows. A row keeps its label as rows are spliced in
-/// above it, so a shot shows whether the rows kept their text.
 #[derive(Clone, Copy, PartialEq)]
 enum Label {
     Row(usize),
@@ -124,8 +122,6 @@ fn controls() -> PageView {
     wrapping(buttons.boxed())
 }
 
-/// The splice buttons show only while `splice` is on, so that the
-/// list keeps trunk's height for the scripts that time it.
 fn splice_controls() -> PageView {
     keyed(resource::<Rows, _>(|rows| rows.splice), |&on| {
         if !on {
@@ -185,8 +181,6 @@ fn first_list(world: &mut World) -> Option<Mut<'_, VirtualList>> {
     world.query::<&mut VirtualList>().iter_mut(world).next()
 }
 
-/// Replaces the `removed` rows from `at` with `inserted`, in the
-/// labels and in the list, in the frame that changes the count.
 fn splice(
     world: &mut World,
     at: usize,
@@ -224,13 +218,13 @@ fn rows() -> PageView {
             resource::<Rows, _>(|rows| rows.labels.len()),
             ESTIMATE,
             move |slot: RowSlot| {
-                let text = label(shown(slot, text)).wrap(false);
+                let text = label(row_label(slot, text)).wrap(false);
                 if !sideways {
                     return text.boxed();
                 }
-                let end = label(shown(slot, end)).wrap(false);
+                let end = label(row_label(slot, end)).wrap(false);
                 let wide = row((text, frame().grow(1.0), end))
-                    .width(shown(slot, width));
+                    .width(row_label(slot, width));
                 slot.sideways(wide.boxed())
             },
         )
@@ -252,9 +246,7 @@ fn rows() -> PageView {
     .boxed()
 }
 
-/// What `read` makes of the label of the row `slot` shows, re-read
-/// when the slot moves to another row or the labels change.
-fn shown<T: 'static>(
+fn row_label<T: 'static>(
     slot: RowSlot,
     read: fn(Label) -> T,
 ) -> Signal<T> {

@@ -2097,8 +2097,8 @@ fn modelled_list(app: &mut App, count: usize) -> Entity {
     area
 }
 
-/// Splices the rows of the model, its count and the list alike. The
-/// rows inserted are 22 px high, which the list does not know yet.
+const SPLICED_HEIGHT: f32 = 22.0;
+
 fn splice_rows(
     app: &mut App,
     area: Entity,
@@ -2109,7 +2109,8 @@ fn splice_rows(
     let mut model = app.world_mut().resource_mut::<Model>();
     let next =
         model.0.iter().map(|&(id, _)| id + 1).max().unwrap_or(0);
-    let new = (next..next + inserted as u32).map(|id| (id, 22.0));
+    let new =
+        (next..next + inserted as u32).map(|id| (id, SPLICED_HEIGHT));
     model.0.splice(at..at + removed, new);
     let count = model.0.len();
     app.world_mut().resource_mut::<Count>().0 = count;
@@ -2119,8 +2120,6 @@ fn splice_rows(
         .splice(at, removed, inserted);
 }
 
-/// Each built row's id, with the index it shows, its node and its
-/// top relative to the area.
 fn ids(
     app: &mut App,
     area: Entity,
@@ -2296,8 +2295,7 @@ fn sideways_modelled_list(
         .expect("one list")
 }
 
-/// The width of a row's sideways cell.
-fn room(app: &mut App) -> f32 {
+fn cell_width(app: &mut App) -> f32 {
     let (row, _) = app
         .world_mut()
         .query::<(Entity, &Id)>()
@@ -2322,7 +2320,7 @@ fn a_splice_leaves_the_widest_row_of_a_fresh_list() {
     let mut app = laid_out();
     let area =
         sideways_modelled_list(&mut app, model(2_100), wide.clone());
-    let room = room(&mut app);
+    let room = cell_width(&mut app);
     assert_eq!(widest(&mut app, area), 900.0 - room);
 
     for (at, removed, inserted, most) in [
@@ -2461,8 +2459,7 @@ fn a_splice_of_the_first_visible_row_leaves_no_gap() {
     assert_apart(&mut app, area, "settled");
 }
 
-/// splitmix64.
-fn next(state: &mut u64) -> u64 {
+fn splitmix64(state: &mut u64) -> u64 {
     *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
     let mut z = *state;
     z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
@@ -2471,7 +2468,7 @@ fn next(state: &mut u64) -> u64 {
 }
 
 fn below(state: &mut u64, bound: usize) -> usize {
-    (next(state) % bound as u64) as usize
+    (splitmix64(state) % bound as u64) as usize
 }
 
 #[test]
@@ -2537,7 +2534,7 @@ fn a_sideways_reveal_moves_the_least_even_onto_a_row_spliced_wide() {
     let mut app = laid_out();
     let wide = HashMap::from([(7, 900.0)]);
     let area = sideways_modelled_list(&mut app, model(2_100), wide);
-    let room = room(&mut app);
+    let room = cell_width(&mut app);
 
     reveal_x(&mut app, area, 500.0..600.0);
     settle(&mut app);
