@@ -1,0 +1,15 @@
+# Typing in a CRLF file goes in before each line's \r and keeps every
+# \r\n.
+crlf
+# Lines 3, 5 and 13 start with text. The carets sit at their ends,
+# right before the \r.
+caret 3:26
+type \s// one
+caret 5:24
+add-caret 13:20
+type \s// two
+expect line 3 use core::time::Duration; // one
+expect line 5 use bevy::color::Color; // two
+expect line 13 pub struct Monokai; // two
+expect carets 2 primary 2 5:31 13:27
+expect hash c9bd7387ee2ef11e

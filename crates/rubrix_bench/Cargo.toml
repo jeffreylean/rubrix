@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 rubrix_diff = { path = "../rubrix_diff" }
+rubrix_edit = { path = "../rubrix_edit" }
 rubrix_highlight = { path = "../rubrix_highlight" }
 
 [lints]

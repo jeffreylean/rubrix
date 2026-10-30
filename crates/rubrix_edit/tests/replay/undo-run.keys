@@ -1,0 +1,11 @@
+# Two typing runs that meet join into one undo step.
+# Line 13 is `pub struct Monokai;`, a line with text for undo to
+# restore.
+caret 13:20
+type hello world
+type \sagain
+expect line 13 pub struct Monokai;hello world again
+expect undo-depth 1
+key undo
+expect line 13 pub struct Monokai;
+expect undo-depth 0

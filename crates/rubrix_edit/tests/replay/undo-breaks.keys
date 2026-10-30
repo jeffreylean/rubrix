@@ -1,0 +1,40 @@
+# Each break of Pierre's grouping rule starts a new undo step, and
+# each undo puts back the caret from before its step.
+# Line 2 is blank, so the typing makes a line of its own.
+caret 2:1
+expect undo-depth 0
+type let a
+expect undo-depth 1
+# Typing on from where the run ended joins it.
+type \s= 1;
+expect undo-depth 1
+key enter
+expect undo-depth 2
+type let b = 2;
+expect undo-depth 3
+# The jump lands away from the end of the run.
+caret 1:1
+expect undo-depth 3
+type x
+expect undo-depth 4
+paste y
+expect undo-depth 5
+expect line 1 xy//! The theme the examples share.
+key undo
+expect undo-depth 4
+expect carets 1 primary 1 1:2
+key undo
+expect undo-depth 3
+expect carets 1 primary 1 1:1
+key undo
+expect undo-depth 2
+expect carets 1 primary 1 3:1
+key undo
+expect undo-depth 1
+expect carets 1 primary 1 2:11
+key undo
+expect undo-depth 0
+expect carets 1 primary 1 2:1
+expect line 1 //! The theme the examples share.
+expect line 2
+expect line 3 use core::time::Duration;

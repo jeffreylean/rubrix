@@ -1,0 +1,35 @@
+# Word motion stops at each end of a run of word characters and of
+# a run of punctuation.
+# Line 13, `pub struct Monokai;`, is unindented, so the new line
+# below it starts at column 1.
+caret 13:1
+key end
+key enter
+type foo_bar.baz(qux)
+expect line 14 foo_bar.baz(qux)
+key home
+expect carets 1 primary 1 14:1
+key word-right
+expect carets 1 primary 1 14:8
+key word-right
+expect carets 1 primary 1 14:9
+key word-right
+expect carets 1 primary 1 14:12
+key word-right
+expect carets 1 primary 1 14:13
+key word-right
+expect carets 1 primary 1 14:16
+key word-right
+expect carets 1 primary 1 14:17
+key delete-word-back
+expect line 14 foo_bar.baz(qux
+key delete-word-back
+expect line 14 foo_bar.baz(
+key delete-word-back
+expect line 14 foo_bar.baz
+key delete-word-back
+expect line 14 foo_bar.
+key delete-word-back
+expect line 14 foo_bar
+key delete-word-back
+expect line 14

@@ -84,7 +84,12 @@ fn time_batch<S, R>(
     start.elapsed()
 }
 
-fn percentiles(mut samples: Vec<f64>) -> Measurement {
+/// The median and p95 of per-call samples, in seconds.
+///
+/// # Panics
+///
+/// Panics if `samples` is empty.
+pub fn percentiles(mut samples: Vec<f64>) -> Measurement {
     samples.sort_by(f64::total_cmp);
     let middle = samples.len() / 2;
     let median = if samples.len().is_multiple_of(2) {
