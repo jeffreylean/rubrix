@@ -2052,3 +2052,467 @@ fn a_list_its_parent_fits_laid_out_empty_draws_the_rows_it_gets() {
         );
     }
 }
+
+#[derive(Resource)]
+struct Model(Vec<(u32, f32)>);
+
+#[derive(Component)]
+struct Id(u32);
+
+fn model(count: usize) -> Vec<(u32, f32)> {
+    (0..count as u32)
+        .map(|id| (id, 16.0 + (id * 37 % 9) as f32))
+        .collect()
+}
+
+fn modelled(slot: RowSlot) -> AnyView<Bevy, Plain> {
+    AnyView::new(move |cx| {
+        let index = slot.index();
+        let node = cx.build(
+            frame().height(
+                derived(move |world| {
+                    px(world.resource::<Model>().0[index.get(world)]
+                        .1)
+                })
+                .when(every_frame()),
+            ),
+        );
+        let index = slot.index();
+        let shows = derived(move |world| {
+            let index = index.get(world);
+            (index, world.resource::<Model>().0[index].0)
+        })
+        .when(every_frame());
+        cx.effect(node, shows.into(), |world, node, &(index, id)| {
+            world.entity_mut(node).insert((Shows(index), Id(id)));
+        });
+        node
+    })
+}
+
+fn modelled_list(app: &mut App, count: usize) -> Entity {
+    app.insert_resource(Model(model(count)));
+    let area = mounted(app, count, ESTIMATE, modelled, px(VIEW));
+    settle(app);
+    area
+}
+
+/// Splices the rows of the model, its count and the list alike. The
+/// rows inserted are 22 px high, which the list does not know yet.
+fn splice_rows(
+    app: &mut App,
+    area: Entity,
+    at: usize,
+    removed: usize,
+    inserted: usize,
+) {
+    let mut model = app.world_mut().resource_mut::<Model>();
+    let next =
+        model.0.iter().map(|&(id, _)| id + 1).max().unwrap_or(0);
+    let new = (next..next + inserted as u32).map(|id| (id, 22.0));
+    model.0.splice(at..at + removed, new);
+    let count = model.0.len();
+    app.world_mut().resource_mut::<Count>().0 = count;
+    app.world_mut()
+        .get_mut::<VirtualList>(area)
+        .expect("a list")
+        .splice(at, removed, inserted);
+}
+
+/// Each built row's id, with the index it shows, its node and its
+/// top relative to the area.
+fn ids(
+    app: &mut App,
+    area: Entity,
+) -> HashMap<u32, (usize, Entity, f32)> {
+    let origin = top(app, area);
+    let built = app
+        .world_mut()
+        .query::<(Entity, &Id, &Shows)>()
+        .iter(app.world())
+        .map(|(node, id, shows)| (id.0, shows.0, node))
+        .collect::<Vec<_>>();
+    built
+        .into_iter()
+        .map(|(id, index, node)| {
+            (id, (index, node, top(app, node) - origin))
+        })
+        .collect()
+}
+
+fn spans(list: &VirtualList) -> Vec<f32> {
+    (0..list.count())
+        .map(|index| list.row_span(index).expect("a row").height)
+        .collect()
+}
+
+fn fresh(heights: &[f32]) -> VirtualList {
+    let mut fresh = VirtualList::detached(heights.len(), ESTIMATE);
+    for (index, &height) in heights.iter().enumerate() {
+        fresh.measure(index, height);
+    }
+    fresh
+}
+
+fn assert_fresh(list: &VirtualList, heights: &[f32], when: &str) {
+    assert_eq!(list.count(), heights.len(), "{when}: the count");
+    let fresh = fresh(heights);
+    for index in 0..heights.len() {
+        assert_eq!(
+            list.row_span(index),
+            fresh.row_span(index),
+            "{when}: row {index}"
+        );
+    }
+}
+
+fn splice_case(
+    view: usize,
+    at: usize,
+    removed: usize,
+    inserted: usize,
+) {
+    const COUNT: usize = 2_100;
+    let when = format!("{removed} for {inserted} at {at}");
+    let removed = removed.min(COUNT - at);
+    let mut app = laid_out();
+    let area = modelled_list(&mut app, COUNT);
+    scroll_to(&mut app, area, view);
+    settle(&mut app);
+    let before = ids(&mut app, area);
+    let mut heights = spans(state(&app, area));
+    heights.splice(
+        at..at + removed,
+        core::iter::repeat_n(ESTIMATE, inserted),
+    );
+
+    splice_rows(&mut app, area, at, removed, inserted);
+    assert_fresh(state(&app, area), &heights, &when);
+    settle(&mut app);
+
+    let list = state(&app, area);
+    assert_fresh(list, &spans(list), &format!("{when}, settled"));
+    let after = ids(&mut app, area);
+    let model = &app.world().resource::<Model>().0;
+    let list = state(&app, area);
+    let mut kept = 0;
+    for (&id, &(index, node, _)) in &after {
+        assert_eq!(model[index].0, id, "{when}: row {index}'s id");
+        assert_eq!(
+            list.row_span(index).unwrap().height,
+            model[index].1,
+            "{when}: row {index}'s height"
+        );
+        if let Some(&(_, was, _)) = before.get(&id) {
+            assert_eq!(node, was, "{when}: the view of {id}");
+            kept += 1;
+        }
+    }
+    assert!(kept > 0, "{when}: no row kept its view");
+}
+
+#[test]
+fn a_splice_at_the_first_middle_or_last_row_moves_only_the_rows_after()
+ {
+    for (removed, inserted) in [(0, 3), (3, 0), (2, 3)] {
+        splice_case(0, 0, removed, inserted);
+        splice_case(1_040, 1_050, removed, inserted);
+        splice_case(2_099, 2_099, removed, inserted);
+    }
+}
+
+#[test]
+fn a_splice_that_frees_slots_measured_this_frame_leaves_no_gap() {
+    let mut app = laid_out();
+    let area = modelled_list(&mut app, 2_100);
+
+    splice_rows(&mut app, area, 10, 30, 0);
+    app.update();
+    assert_eq!(uncovered(&mut app, area), 0.0, "after the remove");
+    splice_rows(&mut app, area, 5, 20, 2);
+    app.update();
+    assert_eq!(uncovered(&mut app, area), 0.0, "after the replace");
+    settle(&mut app);
+    assert_apart(&mut app, area, "settled");
+    assert_eq!(state(&app, area).count(), 2_100 - 30 - 18);
+}
+
+#[derive(Resource)]
+struct Wide(HashMap<u32, f32>);
+
+fn sideways_modelled(slot: RowSlot) -> AnyView<Bevy, Plain> {
+    let gutter = frame().width(px(40.0)).height(px(20.0));
+    let index = slot.index();
+    let text = frame()
+        .width(
+            derived(move |world| {
+                let id =
+                    world.resource::<Model>().0[index.get(world)].0;
+                let wide = &world.resource::<Wide>().0;
+                px(wide.get(&id).copied().unwrap_or(100.0))
+            })
+            .when(every_frame()),
+        )
+        .height(px(20.0));
+    let text = AnyView::new(move |cx| {
+        let node = cx.build(text);
+        let index = slot.index();
+        let shows = derived(move |world| {
+            let index = index.get(world);
+            (index, world.resource::<Model>().0[index].0)
+        })
+        .when(every_frame());
+        cx.effect(node, shows.into(), |world, node, &(index, id)| {
+            world.entity_mut(node).insert((Shows(index), Id(id)));
+        });
+        node
+    });
+    hrow((gutter.boxed(), slot.sideways(text))).boxed()
+}
+
+fn sideways_modelled_list(
+    app: &mut App,
+    rows: Vec<(u32, f32)>,
+    wide: HashMap<u32, f32>,
+) -> Entity {
+    app.insert_resource(Count(rows.len()));
+    app.insert_resource(Model(rows));
+    app.insert_resource(Wide(wide));
+    mount::<Plain>(
+        app.world_mut(),
+        column((virtual_list(
+            resource::<Count, _>(|count| count.0),
+            ESTIMATE,
+            sideways_modelled,
+        )
+        .sideways(true),))
+        .width(px(300.0))
+        .height(px(VIEW)),
+    );
+    settle(app);
+    app.world_mut()
+        .query_filtered::<Entity, With<VirtualList>>()
+        .single(app.world())
+        .expect("one list")
+}
+
+/// The width of a row's sideways cell.
+fn room(app: &mut App) -> f32 {
+    let (row, _) = app
+        .world_mut()
+        .query::<(Entity, &Id)>()
+        .iter(app.world())
+        .next()
+        .expect("a built row");
+    let moved = app.world().get::<ChildOf>(row).unwrap().parent();
+    let cell = app.world().get::<ChildOf>(moved).unwrap().parent();
+    right(app, cell) - left(app, cell)
+}
+
+fn widest(app: &mut App, area: Entity) -> f32 {
+    app.world_mut().get_mut::<ScrollPosition>(area).unwrap().x =
+        1.0e6;
+    settle(app);
+    app.world().get::<ScrollPosition>(area).unwrap().x
+}
+
+#[test]
+fn a_splice_leaves_the_widest_row_of_a_fresh_list() {
+    let wide = HashMap::from([(3, 600.0), (7, 900.0)]);
+    let mut app = laid_out();
+    let area =
+        sideways_modelled_list(&mut app, model(2_100), wide.clone());
+    let room = room(&mut app);
+    assert_eq!(widest(&mut app, area), 900.0 - room);
+
+    for (at, removed, inserted, most) in [
+        (2, 0, 5, 900.0),
+        (12, 1, 0, 600.0),
+        (0, 3, 2, 600.0),
+        (7, 1, 0, 100.0),
+    ] {
+        splice_rows(&mut app, area, at, removed, inserted);
+        let spliced = widest(&mut app, area);
+        let rows = app.world().resource::<Model>().0.clone();
+        let mut fresh = laid_out();
+        let fresh_area =
+            sideways_modelled_list(&mut fresh, rows, wide.clone());
+        assert_eq!(spliced, widest(&mut fresh, fresh_area));
+        assert_eq!(spliced, (most - room).max(0.0), "at {at}");
+    }
+}
+
+#[test]
+fn a_scroll_to_past_a_splice_lands_on_the_row_it_named() {
+    let mut app = laid_out();
+    let area = modelled_list(&mut app, 10_000);
+
+    scroll_to(&mut app, area, 9_000);
+    splice_rows(&mut app, area, 1_000, 0, 20);
+    settle(&mut app);
+
+    assert_eq!(state(&app, area).first_visible(), 9_020);
+    let named = ids(&mut app, area)[&9_000];
+    assert_eq!((named.0, named.2), (9_020, 0.0));
+}
+
+fn on_screen(app: &mut App, area: Entity) -> Vec<(u32, f32)> {
+    let mut shown = ids(app, area)
+        .into_iter()
+        .filter(|&(_, (_, _, top))| (0.0..VIEW).contains(&top))
+        .map(|(id, (_, _, top))| (id, top))
+        .collect::<Vec<_>>();
+    shown.sort_by(|a, b| a.1.total_cmp(&b.1));
+    shown
+}
+
+#[test]
+fn a_splice_above_the_view_leaves_the_rows_on_screen_still() {
+    for (at, removed, inserted) in [
+        (1_000, 0, 20),
+        (1_000, 20, 0),
+        (1_000, 5, 7),
+        (4_970, 10, 3),
+        (4_970, 3, 10),
+    ] {
+        let when = format!("{removed} for {inserted} at {at}");
+        let mut app = laid_out();
+        let area = modelled_list(&mut app, 10_000);
+        scroll_to(&mut app, area, 5_000);
+        settle(&mut app);
+        app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y +=
+            7.0;
+        settle(&mut app);
+        let shown = on_screen(&mut app, area);
+        let first = state(&app, area).first_visible();
+
+        splice_rows(&mut app, area, at, removed, inserted);
+        let moved = first - removed + inserted;
+        assert_eq!(
+            state(&app, area).first_visible(),
+            moved,
+            "{when}"
+        );
+        app.update();
+        assert_eq!(on_screen(&mut app, area), shown, "{when}");
+        assert_eq!(
+            state(&app, area).first_visible(),
+            moved,
+            "{when}"
+        );
+        settle(&mut app);
+        assert_eq!(
+            on_screen(&mut app, area),
+            shown,
+            "{when}, settled"
+        );
+    }
+}
+
+#[test]
+fn a_following_list_follows_through_a_splice_above() {
+    let mut app = laid_out();
+    app.insert_resource(Follow(true));
+    let area = modelled_list(&mut app, 2_100);
+    for _ in 0..3 {
+        app.world_mut().get_mut::<ScrollPosition>(area).unwrap().y =
+            1.0e9;
+        settle(&mut app);
+    }
+    assert!(state(&app, area).following());
+    let bottom = |app: &App| {
+        let list = state(app, area);
+        let last = list.row_span(list.count() - 1).unwrap();
+        last.top + last.height - VIEW
+    };
+
+    for (at, removed, inserted) in [(100, 0, 20), (100, 40, 0)] {
+        splice_rows(&mut app, area, at, removed, inserted);
+        app.update();
+        assert!(state(&app, area).following(), "at {at}");
+        assert_eq!(scroll(&app, area), bottom(&app), "at {at}");
+        settle(&mut app);
+        assert!(state(&app, area).following(), "at {at}, settled");
+        assert_eq!(
+            scroll(&app, area),
+            bottom(&app),
+            "at {at}, settled"
+        );
+    }
+}
+
+#[test]
+fn a_splice_of_the_first_visible_row_leaves_no_gap() {
+    let mut app = laid_out();
+    let area = modelled_list(&mut app, 10_000);
+    scroll_to(&mut app, area, 5_000);
+    settle(&mut app);
+
+    splice_rows(&mut app, area, 4_990, 20, 0);
+    assert_eq!(state(&app, area).first_visible(), 4_990);
+    app.update();
+    assert_eq!(uncovered(&mut app, area), 0.0);
+    settle(&mut app);
+    assert_eq!(uncovered(&mut app, area), 0.0, "settled");
+    assert_apart(&mut app, area, "settled");
+}
+
+/// splitmix64.
+fn next(state: &mut u64) -> u64 {
+    *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+    let mut z = *state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    z ^ (z >> 31)
+}
+
+fn below(state: &mut u64, bound: usize) -> usize {
+    (next(state) % bound as u64) as usize
+}
+
+#[test]
+fn random_splices_match_a_fresh_list() {
+    let seed = std::env::var("RUBRIX_SEED")
+        .ok()
+        .and_then(|seed| seed.parse().ok())
+        .unwrap_or(1);
+    let mut random = seed;
+    let mut heights = vec![ESTIMATE; 2_500];
+    let mut list = VirtualList::detached(heights.len(), ESTIMATE);
+    for step in 0..1_000 {
+        let len = heights.len();
+        let most = if below(&mut random, 8) == 0 { 1_500 } else { 8 };
+        let at = below(&mut random, len + 1);
+        let removed = below(&mut random, most.min(len - at) + 1);
+        let mut inserted = below(&mut random, most + 1);
+        if len - removed + inserted > 6_000 {
+            inserted = 0;
+        }
+        list.splice(at, removed, inserted);
+        heights.splice(
+            at..at + removed,
+            core::iter::repeat_n(ESTIMATE, inserted),
+        );
+        for _ in 0..below(&mut random, 20).min(heights.len()) {
+            let index = below(&mut random, heights.len());
+            let height = 8.0 + below(&mut random, 256) as f32 / 8.0;
+            list.measure(index, height);
+            heights[index] = height;
+        }
+
+        let when = format!("seed {seed}, step {step}");
+        assert_fresh(&list, &heights, &when);
+        let fresh = fresh(&heights);
+        let total = heights.iter().sum::<f32>();
+        for _ in 0..50 {
+            let y = below(&mut random, total as usize * 8 + 800)
+                as f32
+                / 8.0;
+            assert_eq!(
+                list.row_at(y),
+                fresh.row_at(y),
+                "{when}: y {y}"
+            );
+        }
+    }
+}

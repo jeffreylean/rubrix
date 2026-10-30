@@ -354,6 +354,9 @@ pub struct VirtualList {
     anchor: Anchor,
     follow: bool,
     placed_at: f32,
+    /// How far splices above the first visible row moved it since
+    /// the last update.
+    shift: f64,
     widths: Option<Widths>,
     sideways_switched: bool,
     /// The area's width when its rows were measured.
@@ -424,6 +427,7 @@ impl VirtualList {
             anchor: Anchor::FirstRow,
             follow,
             placed_at: 0.0,
+            shift: 0.0,
             widths: None,
             sideways_switched: false,
             across: 0.0,
@@ -479,6 +483,104 @@ impl VirtualList {
             target,
             placed: None,
         };
+    }
+
+    /// Replaces the rows `at..at + removed` with `inserted` rows of
+    /// unknown height, and changes [`count`](Self::count) to match.
+    /// Every other row keeps its height and the view built for it,
+    /// under its new index. Call it before
+    /// [`FynixSystems::Prepare`], in the frame the list's `count`
+    /// changes to the same number. A `count` that changes without a
+    /// splice adds or removes rows at the end.
+    ///
+    /// A splice wholly above the first visible row keeps the rows on
+    /// screen where they are. One that removes the first visible row
+    /// keeps the view's pixel. A [`scroll_to`](Self::scroll_to) or a
+    /// scroll into view still on its way lands on the row it named,
+    /// or on `at` if that row is removed.
+    /// [`first_visible`](Self::first_visible) moves at once, and
+    /// [`spawned`](Self::spawned) from the next update.
+    ///
+    /// # Panics
+    ///
+    /// If `at + removed` is past the list's count.
+    pub fn splice(
+        &mut self,
+        at: usize,
+        removed: usize,
+        inserted: usize,
+    ) {
+        let end = at + removed;
+        assert!(
+            end <= self.count,
+            "a splice of rows {at}..{end} in a list of {} rows",
+            self.count
+        );
+        let moved = |index: usize| {
+            if index >= end {
+                index - removed + inserted
+            } else {
+                index.min(at)
+            }
+        };
+        let span = |heights: &Heights, rows: usize| {
+            heights.offset(at + rows) - heights.offset(at)
+        };
+        let above = end <= self.first_visible;
+        let before = if above {
+            span(&self.heights, removed)
+        } else {
+            0.0
+        };
+        self.heights.splice(at, removed, inserted, self.estimate);
+        if let Some(widths) = &mut self.widths {
+            widths.splice(at, removed, inserted);
+        }
+        self.count = self.count - removed + inserted;
+        for placed in &mut self.slots {
+            if (at..end).contains(&placed.index) {
+                placed.index = usize::MAX;
+            } else if placed.index != usize::MAX {
+                placed.index = moved(placed.index);
+            }
+        }
+        if let Anchor::Landing { target, .. } = &mut self.anchor {
+            match target {
+                Target::First(index) => *index = moved(*index),
+                Target::Reveal { index, from, .. } => {
+                    *index = moved(*index);
+                    if let Some(RevealFrom::Row(row, into)) = from {
+                        if (at..end).contains(row) {
+                            *into = 0.0;
+                        }
+                        *row = moved(*row);
+                    }
+                }
+            }
+        }
+        if above {
+            self.shift += span(&self.heights, inserted) - before;
+            self.first_visible = moved(self.first_visible);
+        } else if at <= self.first_visible {
+            self.first_visible = at.min(self.count.saturating_sub(1));
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn detached(count: usize, estimate: f32) -> Self {
+        Self::new(
+            estimate,
+            OVERSCAN,
+            count,
+            false,
+            Entity::PLACEHOLDER,
+            0.0,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn measure(&mut self, index: usize, height: f32) {
+        self.heights.set(index, height);
     }
 
     /// The row at `y` in the list's content, or the nearest row when
@@ -556,6 +658,16 @@ impl VirtualList {
         end: f32,
         screen: f32,
     ) -> Scroll {
+        let shift = core::mem::take(&mut self.shift);
+        let scroll = scroll + shift as f32;
+        self.placed_at += shift as f32;
+        if let Anchor::Landing {
+            placed: Some(placed),
+            ..
+        } = &mut self.anchor
+        {
+            *placed += shift;
+        }
         let called = matches!(
             self.anchor,
             Anchor::Landing { placed: None, .. }
@@ -824,7 +936,8 @@ fn place_rows(
                 let (node, _) = nodes.get(placed.node?).ok()?;
                 let height = node.content_size().y
                     * node.inverse_scale_factor();
-                (height > 0.0).then_some((placed.index, height))
+                (height > 0.0 && placed.index < list.heights.len())
+                    .then_some((placed.index, height))
             })
             .collect::<Vec<_>>();
         let across = area.content_box().width() * scale;
@@ -1022,6 +1135,20 @@ impl Widths {
         if by >= self.widest {
             self.widest = by;
         } else if was == self.widest {
+            self.widest = self.most();
+        }
+    }
+
+    fn splice(&mut self, at: usize, removed: usize, inserted: usize) {
+        let Some(gone) = self.each.get(at..at + removed) else {
+            return;
+        };
+        let widest = self.widest > 0.0 && gone.contains(&self.widest);
+        self.each.splice(
+            at..at + removed,
+            core::iter::repeat_n(0.0, inserted),
+        );
+        if widest {
             self.widest = self.most();
         }
     }
