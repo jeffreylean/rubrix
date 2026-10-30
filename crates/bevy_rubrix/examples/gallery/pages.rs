@@ -38,10 +38,40 @@ const BUTTON_WIDTH: f32 = 140.0;
 
 pub type Open = fn(&mut World, &[PathBuf]) -> Result<(), String>;
 
+/// A drive `log` topic that the page on show answers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ask {
+    Caret,
+    /// A line of the page's text, counted from 1.
+    Text(usize),
+    Undo,
+    /// The page's half of the `ime` topic.
+    Ime,
+}
+
+impl Ask {
+    /// The question a topic asks, for every topic but `ime`, which
+    /// the driver answers in part itself.
+    pub fn of(topic: &str) -> Option<Self> {
+        Some(match topic {
+            "caret" => Self::Caret,
+            "undo" => Self::Undo,
+            _ => {
+                Self::Text(topic.strip_prefix("text ")?.parse().ok()?)
+            }
+        })
+    }
+}
+
+/// Answers an [`Ask`] with the text that follows the topic in its
+/// line, or `None` to print `n/a`.
+pub type Answer = fn(&mut World, Ask) -> Option<String>;
+
 pub struct Page {
     pub name: &'static str,
     pub build: fn() -> PageView,
     pub open: Option<Open>,
+    pub answer: Option<Answer>,
 }
 
 pub const PAGES: &[Page] = &[
@@ -49,31 +79,37 @@ pub const PAGES: &[Page] = &[
         name: "about",
         build: about::build,
         open: None,
+        answer: None,
     },
     Page {
         name: "rich",
         build: rich::build,
         open: None,
+        answer: None,
     },
     Page {
         name: "virtual_list",
         build: virtual_list::build,
         open: None,
+        answer: None,
     },
     Page {
         name: "code",
         build: code::build,
         open: Some(code::open),
+        answer: None,
     },
     Page {
         name: "stream",
         build: stream::build,
         open: Some(stream::open),
+        answer: None,
     },
     Page {
         name: "diff",
         build: diff::build,
         open: Some(diff::open),
+        answer: None,
     },
     Page {
         name: "hamlet_rich",
@@ -84,21 +120,25 @@ pub const PAGES: &[Page] = &[
             ))
         },
         open: None,
+        answer: None,
     },
     Page {
         name: "hamlet_code",
         build: hamlet_code::build,
         open: None,
+        answer: None,
     },
     Page {
         name: "hamlet_diff",
         build: hamlet_diff::build,
         open: None,
+        answer: None,
     },
     Page {
         name: "stress",
         build: stress::build,
         open: None,
+        answer: None,
     },
 ];
 
