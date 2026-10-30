@@ -2571,3 +2571,26 @@ fn a_sideways_reveal_without_a_splice_does_nothing_unless_sideways() {
     settle(&mut app);
     assert_eq!(x(&app, area), 0.0);
 }
+
+#[test]
+#[ignore = "a timing, to run with --release"]
+fn splice_timing() {
+    for (case, removed, inserted) in
+        [("insert1", 0, 1), ("remove1", 1, 0), ("insert20", 0, 20)]
+    {
+        let mut list = VirtualList::detached(100_000, ESTIMATE);
+        let mut took = (0..1_000)
+            .map(|_| {
+                let start = std::time::Instant::now();
+                list.splice(50_000, removed, inserted);
+                start.elapsed()
+            })
+            .collect::<Vec<_>>();
+        took.sort();
+        println!(
+            "splice_timing {case} median {:?} p95 {:?}",
+            took[took.len() / 2],
+            took[took.len() * 95 / 100]
+        );
+    }
+}
