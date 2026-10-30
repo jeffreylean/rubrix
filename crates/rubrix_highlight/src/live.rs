@@ -101,7 +101,15 @@ impl Highlights {
             removed,
             inserted,
         } = edit;
-        let new_count = self.count_after(edit);
+        let old_count = self.line_count();
+        assert!(
+            first <= old_count && removed <= old_count - first,
+            "edit past the end of the lines"
+        );
+        let new_count = (old_count - removed)
+            .checked_add(inserted)
+            .filter(|&count| count > 0)
+            .expect("edit leaves no lines");
 
         if first < window.start {
             self.defer(edit, lines);
