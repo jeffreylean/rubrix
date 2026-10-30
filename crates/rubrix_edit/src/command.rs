@@ -104,11 +104,10 @@ impl Editor {
         &self.history
     }
 
-    /// Replaces the selections, for a click, a script step or a
-    /// restore. Clamps each end to the text and moves it back to a
-    /// grapheme boundary, so no caret sits inside a cluster or
-    /// between a `\r` and its `\n`, then merges selections that came
-    /// to overlap. Clears every goal x.
+    /// Replaces the selections. Clamps each end to the text and moves
+    /// it back to a grapheme boundary, so no caret sits inside a
+    /// cluster or between a `\r` and its `\n`, then merges selections
+    /// that came to overlap. Clears every goal x.
     pub fn set_selections(&mut self, selections: Selections) {
         let buffer = &self.buffer;
         self.selections = selections;

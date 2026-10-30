@@ -5,7 +5,7 @@ use crate::buffer::Buffer;
 use crate::change::{Change, Replacement};
 use crate::selection::Selections;
 
-/// How a recorded edit may join a run. The command sets it.
+/// How a recorded edit may join a run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     /// Typing with no line break in the text. Joins an insert run.
@@ -55,9 +55,8 @@ pub(crate) struct Entry {
 ///   ends where the entry's replacement now starts, and Delete text
 ///   that starts there; both insert nothing.
 ///
-/// `joins` is that rule as a pure function. Unlike Pierre, the
-/// command names the run, so a Backspace after a Delete of a
-/// selection starts a new step.
+/// Unlike Pierre, the command names the run, so a Backspace after a
+/// Delete of a selection starts a new step.
 #[derive(Clone, Debug)]
 pub struct History {
     undo: VecDeque<Entry>,

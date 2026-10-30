@@ -171,8 +171,7 @@ impl Highlights {
     /// where the edit's new lines begin. So
     /// `edits[i].first + edits[i].inserted <= edits[i + 1].first`.
     /// Every edit removes at least one line, so the state below it
-    /// can be compared with the state from before. A text editor's
-    /// change gives exactly these edits.
+    /// can be compared with the state from before.
     ///
     /// Each edit's own lines are lexed. Then the lines below it are
     /// lexed while their start states differ from before, until they
@@ -294,12 +293,10 @@ impl Highlights {
     }
 
     /// Marks the lines from `line` on stale after a chain stopped
-    /// there without converging. The lines from `line` up to any
-    /// older stale lines were lexed from the states before the chain,
-    /// so `catch_up` may only stop once it is past the older stale
-    /// lines and their placeholders.
+    /// there without converging.
     fn give_up(&mut self, line: u32) {
-        self.compare_from = if self.exact < self.line_count() {
+        let older_stale = self.exact < self.line_count();
+        self.compare_from = if older_stale {
             self.compare_from.max(self.exact)
         } else {
             line

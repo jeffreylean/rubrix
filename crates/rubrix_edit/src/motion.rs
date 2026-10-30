@@ -110,9 +110,8 @@ pub trait Layout {
     fn page_rows(&self) -> u32;
 }
 
-/// A fixed-width layout for headless tests, the replay and the bench.
-/// One row per line, one column per grapheme cluster, and a tab to
-/// the next multiple of `tab` columns.
+/// A fixed-width layout. One row per line, one column per grapheme
+/// cluster, and a tab to the next multiple of `tab` columns.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Monospace {
     pub tab: u32,

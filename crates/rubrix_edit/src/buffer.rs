@@ -117,10 +117,7 @@ pub(crate) struct Spot<'a> {
 /// most 512 lines.
 ///
 /// The lines are the text split at every `\n`, so the empty text is
-/// one empty line. `line_starts[c]` and `byte_starts[c]` are the
-/// first line and the first byte of chunk `c`, with the totals at the
-/// end. Both derive from the chunks and are rebuilt once per
-/// [`Buffer::replace`], from the first chunk it touched.
+/// one empty line.
 ///
 /// A buffer stores the bytes it is given. It never normalizes line
 /// endings, so undo and redo restore exactly what they removed.
@@ -207,10 +204,10 @@ impl Buffer {
     }
 
     /// The offset just after the line's content: before the `\r` of a
-    /// `\r\n`, else before the `\n`, or `len()` on the last line. End
-    /// puts the caret here. A `\r` that ends the last line has no
-    /// `\n` after it, so it counts as content here, though
-    /// `rubrix_highlight` reads it as a terminator.
+    /// `\r\n`, else before the `\n`, or `len()` on the last line. A
+    /// `\r` that ends the last line has no `\n` after it, so it
+    /// counts as content here, though `rubrix_highlight` reads it as
+    /// a terminator.
     ///
     /// # Panics
     ///
@@ -242,8 +239,7 @@ impl Buffer {
     /// The ranges must be sorted, must not overlap, and must lie on
     /// char boundaries inside the text. Ranges may touch, and several
     /// empty ranges may share an offset, in which case their texts go
-    /// in in the order given. The undo of deletions at touching
-    /// carets is such a batch. The text goes in as given.
+    /// in in the order given. The text goes in as given.
     ///
     /// One call reindexes the chunks once, so a keystroke at 100
     /// carets costs one reindex.
@@ -276,20 +272,26 @@ impl Buffer {
             u32::try_from(len).is_ok(),
             "a text of 4 GiB or more"
         );
-        let (Some(first), Some(last)) = (edits.first(), edits.last())
+        let spans: Vec<(Pos, Pos)> = edits
+            .iter()
+            .map(|(range, _)| {
+                (self.find(range.start), self.find(range.end))
+            })
+            .collect();
+        let (Some(first), Some(last)) = (spans.first(), spans.last())
         else {
             return Change::new(Vec::new());
         };
-        let touched = self.find(first.0.start).chunk
-            ..self.find(last.0.end).chunk + 1;
+        let touched = first.0.chunk..last.1.chunk + 1;
         let mut reps: Vec<Rep> = edits
             .iter()
+            .zip(spans)
             .rev()
-            .filter(|(range, text)| {
+            .filter(|((range, text), _)| {
                 !range.is_empty() || !text.as_ref().is_empty()
             })
-            .map(|(range, text)| {
-                self.splice(range.clone(), text.as_ref())
+            .map(|((range, text), (from, to))| {
+                self.splice(range.clone(), from, to, text.as_ref())
             })
             .collect();
         reps.reverse();
@@ -348,11 +350,7 @@ impl Buffer {
         (chunk, (line - self.line_starts[chunk]) as usize)
     }
 
-    /// Where `byte`, at most `len()`, lies. Inside
-    /// [`Buffer::replace`] it stays right for every offset up to the
-    /// start of the replacements already made, because those change
-    /// no chunk before theirs and no byte before their start, and the
-    /// stale starts of later chunks still lie past `byte`.
+    /// Where `byte`, at most `len()`, lies.
     fn find(&self, byte: usize) -> Pos {
         let starts = &self.byte_starts[..self.chunks.len()];
         let chunk = starts.partition_point(|&s| s <= byte) - 1;
@@ -387,12 +385,13 @@ impl Buffer {
         Cow::Owned(text)
     }
 
-    /// Replaces `range` with `text` in the lines, leaving the chunk
-    /// list and its index for `restructure` and `reindex`, and
-    /// returns the replacement without its `after`.
-    fn splice(&mut self, range: Range<usize>, text: &str) -> Rep {
-        let (from, to) =
-            (self.find(range.start), self.find(range.end));
+    fn splice(
+        &mut self,
+        range: Range<usize>,
+        from: Pos,
+        to: Pos,
+        text: &str,
+    ) -> Rep {
         let rep = Rep {
             start: range.start,
             old: self.between(from, to).into_owned(),
@@ -440,8 +439,7 @@ impl Buffer {
     }
 
     /// Drops the chunks in `touched` that hold no line and splits
-    /// those past `MAX_LINES`. The first touched chunk keeps the line
-    /// its first replacement started on, so a chunk always remains.
+    /// those past `MAX_LINES`.
     fn restructure(&mut self, touched: Range<usize>) {
         let fits = |chunk: &Arc<Chunk>| {
             (1..=MAX_LINES).contains(&chunk.lines.len())
@@ -462,6 +460,10 @@ impl Buffer {
             }
         }
         self.chunks.splice(touched.start..touched.start, new);
+        debug_assert!(
+            !self.chunks.is_empty(),
+            "a replacement keeps the line it starts on"
+        );
     }
 
     fn reindex(&mut self, from: usize) {
@@ -485,7 +487,6 @@ impl Lines for Buffer {
     }
 }
 
-/// Writes the text, the lines joined with `\n`.
 impl fmt::Display for Buffer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut lines =

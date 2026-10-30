@@ -110,5 +110,4 @@ add-caret 101627:1
 add-caret 102664:1
 type let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);le
 expect undo-depth 2
-# The hash is the one `replay --model` prints for this script.
 expect hash 0600deff0d7cf65a

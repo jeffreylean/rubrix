@@ -12,5 +12,4 @@ expect line 3 use core::time::Duration; // one
 expect line 5 use bevy::color::Color; // two
 expect line 13 pub struct Monokai; // two
 expect carets 2 primary 2 5:31 13:27
-# The hash is the one `replay --model` prints for this script.
 expect hash c9bd7387ee2ef11e

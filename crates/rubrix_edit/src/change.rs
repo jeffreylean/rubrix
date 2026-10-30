@@ -28,8 +28,7 @@ pub(crate) struct Rep {
     /// The line of `start`, before the change.
     pub(crate) line: u32,
     /// Where `start` lands after the change: `start` plus the byte
-    /// delta of the replacements before this one. `Change::new` and
-    /// `Change::join` recompute it for every replacement.
+    /// delta of the replacements before this one.
     pub(crate) after: usize,
 }
 
@@ -39,7 +38,6 @@ impl Rep {
     }
 }
 
-/// The number of line breaks in `text`.
 fn breaks(text: &str) -> u32 {
     text.bytes().filter(|&byte| byte == b'\n').count() as u32
 }
@@ -115,14 +113,12 @@ impl Change {
     /// range lands at the end of the new text with [`Assoc::After`]
     /// and at its start with `Before`. O(log n) in the replacements.
     pub fn map(&self, offset: usize, assoc: Assoc) -> usize {
-        // The walk stops at the first replacement past `offset`, or
-        // holding it, and the ends of sorted, non-overlapping
-        // replacements ascend, so the stop is a partition point.
-        let stops = |rep: &Rep| match assoc {
+        let ends_past_offset = |rep: &Rep| match assoc {
             Assoc::After => offset < rep.end(),
             Assoc::Before => offset < rep.end().max(rep.start + 1),
         };
-        let i = self.reps.partition_point(|rep| !stops(rep));
+        let i =
+            self.reps.partition_point(|rep| !ends_past_offset(rep));
         match self.reps.get(i) {
             Some(rep) if rep.start <= offset => match assoc {
                 Assoc::After => self.end_after(i),
@@ -196,7 +192,6 @@ impl Change {
             .map(|rep| (rep.start..rep.end(), rep.new.as_str()))
     }
 
-    /// Where replacement `i` starts in the text after the change.
     pub(crate) fn start_after(&self, i: usize) -> usize {
         self.reps[i].after
     }

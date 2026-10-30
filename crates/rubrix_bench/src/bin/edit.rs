@@ -39,16 +39,14 @@ use rubrix_highlight::{Highlights, Lang, highlight};
 
 const STRESS_LINES: usize = 100_000;
 const WARMUP: usize = 60;
-/// The recorded samples of a row that repeats one key.
-const KEYS: usize = 100;
+const KEY_SAMPLES: usize = 100;
 const TYPED: &str = "let value = compute(alpha, beta);";
 const TYPED_KEYS: usize = 5_000;
 const SCATTERED: usize = 2_000;
 const ROUND_TRIPS: usize = 20_000;
 const CARETS: u32 = 100;
 const WINDOW: u32 = 60;
-/// The line Enter splits and Backspace joins onto, counted from 0.
-const LINE: u32 = 5_000;
+const ENTER_LINE: u32 = 5_000;
 
 struct Row {
     scenario: &'static str,
@@ -83,8 +81,7 @@ struct Session {
     editor: Editor,
     highlights: Highlights,
     lang: Lang,
-    /// Keys that changed no text.
-    idle: usize,
+    unchanged_keys: usize,
 }
 
 impl Session {
@@ -97,7 +94,6 @@ impl Session {
         self.editor.set_selections(selections);
     }
 
-    /// One timed keystroke.
     fn press(
         &mut self,
         command: Command<'_>,
@@ -107,7 +103,7 @@ impl Session {
         let Some(change) =
             self.editor.apply(command, &Monospace::default())
         else {
-            self.idle += 1;
+            self.unchanged_keys += 1;
             return start.elapsed();
         };
         let buffer = self.editor.buffer();
@@ -131,10 +127,10 @@ impl Session {
     }
 
     fn check(&mut self) -> Result<(), String> {
-        if self.idle > 0 {
+        if self.unchanged_keys > 0 {
             return Err(format!(
                 "{} keys changed no text",
-                self.idle
+                self.unchanged_keys
             ));
         }
         let buffer = self.editor.buffer();
@@ -245,7 +241,7 @@ fn run(lang: Lang, text: &str) -> Result<Vec<Row>, String> {
             editor: Editor::new(Buffer::new(text)),
             highlights: original.clone(),
             lang,
-            idle: 0,
+            unchanged_keys: 0,
         };
         session.place(carets);
         session
@@ -253,7 +249,7 @@ fn run(lang: Lang, text: &str) -> Result<Vec<Row>, String> {
     let carets: Vec<usize> = (0..CARETS)
         .map(|i| buffer.line_start(i * lines / CARETS))
         .collect();
-    let keys = WARMUP + KEYS;
+    let keys = WARMUP + KEY_SAMPLES;
 
     let mut rows = vec![keyed(
         session(&[buffer.line_start(lines / 2)]),
@@ -277,17 +273,20 @@ fn run(lang: Lang, text: &str) -> Result<Vec<Row>, String> {
         },
     )?);
     rows.push(keyed(
-        session(&[buffer.line_end(LINE)]),
+        session(&[buffer.line_end(ENTER_LINE)]),
         "enter at 5000",
         Some(500.0),
         keys,
         |session, _| {
-            session.place(&[session.editor.buffer().line_end(LINE)]);
+            session.place(&[session
+                .editor
+                .buffer()
+                .line_end(ENTER_LINE)]);
             session.press(Command::Enter, Around::Caret)
         },
     )?);
     rows.push(keyed(
-        session(&[buffer.line_start(LINE + 1)]),
+        session(&[buffer.line_start(ENTER_LINE + 1)]),
         "join at 5000",
         Some(500.0),
         keys,
@@ -295,7 +294,7 @@ fn run(lang: Lang, text: &str) -> Result<Vec<Row>, String> {
             session.place(&[session
                 .editor
                 .buffer()
-                .line_start(LINE + 1)]);
+                .line_start(ENTER_LINE + 1)]);
             session.press(Command::Backspace, Around::Caret)
         },
     )?);

@@ -201,7 +201,6 @@ impl Selections {
         self.normalize();
     }
 
-    /// Keeps only the primary.
     pub(crate) fn keep_primary(&mut self) {
         let primary = self.primary_index();
         self.items.swap(0, primary);
