@@ -1,7 +1,7 @@
 use bevy::app::App;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::world::{Mut, World};
-use bevy::ui::{Val, percent, px};
+use bevy::ui::{Display, Val, percent, px};
 use bevy_fynix::views::{
     FrameProps, RowSlot, VirtualList, column, frame, label, row,
     scroll, virtual_list,
@@ -123,54 +123,50 @@ fn controls() -> PageView {
 }
 
 fn splice_controls() -> PageView {
-    keyed(resource::<Rows, _>(|rows| rows.splice), |&on| {
-        if !on {
-            return column(()).boxed();
+    let buttons = row((
+        control("insert 20", |world| {
+            splice(world, MIDDLE, 0, new_rows());
+        }),
+        control("remove 20", |world| {
+            splice(world, MIDDLE, SPLICED, Vec::new());
+        }),
+        control("insert above", |world| {
+            splice(world, ABOVE, 0, new_rows());
+        }),
+        control("grow above", |world| {
+            let at = ABOVE + 1;
+            let was = world.resource::<Rows>().labels[at];
+            splice(world, at, 1, vec![Label::Grown(was.number(at))]);
+        }),
+        control("jump and insert", |world| {
+            if let Some(mut list) = first_list(world) {
+                list.scroll_to(JUMP);
+            }
+            splice(world, ABOVE, 0, new_rows());
+        }),
+        control("reveal wide", |world| {
+            let labels = &mut world.resource_mut::<Rows>().labels;
+            labels[MIDDLE] =
+                Label::Wide(labels[MIDDLE].number(MIDDLE));
+            if let Some(mut list) = first_list(world) {
+                list.scroll_x_into_view(WIDE..WIDE);
+            }
+        }),
+        toggle(
+            "sideways",
+            |rows| rows.sideways,
+            |rows| rows.sideways ^= true,
+        ),
+    ))
+    .gap(8.0)
+    .display(resource::<Rows, _>(|rows| {
+        if rows.splice {
+            Display::Flex
+        } else {
+            Display::None
         }
-        let buttons = row((
-            control("insert 20", |world| {
-                splice(world, MIDDLE, 0, new_rows());
-            }),
-            control("remove 20", |world| {
-                splice(world, MIDDLE, SPLICED, Vec::new());
-            }),
-            control("insert above", |world| {
-                splice(world, ABOVE, 0, new_rows());
-            }),
-            control("grow above", |world| {
-                let at = ABOVE + 1;
-                let was = world.resource::<Rows>().labels[at];
-                splice(
-                    world,
-                    at,
-                    1,
-                    vec![Label::Grown(was.number(at))],
-                );
-            }),
-            control("jump and insert", |world| {
-                if let Some(mut list) = first_list(world) {
-                    list.scroll_to(JUMP);
-                }
-                splice(world, ABOVE, 0, new_rows());
-            }),
-            control("reveal wide", |world| {
-                let labels = &mut world.resource_mut::<Rows>().labels;
-                labels[MIDDLE] =
-                    Label::Wide(labels[MIDDLE].number(MIDDLE));
-                if let Some(mut list) = first_list(world) {
-                    list.scroll_x_into_view(WIDE..WIDE);
-                }
-            }),
-            toggle(
-                "sideways",
-                |rows| rows.sideways,
-                |rows| rows.sideways ^= true,
-            ),
-        ))
-        .gap(8.0);
-        wrapping(buttons.boxed())
-    })
-    .boxed()
+    }));
+    wrapping(buttons.boxed())
 }
 
 fn new_rows() -> Vec<Label> {
