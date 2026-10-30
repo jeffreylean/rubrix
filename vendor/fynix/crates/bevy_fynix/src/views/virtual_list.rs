@@ -494,9 +494,9 @@ impl VirtualList {
     /// Where the row `index` sits in the list's content, `None` past
     /// the last row.
     pub fn row_span(&self, index: usize) -> Option<RowSpan> {
-        (index < self.heights.len()).then(|| RowSpan {
+        self.heights.row(index).map(|(height, _)| RowSpan {
             top: self.heights.offset(index) as f32,
-            height: self.heights.each[index],
+            height,
         })
     }
 
@@ -652,10 +652,9 @@ impl VirtualList {
     fn shows_measured(&self, scroll: f64, view: f64) -> bool {
         let first = self.shown_at(scroll);
         let last = self.heights.index_at(scroll + view - SHOWN);
-        self.heights
-            .known
-            .get(first..=last.max(first))
-            .is_none_or(|shown| shown.iter().all(|&known| known))
+        (first..=last.max(first)).all(|index| {
+            self.heights.row(index).is_none_or(|(_, known)| known)
+        })
     }
 
     fn landing(
@@ -687,7 +686,10 @@ impl VirtualList {
                     }
                 };
                 let top = self.heights.offset(index);
-                let height = f64::from(self.heights.each[index]);
+                let height = self
+                    .heights
+                    .row(index)
+                    .map_or(0.0, |(height, _)| f64::from(height));
                 let from = f64::from(from_top.0).clamp(0.0, height);
                 let to = f64::from(from_top.1).clamp(from, height);
                 let (lo, hi) = (top + from, top + to - view);
@@ -747,11 +749,16 @@ impl VirtualList {
             (y * self.physical_per_logical).round()
                 / self.physical_per_logical
         };
+        let tops = self
+            .heights
+            .offsets(start)
+            .take(pool + 1)
+            .map(whole)
+            .collect::<Vec<_>>();
         for placed in &mut self.slots {
-            let top = whole(self.heights.offset(placed.index));
-            let bottom = whole(self.heights.offset(placed.index + 1));
-            placed.top = top as f32;
-            placed.height = (bottom - top) as f32;
+            let at = placed.index - start;
+            placed.top = tops[at] as f32;
+            placed.height = (tops[at + 1] - tops[at]) as f32;
         }
         self.spawned = start..start + pool;
         self.first_visible = self.shown_at(scroll);
@@ -1039,99 +1046,341 @@ fn lower_median(heights: &mut [(usize, f32)]) -> Option<f32> {
     Some(height)
 }
 
+/// About how many rows a block of [`Heights`] holds.
+const BLOCK: usize = 512;
+
+/// Row heights in blocks of about [`BLOCK`] rows, under a Fenwick
+/// tree of the blocks' row counts and pixels. Every pixel prefix adds
+/// the tree's nodes in the order [`locate`](Self::locate) walks them,
+/// then the rows inside one block in order, so an offset is the same
+/// however it is reached.
 #[derive(Default)]
 struct Heights {
-    each: Vec<f32>,
-    known: Vec<bool>,
-    tree: Vec<f64>,
+    /// No block is empty.
+    blocks: Vec<Block>,
+    /// 1-based; `tree[k]` sums blocks `k - lowest(k)..k`.
+    tree: Vec<Sum>,
+    len: usize,
+}
+
+struct Block {
+    /// Each row's height, and whether it has been laid out.
+    rows: Vec<(f32, bool)>,
+    px: f64,
+}
+
+#[derive(Clone, Copy, Default)]
+struct Sum {
+    rows: usize,
+    px: f64,
 }
 
 fn lowest(k: usize) -> usize {
     k & k.wrapping_neg()
 }
 
+impl Block {
+    fn new(rows: Vec<(f32, bool)>) -> Self {
+        let px =
+            rows.iter().map(|&(height, _)| f64::from(height)).sum();
+        Self { rows, px }
+    }
+
+    fn offset(&self, row: usize, above: f64) -> f64 {
+        self.rows[..row]
+            .iter()
+            .fold(above, |at, &(height, _)| at + f64::from(height))
+    }
+}
+
 impl Heights {
     fn len(&self) -> usize {
-        self.each.len()
+        self.len
     }
 
     fn total(&self) -> f64 {
-        self.offset(self.len())
+        self.offset(self.len)
     }
 
     fn resize(&mut self, count: usize, estimate: f32) {
-        if self.tree.is_empty() {
-            self.tree.push(0.0);
+        let len = self.len;
+        self.splice(
+            count.min(len),
+            len.saturating_sub(count),
+            count.saturating_sub(len),
+            estimate,
+        );
+    }
+
+    /// Replaces rows `at..at + removed` with `inserted` rows of
+    /// `estimate`, not yet laid out. Only the blocks the rows sit in
+    /// are rebuilt, with a neighbour when they would hold under half
+    /// a block. The sums take a point update per block when as many
+    /// blocks come out as went in, and are rebuilt in O(blocks)
+    /// otherwise.
+    fn splice(
+        &mut self,
+        at: usize,
+        removed: usize,
+        inserted: usize,
+        estimate: f32,
+    ) {
+        let end = at + removed;
+        let (mut first, mut start) = match self.locate(at) {
+            (first, _, _)
+                if first == self.blocks.len() && first > 0 =>
+            {
+                (first - 1, at - self.blocks[first - 1].rows.len())
+            }
+            (first, row, _) => (first, at - row),
+        };
+        let mut stop = match self.locate(end) {
+            (last, 0, _) if last > first => last,
+            (last, _, _) => (last + 1).min(self.blocks.len()),
+        };
+        let run = self.blocks[first..stop]
+            .iter()
+            .map(|block| block.rows.len())
+            .sum::<usize>();
+        if run - removed + inserted < BLOCK / 2 {
+            if stop < self.blocks.len() {
+                stop += 1;
+            } else if first > 0 {
+                first -= 1;
+                start -= self.blocks[first].rows.len();
+            }
         }
-        self.known.resize(count, false);
-        self.each.resize(count, estimate);
-        self.tree.truncate(count + 1);
-        for k in self.tree.len()..=count {
-            let below =
-                self.offset(k - 1) - self.offset(k - lowest(k));
-            self.tree.push(f64::from(estimate) + below);
+        let mut rows = self.blocks[first..stop]
+            .iter()
+            .flat_map(|block| block.rows.iter().copied())
+            .collect::<Vec<_>>();
+        rows.splice(
+            at - start..end - start,
+            core::iter::repeat_n((estimate, false), inserted),
+        );
+        let pieces = pieces(rows);
+        let same = pieces.len() == stop - first;
+        if same {
+            for (block, piece) in (first..).zip(&pieces) {
+                let was = &self.blocks[block];
+                let rows = piece.rows.len() as isize
+                    - was.rows.len() as isize;
+                let px = piece.px - was.px;
+                self.add(block, rows, px);
+            }
         }
+        self.blocks.splice(first..stop, pieces);
+        if !same {
+            self.rebuild();
+        }
+        self.len = self.len - removed + inserted;
     }
 
     fn set(&mut self, index: usize, height: f32) {
-        self.known[index] = true;
-        if self.each[index] == height {
+        let (block, row, _) = self.locate(index);
+        let (was, known) = &mut self.blocks[block].rows[row];
+        *known = true;
+        if *was == height {
             return;
         }
-        let by = f64::from(height) - f64::from(self.each[index]);
-        self.each[index] = height;
-        let mut k = index + 1;
+        let by = f64::from(height) - f64::from(*was);
+        *was = height;
+        self.blocks[block].px += by;
+        self.add(block, 0, by);
+    }
+
+    fn forget(&mut self) {
+        for block in &mut self.blocks {
+            for (_, known) in &mut block.rows {
+                *known = false;
+            }
+        }
+    }
+
+    fn reestimate(&mut self, estimate: f32) {
+        for block in &mut self.blocks {
+            for (height, known) in &mut block.rows {
+                if !*known {
+                    *height = estimate;
+                }
+            }
+            *block = Block::new(core::mem::take(&mut block.rows));
+        }
+        self.rebuild();
+    }
+
+    fn add(&mut self, block: usize, rows: isize, px: f64) {
+        let mut k = block + 1;
         while k < self.tree.len() {
-            self.tree[k] += by;
+            self.tree[k].rows =
+                self.tree[k].rows.wrapping_add_signed(rows);
+            self.tree[k].px += px;
             k += lowest(k);
         }
     }
 
-    fn forget(&mut self) {
-        self.known.fill(false);
-    }
-
-    fn reestimate(&mut self, estimate: f32) {
-        for (height, &known) in self.each.iter_mut().zip(&self.known)
-        {
-            if !known {
-                *height = estimate;
-            }
-        }
-        let len = self.len();
-        self.tree.truncate(1);
-        self.tree.extend(self.each.iter().map(|&h| f64::from(h)));
-        for k in 1..=len {
+    fn rebuild(&mut self) {
+        self.tree.clear();
+        self.tree.push(Sum::default());
+        self.tree.extend(self.blocks.iter().map(|block| Sum {
+            rows: block.rows.len(),
+            px: block.px,
+        }));
+        for k in 1..self.tree.len() {
             let up = k + lowest(k);
-            if up <= len {
-                self.tree[up] += self.tree[k];
+            if let Some(&below) = self.tree.get(k)
+                && let Some(sum) = self.tree.get_mut(up)
+            {
+                sum.rows += below.rows;
+                sum.px += below.px;
             }
         }
     }
 
-    fn offset(&self, index: usize) -> f64 {
-        let mut sum = 0.0;
-        let mut k = index;
-        while k > 0 {
-            sum += self.tree[k];
-            k &= k - 1;
-        }
-        sum
-    }
-
-    fn index_at(&self, y: f64) -> usize {
-        let len = self.len();
-        let mut at = 0;
-        let mut left = y;
-        let mut step = len.checked_ilog2().map_or(0, |log| 1 << log);
+    /// The block row `index` sits in, its row in that block and the
+    /// pixels above the block. Row `len` sits past the last block.
+    fn locate(&self, index: usize) -> (usize, usize, f64) {
+        let (mut block, mut rows, mut px) = (0, 0, 0.0);
+        let mut step = self.top_step();
         while step > 0 {
-            let next = at + step;
-            if next <= len && self.tree[next] <= left {
-                at = next;
-                left -= self.tree[next];
+            let next = block + step;
+            if next < self.tree.len()
+                && rows + self.tree[next].rows <= index
+            {
+                block = next;
+                rows += self.tree[next].rows;
+                px += self.tree[next].px;
             }
             step >>= 1;
         }
-        at.min(len.saturating_sub(1))
+        (block, index - rows, px)
+    }
+
+    /// The pixels above `block`, added as [`locate`](Self::locate)
+    /// adds them.
+    fn above(&self, block: usize) -> f64 {
+        let (mut at, mut px) = (0, 0.0);
+        let mut step = self.top_step();
+        while step > 0 {
+            if at + step <= block {
+                at += step;
+                px += self.tree[at].px;
+            }
+            step >>= 1;
+        }
+        px
+    }
+
+    fn top_step(&self) -> usize {
+        self.blocks.len().checked_ilog2().map_or(0, |log| 1 << log)
+    }
+
+    fn row(&self, index: usize) -> Option<(f32, bool)> {
+        let (block, row, _) = self.locate(index);
+        self.blocks.get(block)?.rows.get(row).copied()
+    }
+
+    fn offset(&self, index: usize) -> f64 {
+        let (block, row, above) = self.locate(index);
+        self.blocks
+            .get(block)
+            .map_or(above, |block| block.offset(row, above))
+    }
+
+    /// [`offset`](Self::offset) of each row from `from` on, then the
+    /// total, in O(1) a row and O(log blocks) a block.
+    fn offsets(&self, from: usize) -> impl Iterator<Item = f64> + '_ {
+        let (mut block, mut row, _) = self.locate(from);
+        let mut at = self.offset(from);
+        core::iter::from_fn(move || {
+            let offset = at;
+            if let Some(rows) = self.blocks.get(block) {
+                if row + 1 < rows.rows.len() {
+                    at += f64::from(rows.rows[row].0);
+                    row += 1;
+                } else {
+                    block += 1;
+                    row = 0;
+                    at = self.above(block);
+                }
+            }
+            Some(offset)
+        })
+    }
+
+    fn index_at(&self, y: f64) -> usize {
+        let (mut block, mut rows, mut px) = (0, 0, 0.0);
+        let mut step = self.top_step();
+        while step > 0 {
+            let next = block + step;
+            if next < self.tree.len() && px + self.tree[next].px <= y
+            {
+                block = next;
+                rows += self.tree[next].rows;
+                px += self.tree[next].px;
+            }
+            step >>= 1;
+        }
+        let Some(block) = self.blocks.get(block) else {
+            return self.len.saturating_sub(1);
+        };
+        let last = block.rows.len() - 1;
+        let mut row = 0;
+        for &(height, _) in &block.rows[..last] {
+            px += f64::from(height);
+            if px > y {
+                break;
+            }
+            row += 1;
+        }
+        rows + row
+    }
+}
+
+/// `rows` cut into blocks: one, unless there are more than two
+/// blocks' worth, which are cut into equal pieces of about [`BLOCK`].
+fn pieces(rows: Vec<(f32, bool)>) -> Vec<Block> {
+    if rows.is_empty() {
+        return Vec::new();
+    }
+    if rows.len() <= 2 * BLOCK {
+        return vec![Block::new(rows)];
+    }
+    let count = rows.len().div_ceil(BLOCK);
+    (0..count)
+        .map(|piece| {
+            let from = piece * rows.len() / count;
+            let to = (piece + 1) * rows.len() / count;
+            Block::new(rows[from..to].to_vec())
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn splice_walk_matches_offset() {
+        let mut heights = Heights::default();
+        heights.resize(3_000, 19.3);
+        for index in (0..3_000).step_by(7) {
+            heights.set(index, 13.7 + (index % 11) as f32 * 0.37);
+        }
+        heights.splice(100, 0, 700, 21.1);
+        heights.splice(1_500, 1_200, 3, 21.1);
+        heights.splice(0, 40, 0, 21.1);
+        let len = heights.len();
+        for from in [0, 1, 511, 512, 1_000, len - 1, len] {
+            let walked = heights
+                .offsets(from)
+                .take(len + 1 - from)
+                .collect::<Vec<_>>();
+            let offsets = (from..=len)
+                .map(|index| heights.offset(index))
+                .collect::<Vec<_>>();
+            assert!(walked == offsets, "the walk from {from}");
+        }
+        assert!(heights.total() == heights.offset(len));
     }
 }
