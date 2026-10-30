@@ -1,0 +1,26 @@
+page code
+wait 30
+log caret
+expect caret n/a
+log text 1
+expect text 1 n/a
+log undo
+expect undo n/a
+page diff
+wait 30
+log caret
+expect caret n/a
+log text 1
+expect text 1 n/a
+log undo
+expect undo n/a
+page virtual_list
+wait 120
+log caret
+expect caret n/a
+log text 1
+expect text 1 n/a
+log undo
+expect undo n/a
+screenshot g2-topics.png
+exit

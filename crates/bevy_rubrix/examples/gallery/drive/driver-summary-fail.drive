@@ -1,0 +1,6 @@
+page about
+wait 1
+expect page about
+expect theme dark
+expect page code
+exit

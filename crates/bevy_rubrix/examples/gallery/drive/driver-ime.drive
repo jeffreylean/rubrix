@@ -1,0 +1,19 @@
+page about
+wait 30
+ime enable
+log ime
+expect ime last enabled page n/a
+ime preedit 你好 0 6
+log ime
+expect ime last preedit "你好" 0..6 page n/a
+ime commit 你好
+log ime
+expect ime last commit "你好" page n/a
+ime preedit
+log ime
+expect ime last preedit "" page n/a
+ime disable
+log ime
+expect ime last disabled page n/a
+screenshot g2-ime.png
+exit

@@ -1,0 +1,153 @@
+page about
+wait 30
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+paste beta
+log paste
+expect paste "beta"
+exit
