@@ -101,15 +101,7 @@ impl Highlights {
             removed,
             inserted,
         } = edit;
-        let old_count = self.line_count();
-        assert!(
-            first <= old_count && removed <= old_count - first,
-            "edit past the end of the lines"
-        );
-        let new_count = (old_count - removed)
-            .checked_add(inserted)
-            .filter(|&count| count > 0)
-            .expect("edit leaves no lines");
+        let new_count = self.count_after(edit);
 
         if first < window.start {
             self.defer(edit, lines);
@@ -166,6 +158,153 @@ impl Highlights {
             line
         };
         hull.finish()
+    }
+
+    /// Brings the highlights up to date with every line edit of one
+    /// change that has already changed `lines` as a whole, and
+    /// returns the hull of the lines inside `window` whose runs
+    /// changed, or `0..0` if none did.
+    ///
+    /// The edits come in ascending order, in sequential coordinates:
+    /// each `first` counts lines in the text with every earlier edit
+    /// applied and no later one, which is the line of the final text
+    /// where the edit's new lines begin. So
+    /// `edits[i].first + edits[i].inserted <= edits[i + 1].first`.
+    /// Every edit removes at least one line, so the state below it
+    /// can be compared with the state from before. A text editor's
+    /// change gives exactly these edits.
+    ///
+    /// Each edit's own lines are lexed. Then the lines below it are
+    /// lexed while their start states differ from before, until they
+    /// converge, reach the next edit, or reach the end of `window`.
+    /// An edit at or below the end of `window` lexes its own lines
+    /// and stops there, as [`Highlights::edit`] does. Unlike `edit`,
+    /// an edit above `window` is lexed and not deferred, so 100
+    /// scattered carets leave nothing stale when each edit converges
+    /// at once, which typing does. Once a chain stops without
+    /// converging, the edits below it are spliced without lexing.
+    ///
+    /// On return every line of `window` is current, so reading its
+    /// runs lexes nothing, and the hull holds every line of `window`
+    /// whose runs changed. Lexing never goes past the end of
+    /// `window`, except for the lines of edits below it. An edit
+    /// whose state change never converges, such as `/*` typed above
+    /// the window in Rust, costs a lex of every line from it to the
+    /// end of `window`, because the window's start state depends on
+    /// all of them. `edit` pays the same at the next read.
+    ///
+    /// Stale lines from an earlier [`Highlights::edit`] are lexed as
+    /// far as the end of `window`, and edits below them are spliced
+    /// without lexing. So an editor calls this method for every
+    /// change and not `edit`, which would leave such lines above the
+    /// window.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the edits are out of order or overlap, if an edit
+    /// removes no line, lies past the last line or leaves the text
+    /// with no line, or if the text grows to 4 GiB or more.
+    pub fn edit_many(
+        &mut self,
+        edits: impl IntoIterator<Item = LineEdit>,
+        lines: &(impl Lines + ?Sized),
+        window: Range<u32>,
+    ) -> Range<u32> {
+        let mut hull = Hull::new(window.clone(), 0..0);
+        let mut edits = edits.into_iter().peekable();
+        let mut floor = 0;
+        while let Some(edit) = edits.next() {
+            let LineEdit {
+                first,
+                removed,
+                inserted,
+            } = edit;
+            assert!(first >= floor, "line edits out of order");
+            assert!(removed > 0, "a line edit removes no line");
+            self.count_after(edit);
+            floor = first + inserted;
+            let end = first + removed;
+            if end > self.exact {
+                self.defer(edit, lines);
+                for line in first..floor {
+                    hull.note(line, true);
+                }
+                continue;
+            }
+
+            let boundary = self.lines.start_state(end).clone();
+            let stale = self.exact < self.line_count();
+            self.splice(edit, lines);
+            self.exact = self.exact - removed + inserted;
+            if stale && self.compare_from >= end {
+                self.compare_from =
+                    self.compare_from - removed + inserted;
+            }
+            for line in first..floor {
+                self.relex(line, lines);
+                hull.note(line, true);
+            }
+
+            let next =
+                edits.peek().map_or(u32::MAX, |next| next.first);
+            let mut expected = boundary;
+            let mut line = floor;
+            while line < next && line < self.exact {
+                if *self.lines.start_state(line) == expected {
+                    break;
+                }
+                if line >= window.end {
+                    self.give_up(line);
+                    break;
+                }
+                let relexed = self.relex(line, lines);
+                hull.note(line, relexed.changed);
+                expected = relexed.before;
+                line += 1;
+            }
+        }
+        let upto = window.end.min(self.line_count());
+        if self.exact < upto {
+            self.catch_up(upto, lines, &mut hull);
+        }
+        hull.finish()
+    }
+
+    /// The line count after `edit`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the edit lies past the last line, or leaves the text
+    /// with no line or with 4 Gi lines or more.
+    fn count_after(&self, edit: LineEdit) -> u32 {
+        let LineEdit {
+            first,
+            removed,
+            inserted,
+        } = edit;
+        let count = self.line_count();
+        assert!(
+            first <= count && removed <= count - first,
+            "edit past the end of the lines"
+        );
+        (count - removed)
+            .checked_add(inserted)
+            .filter(|&count| count > 0)
+            .expect("edit leaves no lines")
+    }
+
+    /// Marks the lines from `line` on stale after a chain stopped
+    /// there without converging. The lines from `line` up to any
+    /// older stale lines were lexed from the states before the chain,
+    /// so `catch_up` may only stop once it is past the older stale
+    /// lines and their placeholders.
+    fn give_up(&mut self, line: u32) {
+        self.compare_from = if self.exact < self.line_count() {
+            self.compare_from.max(self.exact)
+        } else {
+            line
+        };
+        self.exact = line;
     }
 
     /// The runs of a line, lexing first any stale lines up to it, in

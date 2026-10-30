@@ -590,3 +590,402 @@ fn edit_past_the_end_panics() {
     };
     got.edit(edit, &lines, 0..1);
 }
+
+struct Batch {
+    edits: Vec<LineEdit>,
+    /// For each line after the batch, the line it was before, or
+    /// `None` for a line an edit wrote.
+    origin: Vec<Option<u32>>,
+}
+
+/// Applies up to `most` random line edits at once, ascending and in
+/// pre-edit lines, and returns them in sequential coordinates.
+fn random_batch(
+    rng: &mut Rng,
+    lines: &mut Vec<String>,
+    most: u32,
+) -> Batch {
+    let count = lines.len() as u32;
+    let mut picked = Vec::new();
+    let mut at = 0;
+    for _ in 0..1 + rng.below(most) {
+        let first = at + rng.below(count / most + 3);
+        if first >= count {
+            break;
+        }
+        let removed = (1 + rng.below(3)).min(count - first);
+        let inserted = rng.below(4);
+        picked.push((first, removed, inserted));
+        at = first + removed;
+    }
+    if picked.is_empty() {
+        picked.push((0, 1, 1));
+    }
+    let survivors: u32 =
+        picked.iter().map(|&(_, removed, _)| removed).sum();
+    if survivors == count && picked.iter().all(|edit| edit.2 == 0) {
+        picked.last_mut().unwrap().2 = 1;
+    }
+
+    let mut out = Vec::new();
+    let mut origin = Vec::new();
+    let mut edits = Vec::new();
+    let mut kept = 0;
+    for (first, removed, inserted) in picked {
+        for old in kept..first {
+            out.push(lines[old as usize].clone());
+            origin.push(Some(old));
+        }
+        edits.push(LineEdit {
+            first: out.len() as u32,
+            removed,
+            inserted,
+        });
+        for n in 0..inserted {
+            let line = match lines.get((first + n) as usize) {
+                Some(line) if n < removed && rng.chance(80) => {
+                    mutate(rng, line, lines)
+                }
+                _ => fragment(rng, lines),
+            };
+            out.push(line);
+            origin.push(None);
+        }
+        kept = first + removed;
+    }
+    for old in kept..count {
+        out.push(lines[old as usize].clone());
+        origin.push(Some(old));
+    }
+    *lines = out;
+    Batch { edits, origin }
+}
+
+fn random_window(rng: &mut Rng, count: u32) -> Range<u32> {
+    match rng.below(4) {
+        0 => 0..u32::MAX,
+        1 => 0..0,
+        _ => {
+            let start = rng.below(count + 1);
+            start..start + rng.below(60)
+        }
+    }
+}
+
+fn batch_hull(
+    old: &Highlights,
+    new: &Highlights,
+    origin: &[Option<u32>],
+    window: &Range<u32>,
+) -> Range<u32> {
+    let mut changed = (window.start
+        ..window.end.min(new.line_count()))
+        .filter(|&n| match origin[n as usize] {
+            None => true,
+            Some(was) => new.stored_runs(n) != old.stored_runs(was),
+        });
+    let Some(start) = changed.next() else {
+        return 0..0;
+    };
+    start..changed.next_back().unwrap_or(start) + 1
+}
+
+#[track_caller]
+fn assert_window_current(
+    got: &Highlights,
+    window: &Range<u32>,
+    context: &str,
+) {
+    let upto = window.end.min(got.line_count());
+    assert!(
+        got.stale_from().is_none_or(|stale| stale >= upto),
+        "{context}: stale from {:?} inside the window",
+        got.stale_from()
+    );
+}
+
+#[test]
+fn random_batches_match_highlight() {
+    let seed = seed();
+    for (index, (lang, path, text)) in
+        golden_texts().iter().enumerate()
+    {
+        let name = path.file_name().unwrap().to_str().unwrap();
+        let mut rng = Rng(seed ^ ((index as u64 + 7) << 32));
+        let mut lines = split(text);
+        let mut got = highlight(*lang, text);
+        for step in 0..EDITS {
+            if rng.chance(20) {
+                let (edit, window) =
+                    random_edit(&mut rng, &mut lines);
+                got.edit(edit, &lines, window);
+                continue;
+            }
+            let before = got.clone();
+            let batch = random_batch(&mut rng, &mut lines, 6);
+            let window = random_window(&mut rng, lines.len() as u32);
+            let context = format!(
+                "{name} seed {seed} batch {step} {:?} window \
+                 {window:?}",
+                batch.edits
+            );
+            let changed = got.edit_many(
+                batch.edits.iter().copied(),
+                &lines,
+                window.clone(),
+            );
+            assert!(
+                changed.is_empty()
+                    || (window.start <= changed.start
+                        && changed.end <= window.end),
+                "{context}: changed {changed:?} leaves the window"
+            );
+            assert_window_current(&got, &window, &context);
+            let text = join(&lines);
+            let want = highlight(*lang, &text);
+            assert_current_prefix(&got, &want, &text, &context);
+            if before.stale_from().is_none() {
+                assert_eq!(
+                    changed,
+                    batch_hull(
+                        &before,
+                        &want,
+                        &batch.origin,
+                        &window
+                    ),
+                    "{context}: changed is not the hull of the \
+                     changed lines"
+                );
+            }
+        }
+        settle(&mut got, &lines);
+        let text = join(&lines);
+        assert!(
+            got == highlight(*lang, &text),
+            "{name} seed {seed}: final text differs"
+        );
+        got.check(&text).unwrap();
+    }
+}
+
+#[test]
+fn one_edit_in_the_window_lexes_as_edit_does() {
+    let seed = seed();
+    for (index, (lang, _, text)) in golden_texts().iter().enumerate()
+    {
+        let mut rng = Rng(seed ^ ((index as u64 + 11) << 32));
+        let mut lines = split(text);
+        let mut single = highlight(*lang, text);
+        let mut many = single.clone();
+        for _ in 0..EDITS {
+            if single.stale_from().is_some() {
+                settle(&mut single, &lines);
+                many = single.clone();
+            }
+            let (edit, window) = random_edit(&mut rng, &mut lines);
+            if edit.removed == 0 || edit.first < window.start {
+                single.edit(edit, &lines, 0..u32::MAX);
+                settle(&mut single, &lines);
+                many = single.clone();
+                continue;
+            }
+            let want = single.edit(edit, &lines, window.clone());
+            let got = many.edit_many([edit], &lines, window);
+            assert_eq!(got, want);
+            assert_eq!(many.stale_from(), single.stale_from());
+            assert!(many == single);
+        }
+    }
+}
+
+fn large_rust() -> Vec<String> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../bench/fixtures/rust/large.rs.txt");
+    split(&fs::read_to_string(path).unwrap())
+}
+
+/// One keystroke at every caret: the carets as (line, byte column)
+/// in buffer order, one per line. Returns the keystroke's line edits.
+fn keystroke(
+    rng: &mut Rng,
+    lines: &mut Vec<String>,
+    carets: &mut [(u32, usize)],
+) -> Vec<LineEdit> {
+    const TYPED: [&str; 8] =
+        ["x", "x", "x", " ", "/*", "*/", "\"", "{"];
+    let kind = rng.below(10);
+    let typed = TYPED[rng.below(TYPED.len() as u32) as usize];
+    let mut edits = Vec::new();
+    let mut delta: i64 = 0;
+    let mut previous_line = None;
+    let mut out = Vec::new();
+    let mut kept = 0;
+    for caret in carets.iter_mut() {
+        let (line, col) = *caret;
+        let first = (line as i64 + delta) as u32;
+        let text = &lines[line as usize];
+        let (removed, new): (u32, Vec<String>) = match kind {
+            0 | 1 => {
+                let (head, tail) = text.split_at(col);
+                *caret = (first + 1, 0);
+                (1, vec![head.to_owned(), tail.to_owned()])
+            }
+            2 | 3 if col == 0 => {
+                let above = line.checked_sub(1);
+                if above.is_none() || above == previous_line {
+                    *caret = (first, col);
+                    (1, vec![text.clone()])
+                } else {
+                    let up = &lines[line as usize - 1];
+                    *caret = (first, up.len());
+                    (2, vec![format!("{up}{text}")])
+                }
+            }
+            2 | 3 => {
+                let back = text[..col].chars().next_back().unwrap();
+                let at = col - back.len_utf8();
+                let mut text = text.clone();
+                text.remove(at);
+                *caret = (first, at);
+                (1, vec![text])
+            }
+            _ => {
+                let mut text = text.clone();
+                text.insert_str(col, typed);
+                *caret = (first, col + typed.len());
+                (1, vec![text])
+            }
+        };
+        let start = line + 1 - removed;
+        for old in kept..start {
+            out.push(lines[old as usize].clone());
+        }
+        let first = out.len() as u32;
+        if removed == 2 {
+            caret.0 = first;
+        }
+        edits.push(LineEdit {
+            first,
+            removed,
+            inserted: new.len() as u32,
+        });
+        delta += new.len() as i64 - removed as i64;
+        out.extend(new);
+        kept = line + 1;
+        previous_line = Some(line);
+    }
+    for old in kept..lines.len() as u32 {
+        out.push(lines[old as usize].clone());
+    }
+    *lines = out;
+    edits
+}
+
+#[test]
+fn keystrokes_at_100_carets_match_highlight() {
+    let seed = seed();
+    let mut rng = Rng(seed ^ (13 << 32));
+    let mut lines = large_rust();
+    let mut got = highlight(Lang::Rust, &join(&lines));
+    let step = lines.len() as u32 / 100;
+    let mut carets: Vec<(u32, usize)> =
+        (0..100).map(|k| (k * step + 3, 0)).collect();
+    for key in 0..200 {
+        let edits = keystroke(&mut rng, &mut lines, &mut carets);
+        let count = lines.len() as u32;
+        let start = rng.below(count.saturating_sub(60));
+        let window = start..start + 60;
+        let context =
+            format!("seed {seed} key {key} window {window:?}");
+        got.edit_many(edits, &lines, window.clone());
+        assert_window_current(&got, &window, &context);
+        let text = join(&lines);
+        let want = highlight(Lang::Rust, &text);
+        assert_current_prefix(&got, &want, &text, &context);
+        for line in window {
+            assert_eq!(
+                got.stored_runs(line),
+                want.stored_runs(line),
+                "{context}: line {line}"
+            );
+        }
+    }
+    settle(&mut got, &lines);
+    assert!(got == highlight(Lang::Rust, &join(&lines)));
+}
+
+#[test]
+fn comments_opened_at_100_carets_stop_at_the_window() {
+    let mut lines = numbered(10_000);
+    let mut got = highlight(Lang::Rust, &join(&lines));
+    let edits: Vec<LineEdit> = (0..100)
+        .map(|k| {
+            lines[k * 100].insert_str(0, "/*");
+            LineEdit {
+                first: k as u32 * 100,
+                removed: 1,
+                inserted: 1,
+            }
+        })
+        .collect();
+    let changed = got.edit_many(edits, &lines, 5_000..5_060);
+    assert_eq!(changed, 5_000..5_060);
+    assert_eq!(got.stale_from(), Some(5_060));
+    assert!(
+        got.stored_runs(9_000)
+            .iter()
+            .any(|run| run.kind != Kind::Comment),
+        "a line past the window was lexed early"
+    );
+    settle(&mut got, &lines);
+    assert!(got == highlight(Lang::Rust, &join(&lines)));
+}
+
+#[test]
+fn typing_at_100_carets_leaves_nothing_stale() {
+    let mut lines = numbered(100_000);
+    let mut got = highlight(Lang::Rust, &join(&lines));
+    let edits: Vec<LineEdit> = (0..100)
+        .map(|k| {
+            lines[k * 1_000].push('x');
+            LineEdit {
+                first: k as u32 * 1_000,
+                removed: 1,
+                inserted: 1,
+            }
+        })
+        .collect();
+    got.edit_many(edits, &lines, 50_000..50_060);
+    assert_eq!(got.stale_from(), None);
+    assert!(got == highlight(Lang::Rust, &join(&lines)));
+}
+
+#[test]
+#[should_panic(expected = "out of order")]
+fn line_edits_out_of_order_panic() {
+    let lines = numbered(10);
+    let mut got = highlight(Lang::Rust, &join(&lines));
+    let edit = |first| LineEdit {
+        first,
+        removed: 1,
+        inserted: 1,
+    };
+    got.edit_many([edit(5), edit(2)], &lines, 0..10);
+}
+
+#[test]
+fn a_deferred_edit_in_the_window_counts_as_changed() {
+    let mut lines = numbered(100);
+    let mut got = highlight(Lang::Plain, &join(&lines));
+    let edit = |first| LineEdit {
+        first,
+        removed: 1,
+        inserted: 1,
+    };
+    lines[10].push('x');
+    got.edit(edit(10), &lines, 50..60);
+    assert_eq!(got.stale_from(), Some(10));
+    lines[55].push('y');
+    assert_eq!(got.edit_many([edit(55)], &lines, 50..60), 55..56);
+    assert_window_current(&got, &(50..60), "plain");
+}
