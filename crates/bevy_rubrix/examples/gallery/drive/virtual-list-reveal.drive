@@ -1,0 +1,16 @@
+page virtual_list
+wait 30
+click 1030 68
+wait 2
+click 1178 118
+wait 2
+move 740 400
+scroll 0 -84899
+wait 10
+log rows
+click 1030 118
+wait 10
+log rows
+expect rows x 1960
+screenshot f3-reveal.png
+exit

@@ -1,0 +1,17 @@
+page virtual_list
+wait 30
+click 1030 68
+wait 2
+move 740 400
+scroll 0 -85000
+wait 10
+log rows
+expect rows first_visible 4996
+click 734 118
+log rows
+expect rows first_visible 4996
+wait 10
+log rows
+expect rows first_visible 4996
+screenshot f3-grow.png
+exit

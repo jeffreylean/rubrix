@@ -1,0 +1,10 @@
+page virtual_list
+wait 30
+click 1030 68
+wait 2
+click 882 118
+wait 30
+log rows
+expect rows first_visible 9020
+screenshot f3-jump.png
+exit
