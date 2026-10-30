@@ -29,6 +29,15 @@ else
   echo "MISSING crates/bevy_rubrix/examples/gallery/main.rs in $repo"; status=1
 fi
 
+ime="only launch.sh --ime-live with a real input method needs it"
+if command -v wtype > /dev/null; then echo "ok   wtype"; else echo "info wtype is missing, $ime"; fi
+if pgrep -x fcitx5 > /dev/null; then echo "ok   fcitx5 running"; else echo "info fcitx5 is not running, $ime"; fi
+if command -v pacman > /dev/null && pacman -Q fcitx5-chinese-addons > /dev/null 2>&1; then
+  echo "ok   fcitx5-chinese-addons"
+else
+  echo "info fcitx5-chinese-addons is not installed, $ime"
+fi
+
 running=$(pgrep -x gallery | paste -sd' ')
 echo "info galleries running now: ${running:-none} (never kill one you did not start)"
 exit "$status"
