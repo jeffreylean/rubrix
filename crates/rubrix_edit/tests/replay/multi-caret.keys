@@ -1,0 +1,19 @@
+# One keystroke at three carets is one undo step.
+# Lines 3, 5 and 13 start with text. The caret added last, on line
+# 5, is the primary though line 13 is lower.
+caret 13:1
+add-caret 3:1
+add-caret 5:1
+expect carets 3 primary 2 3:1 5:1 13:1
+type x
+expect line 3 xuse core::time::Duration;
+expect line 5 xuse bevy::color::Color;
+expect line 13 xpub struct Monokai;
+expect carets 3 primary 2 3:2 5:2 13:2
+expect undo-depth 1
+key undo
+expect line 3 use core::time::Duration;
+expect line 5 use bevy::color::Color;
+expect line 13 pub struct Monokai;
+expect carets 3 primary 2 3:1 5:1 13:1
+expect undo-depth 0

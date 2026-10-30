@@ -1,0 +1,114 @@
+# 5,000 keys at one caret, then 200 keys at 100 carets, on the
+# 100,000-line input that `rubrix_bench --bin edit` times.
+repeat 100000
+# Line 51,873 is the sixth copy's `pub struct Monokai;`, near the
+# middle of the 103,721 lines.
+caret 51873:20
+type let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compu
+expect undo-depth 1
+# The 100 carets sit at column 1 of every 1,037th line from line
+# 1, which keeps them apart and off line 51,873.
+caret 1:1
+add-caret 1038:1
+add-caret 2075:1
+add-caret 3112:1
+add-caret 4149:1
+add-caret 5186:1
+add-caret 6223:1
+add-caret 7260:1
+add-caret 8297:1
+add-caret 9334:1
+add-caret 10371:1
+add-caret 11408:1
+add-caret 12445:1
+add-caret 13482:1
+add-caret 14519:1
+add-caret 15556:1
+add-caret 16593:1
+add-caret 17630:1
+add-caret 18667:1
+add-caret 19704:1
+add-caret 20741:1
+add-caret 21778:1
+add-caret 22815:1
+add-caret 23852:1
+add-caret 24889:1
+add-caret 25926:1
+add-caret 26963:1
+add-caret 28000:1
+add-caret 29037:1
+add-caret 30074:1
+add-caret 31111:1
+add-caret 32148:1
+add-caret 33185:1
+add-caret 34222:1
+add-caret 35259:1
+add-caret 36296:1
+add-caret 37333:1
+add-caret 38370:1
+add-caret 39407:1
+add-caret 40444:1
+add-caret 41481:1
+add-caret 42518:1
+add-caret 43555:1
+add-caret 44592:1
+add-caret 45629:1
+add-caret 46666:1
+add-caret 47703:1
+add-caret 48740:1
+add-caret 49777:1
+add-caret 50814:1
+add-caret 51851:1
+add-caret 52888:1
+add-caret 53925:1
+add-caret 54962:1
+add-caret 55999:1
+add-caret 57036:1
+add-caret 58073:1
+add-caret 59110:1
+add-caret 60147:1
+add-caret 61184:1
+add-caret 62221:1
+add-caret 63258:1
+add-caret 64295:1
+add-caret 65332:1
+add-caret 66369:1
+add-caret 67406:1
+add-caret 68443:1
+add-caret 69480:1
+add-caret 70517:1
+add-caret 71554:1
+add-caret 72591:1
+add-caret 73628:1
+add-caret 74665:1
+add-caret 75702:1
+add-caret 76739:1
+add-caret 77776:1
+add-caret 78813:1
+add-caret 79850:1
+add-caret 80887:1
+add-caret 81924:1
+add-caret 82961:1
+add-caret 83998:1
+add-caret 85035:1
+add-caret 86072:1
+add-caret 87109:1
+add-caret 88146:1
+add-caret 89183:1
+add-caret 90220:1
+add-caret 91257:1
+add-caret 92294:1
+add-caret 93331:1
+add-caret 94368:1
+add-caret 95405:1
+add-caret 96442:1
+add-caret 97479:1
+add-caret 98516:1
+add-caret 99553:1
+add-caret 100590:1
+add-caret 101627:1
+add-caret 102664:1
+type let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);let value = compute(alpha, beta);le
+expect undo-depth 2
+# The hash is the one `replay --model` prints for this script.
+expect hash 0600deff0d7cf65a

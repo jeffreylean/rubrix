@@ -1,0 +1,24 @@
+# Carets whose deletions meet merge into one.
+# Line 13 is `pub struct Monokai;`. The carets sit on either side of
+# the first `t` of `struct`.
+caret 13:6
+add-caret 13:7
+expect carets 2 primary 2 13:6 13:7
+key backspace
+expect line 13 pub ruct Monokai;
+expect carets 1 primary 1 13:5
+key backspace
+expect line 13 pubruct Monokai;
+expect carets 1 primary 1 13:4
+# The merged caret takes the newest caret's slot. The oldest and the
+# newest meet on line 5, `use bevy::color::Color;`, and the middle
+# one is on line 3, above them, so only the newest slot makes the
+# merged caret the primary.
+caret 5:6
+add-caret 3:6
+add-caret 5:7
+expect carets 3 primary 3 3:6 5:6 5:7
+key backspace
+expect line 3 use ore::time::Duration;
+expect line 5 use vy::color::Color;
+expect carets 2 primary 2 3:5 5:5

@@ -4695,6 +4695,7 @@ name = "rubrix_bench"
 version = "0.0.3"
 dependencies = [
  "rubrix_diff",
+ "rubrix_edit",
  "rubrix_highlight",
 ]
 
