@@ -116,6 +116,39 @@ impl Lines {
         self.ends.push(self.text.len() as u32);
     }
 
+    pub(crate) fn splice(
+        &mut self,
+        lines: Range<u32>,
+        text: &str,
+    ) -> u32 {
+        let byte = |line: u32| {
+            line.checked_sub(1).map_or(0, |i| self.ends[i as usize])
+        };
+        let (from, to) = (byte(lines.start), byte(lines.end));
+        assert!(
+            self.text.len() - (to - from) as usize + text.len()
+                < u32::MAX as usize,
+            "text is 4 GiB or longer"
+        );
+        self.text.replace_range(from as usize..to as usize, text);
+        let mut end = from;
+        let ends = text.split_inclusive('\n').map(|line| {
+            end += line.len() as u32;
+            end
+        });
+        let before = self.ends.len() - lines.len();
+        self.ends
+            .splice(lines.start as usize..lines.end as usize, ends);
+        let inserted = self.ends.len() - before;
+        let shift = (text.len() as u32).wrapping_sub(to - from);
+        let below = lines.start as usize + inserted;
+        for end in &mut self.ends[below..] {
+            *end = end.wrapping_add(shift);
+        }
+        debug_assert!(self.is_well_formed());
+        inserted as u32
+    }
+
     pub(crate) fn strip_last_newline(&mut self) {
         debug_assert!(self.raw(self.len() - 1).len() > 1);
         debug_assert!(self.text.ends_with('\n'));
@@ -270,6 +303,14 @@ impl Hunk {
         self.new_offset
     }
 
+    pub(crate) fn old_end(&self) -> u32 {
+        self.old_offset + self.old_len()
+    }
+
+    pub(crate) fn new_end(&self) -> u32 {
+        self.new_offset + self.new_len()
+    }
+
     pub(crate) fn old_index(&self) -> u32 {
         self.blocks
             .first()
@@ -280,6 +321,20 @@ impl Hunk {
         self.blocks
             .first()
             .map_or(0, |block| block.new_range().start)
+    }
+
+    pub(crate) fn shift_new(&mut self, by: i64) {
+        let moved = |at: &mut u32| {
+            *at = u32::try_from(i64::from(*at) + by)
+                .expect("a shifted hunk stays in the file");
+        };
+        moved(&mut self.new_offset);
+        for block in &mut self.blocks {
+            match block {
+                Block::Context { new_start, .. }
+                | Block::Change { new_start, .. } => moved(new_start),
+            }
+        }
     }
 }
 
@@ -331,8 +386,8 @@ pub fn header_start(start: u32, count: u32) -> Option<u32> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileDiff {
     old: Lines,
-    new: Lines,
-    hunks: Vec<Hunk>,
+    pub(crate) new: Lines,
+    pub(crate) hunks: Vec<Hunk>,
     change: FileChange,
     old_name: Option<String>,
     new_name: Option<String>,
@@ -567,11 +622,22 @@ impl FileDiff {
     /// sum to the block's.
     pub fn split_changes(
         &mut self,
+        split: impl FnMut(&Lines, &Lines, Block, &mut Vec<(u32, u32)>),
+    ) -> Result<(), Invariant> {
+        self.split_changes_in(0..self.hunks.len(), split)?;
+        debug_assert_eq!(self.check(), Ok(()));
+        Ok(())
+    }
+
+    pub(crate) fn split_changes_in(
+        &mut self,
+        hunks: Range<usize>,
         mut split: impl FnMut(&Lines, &Lines, Block, &mut Vec<(u32, u32)>),
     ) -> Result<(), Invariant> {
         let mut parts = Vec::new();
-        let mut lists = Vec::with_capacity(self.hunks.len());
-        for (h, hunk) in (0..).zip(&self.hunks) {
+        let mut lists = Vec::with_capacity(hunks.len());
+        let first = hunks.start as u32;
+        for (h, hunk) in (first..).zip(&self.hunks[hunks.clone()]) {
             let mut list = Vec::with_capacity(hunk.blocks.len());
             for (b, &block) in (0..).zip(&hunk.blocks) {
                 let Block::Change {
@@ -616,10 +682,9 @@ impl FileDiff {
             }
             lists.push(list);
         }
-        for (hunk, list) in self.hunks.iter_mut().zip(lists) {
+        for (hunk, list) in self.hunks[hunks].iter_mut().zip(lists) {
             hunk.blocks = list;
         }
-        debug_assert_eq!(self.check(), Ok(()));
         Ok(())
     }
 }

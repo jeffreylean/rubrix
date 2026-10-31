@@ -11,12 +11,12 @@ use rubrix_highlight::Lang;
 fn matched(text: &str, at: usize) -> Option<Brackets> {
     let highlights = rubrix_highlight::highlight(Lang::Rust, text);
     matching_bracket(&Buffer::new(text), at, |line| {
-        bracket_skips(highlights.stored_runs(line))
+        Some(bracket_skips(highlights.stored_runs(line)))
     })
 }
 
-fn none(_: u32) -> Vec<Range<usize>> {
-    Vec::new()
+fn none(_: u32) -> Option<Vec<Range<usize>>> {
+    Some(Vec::new())
 }
 
 fn pair(near: usize, far: usize) -> Option<Brackets> {

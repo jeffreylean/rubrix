@@ -1,0 +1,21 @@
+page editor
+wait 120
+click 734 68
+wait 60
+move 740 400
+scroll 0 -4913
+wait 10
+click 1250 296
+log caret
+expect caret 1 primary 1 300:52..300:52 visible true
+type xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+wait 10
+log text 300
+expect text 300 "                section(\"A scoped rule\", scoped()),xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+log caret
+expect caret 1 primary 1 300:252..300:252 visible true
+log row 300
+expect row 300 top 5083 height 51 lines 3
+wait 30
+screenshot m1-wrap-long-word.png
+exit

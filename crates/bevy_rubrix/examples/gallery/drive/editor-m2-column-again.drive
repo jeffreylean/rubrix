@@ -1,0 +1,29 @@
+page editor
+wait 120
+drag 373.8 500 424.2 568 alt
+wait 5
+log caret
+expect caret 5 primary 5 23:13..23:19 24:13..24:19 25:13..25:19 26:13..26:19 27:13..27:19
+drag 373.8 500 424.2 568 alt
+wait 5
+log caret
+expect caret 5 primary 5 23:13..23:19 24:13..24:19 25:13..25:19 26:13..26:19 27:13..27:19
+type x
+wait 5
+log text 23
+expect text 23 "            xBody => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            xDim => hex(0x939293),"
+log text 25
+expect text 25 "            xFaint => hex(0x727072),"
+log text 26
+expect text 26 "            xAccent => hex(0xFFD866),"
+log text 27
+expect text 27 "            xOnAccent => hex(0x2D2A2E),"
+log caret
+expect caret 5 primary 5 23:14..23:14 24:14..24:14 25:14..25:14 26:14..26:14 27:14..27:14
+log undo
+expect undo 1 redo 0
+wait 30
+screenshot m2-column-again.png
+exit

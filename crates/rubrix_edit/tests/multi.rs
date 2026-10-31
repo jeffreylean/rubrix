@@ -67,8 +67,12 @@ const FIVE: &str = "abcdef\nabcdef\nab\nabcdef\nabcdef";
 #[test]
 fn column_selects_one_range_per_line_clamped_at_a_short_line() {
     let buffer = Buffer::new(FIVE);
-    let selections =
-        column(&buffer, &Monospace::default(), (0, 1.0), (4, 4.0));
+    let selections = column(
+        &buffer,
+        &Monospace::default(),
+        (0, 1.0),
+        (buffer.line_start(4), 4.0),
+    );
     assert_eq!(
         listed(&selections),
         [
@@ -85,8 +89,12 @@ fn column_selects_one_range_per_line_clamped_at_a_short_line() {
 #[test]
 fn column_dragged_up_and_left_puts_the_primary_on_the_top_line() {
     let buffer = Buffer::new(FIVE);
-    let selections =
-        column(&buffer, &Monospace::default(), (3, 5.0), (1, 2.0));
+    let selections = column(
+        &buffer,
+        &Monospace::default(),
+        (buffer.line_start(3), 5.0),
+        (buffer.line_start(1), 2.0),
+    );
     assert_eq!(
         listed(&selections),
         [range(12, 9), range(16, 16), range(22, 19)]
@@ -97,8 +105,12 @@ fn column_dragged_up_and_left_puts_the_primary_on_the_top_line() {
 #[test]
 fn column_snaps_to_grapheme_boundaries() {
     let buffer = Buffer::new("e\u{301}xyz\nabcd");
-    let selections =
-        column(&buffer, &Monospace::default(), (0, 1.0), (1, 2.0));
+    let selections = column(
+        &buffer,
+        &Monospace::default(),
+        (0, 1.0),
+        (buffer.line_start(1), 2.0),
+    );
     assert_eq!(listed(&selections), [range(3, 4), range(8, 9)]);
 }
 

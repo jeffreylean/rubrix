@@ -1,0 +1,942 @@
+use core::ops::Range;
+use core::time::Duration;
+use std::time::Instant;
+
+use bevy::app::{App, PostUpdate, PreUpdate};
+use bevy::camera::Camera;
+use bevy::camera::visibility::Visibility;
+use bevy::color::Color;
+use bevy::ecs::change_detection::DetectChangesMut;
+use bevy::ecs::component::Component;
+use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::ChildOf;
+use bevy::ecs::lifecycle::HookContext;
+use bevy::ecs::message::{MessageCursor, MessageWriter, Messages};
+use bevy::ecs::observer::On;
+use bevy::ecs::query::{With, Without};
+use bevy::ecs::schedule::IntoScheduleConfigs;
+use bevy::ecs::system::{Commands, Local, Query, Res};
+use bevy::ecs::world::{DeferredWorld, EntityWorldMut, World};
+use bevy::input::ButtonInput;
+use bevy::input::keyboard::{KeyCode, KeyboardInput};
+use bevy::input_focus::{FocusedInput, InputFocus};
+use bevy::math::Vec2;
+use bevy::picking::events::PointerPress;
+use bevy::picking::pointer::PointerButton;
+use bevy::picking::{Pickable, PickingSystems};
+use bevy::text::{ComputedTextBlock, TextLayout};
+use bevy::ui::{
+    BackgroundColor, CalculatedClip, ComputedNode, Node,
+    PositionType, ScrollPosition, UiGlobalTransform, UiSystems,
+    ZIndex, px,
+};
+use bevy_fynix::views::{VirtualList, drawn_layout, rich_point};
+use parley::{Affinity, Cursor};
+use rubrix_diff::{
+    Anchor, FileChange, FileDiff, Layout, Rediff, Row, RowSplice,
+    Rows,
+};
+use rubrix_edit::{Selection, Selections};
+
+use crate::damage::BUILT_MAX;
+use crate::diff_view::{
+    CONTEXT, DiffDoc, DiffLine, DiffRow, Lane, Live, Spot,
+    number_width, stacked_line,
+};
+use crate::editor::{
+    EditDoc, EditRequest, EditSystems, EditorChanged, Request,
+};
+use crate::frame::{Act, dispatch};
+use crate::keymap::{KeyPress, Keymap, Keys, Mods};
+use crate::rows::Shown;
+use crate::select::{CodeSelection, Column, Selectable, Selects};
+
+const CARET_WIDTH: f32 = 2.0;
+
+pub(crate) fn plugin(app: &mut App) {
+    app.add_systems(
+        PreUpdate,
+        (
+            keys.after(PickingSystems::Last)
+                .after(EditSystems::Keys)
+                .before(EditSystems::Apply)
+                .run_if(editing),
+            apply.after(EditSystems::Apply).run_if(shows_edits),
+        ),
+    )
+    .add_systems(
+        PostUpdate,
+        draw.after(UiSystems::PostLayout).run_if(editing),
+    );
+}
+
+fn editing(docs: Query<&DiffDoc>) -> bool {
+    docs.iter().any(|doc| doc.edit.on)
+}
+
+fn shows_edits(docs: Query<&DiffDoc>) -> bool {
+    docs.iter()
+        .any(|doc| doc.edit.on || doc.edit.has_live_docs())
+}
+
+#[derive(Default)]
+pub(crate) struct Session {
+    on: bool,
+    pub(crate) active: Option<usize>,
+    pressed: Option<f32>,
+    reads: u64,
+    reads_this_frame: u64,
+    reads_last_frame: u64,
+    redrawn: Vec<Redraw>,
+    damage: Vec<(Entity, u64)>,
+    in_sight: Option<(usize, usize)>,
+    rediff: Option<(usize, Duration)>,
+    colour: Color,
+    bar: Option<Entity>,
+}
+
+impl Session {
+    /// `damage` holds a row per live file's doc after each catch-up.
+    fn has_live_docs(&self) -> bool {
+        !self.damage.is_empty()
+    }
+}
+
+struct Redraw {
+    reads: u64,
+    file: usize,
+    rows: Range<u32>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Stamp {
+    reshapes: u64,
+    reads: u64,
+    damage: u64,
+}
+
+#[derive(Component)]
+pub(crate) struct DiffCaret;
+
+/// The diff-edit state of the file that holds the caret, for an app's
+/// status line or a test.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiffEditStatus {
+    pub file: usize,
+    /// The file's hunks now.
+    pub hunks: usize,
+    /// Undo steps the file's editor holds.
+    pub undo: usize,
+    /// How long the last re-diff of this file took, the new side's
+    /// text splice included.
+    pub rediff: Option<Duration>,
+    /// The new-side word ranges of the caret's row, as
+    /// [`Row::words`] gives them.
+    pub marks: Vec<Range<u32>>,
+    /// The `@@` header of the hunk that holds the caret's line.
+    pub hunk: Option<String>,
+    /// The caret's line, by index into the new side.
+    pub line: u32,
+}
+
+pub(crate) fn fires(
+    world: &World,
+    doc: &DiffDoc,
+    index: impl FnOnce() -> usize,
+    stamp: &mut Option<Stamp>,
+) -> bool {
+    let session = &doc.edit;
+    let Some(read) = *stamp else {
+        let index = index();
+        *stamp = Some(Stamp {
+            reshapes: doc.reshapes,
+            reads: session.reads,
+            damage: row_doc(world, doc, index)
+                .map_or(0, |(_, editor, _)| editor.damage().seq()),
+        });
+        return true;
+    };
+    if read.reshapes == doc.reshapes && read.reads == session.reads {
+        return false;
+    }
+    let index = index();
+    let found = row_doc(world, doc, index);
+    *stamp = Some(Stamp {
+        reshapes: doc.reshapes,
+        reads: session.reads,
+        damage: found
+            .as_ref()
+            .map_or(0, |(_, editor, _)| editor.damage().seq()),
+    });
+    if read.reshapes != doc.reshapes
+        || read.reads < session.reads_last_frame
+    {
+        return true;
+    }
+    let Some((file, editor, row)) = found else {
+        let Some(DiffRow::Header { file }) = doc.row(index) else {
+            return false;
+        };
+        return session.redrawn.iter().any(|redraw| {
+            redraw.reads > read.reads && redraw.file == file
+        });
+    };
+    let at = (index - doc.body_start(file)) as u32;
+    let redrawn = session.redrawn.iter().any(|redraw| {
+        redraw.reads > read.reads
+            && redraw.file == file
+            && redraw.rows.contains(&at)
+    });
+    redrawn
+        || row.new_line().is_some_and(|line| {
+            editor.damage().fires(line.index, read.damage)
+        })
+}
+
+fn row_doc<'w>(
+    world: &'w World,
+    doc: &DiffDoc,
+    index: usize,
+) -> Option<(usize, &'w EditDoc, Row)> {
+    let DiffRow::Body { file, row } = doc.row(index)? else {
+        return None;
+    };
+    let live = doc.files()[file].live.as_ref()?;
+    Some((file, world.get::<EditDoc>(live.doc)?, row))
+}
+
+pub(crate) fn attach(view: &mut EntityWorldMut, colour: Color) {
+    view.observe(pressed).observe(keep_keys);
+    if let Some(mut doc) = view.get_mut::<DiffDoc>() {
+        doc.edit.colour = colour;
+    }
+}
+
+pub(crate) fn set(world: &mut World, root: Entity, on: bool) {
+    let Some(mut doc) = world.get_mut::<DiffDoc>(root) else {
+        return;
+    };
+    doc.edit.on = on;
+    if on {
+        begin(world, root);
+    } else {
+        leave(world, root);
+    }
+}
+
+pub(crate) fn restart(
+    world: &mut World,
+    root: Entity,
+    docs: Vec<Entity>,
+) {
+    for doc in docs {
+        world.despawn(doc);
+    }
+    leave(world, root);
+    if let Some(mut doc) = world.get_mut::<DiffDoc>(root) {
+        doc.edit.damage.clear();
+        doc.edit.in_sight = None;
+        doc.edit.rediff = None;
+        if doc.edit.on {
+            begin(world, root);
+        }
+    }
+}
+
+pub(crate) fn drop_docs(
+    mut world: DeferredWorld,
+    context: HookContext,
+) {
+    let docs: Vec<Entity> = world
+        .get::<DiffDoc>(context.entity)
+        .map(|doc| {
+            doc.files()
+                .iter()
+                .filter_map(|file| Some(file.live.as_ref()?.doc))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut commands = world.commands();
+    for doc in docs {
+        commands.entity(doc).despawn();
+    }
+}
+
+fn editable(diff: &FileDiff) -> bool {
+    !diff.is_partial()
+        && !matches!(
+            diff.change(),
+            FileChange::Deleted | FileChange::Binary
+        )
+}
+
+fn begin(world: &mut World, root: Entity) {
+    let Some(doc) = world.get::<DiffDoc>(root) else {
+        return;
+    };
+    let starts: Vec<(usize, FileDiff, EditDoc)> =
+        (0..doc.files().len())
+            .filter(|&file| doc.files()[file].live.is_none())
+            .filter_map(|file| {
+                let (diff, lang) = doc.source_diff(file);
+                editable(diff).then(|| {
+                    let text = diff.new_lines().text();
+                    (file, diff.clone(), EditDoc::new(lang, text))
+                })
+            })
+            .collect();
+    let bar = doc.edit.bar.is_none().then_some(doc.edit.colour);
+    for (file, diff, editor) in starts {
+        let doc = world.spawn(editor).id();
+        if let Some(mut view) = world.get_mut::<DiffDoc>(root) {
+            view.bypass_change_detection().file_mut(file).live =
+                Some(Live { diff, doc });
+        }
+    }
+    if let Some(colour) = bar {
+        let bar = world
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: px(CARET_WIDTH),
+                    ..Node::default()
+                },
+                BackgroundColor(colour),
+                Pickable::IGNORE,
+                ZIndex(1),
+                Visibility::Hidden,
+                DiffCaret,
+                ChildOf(root),
+            ))
+            .id();
+        if let Some(mut view) = world.get_mut::<DiffDoc>(root) {
+            view.bypass_change_detection().edit.bar = Some(bar);
+        }
+    }
+}
+
+fn leave(world: &mut World, root: Entity) {
+    let Some(mut doc) = world.get_mut::<DiffDoc>(root) else {
+        return;
+    };
+    let bar = doc.edit.bar;
+    if doc.edit.active.take().is_some() {
+        world.entity_mut(root).insert(Selects);
+    }
+    if let Some(mut visibility) =
+        bar.and_then(|bar| world.get_mut::<Visibility>(bar))
+    {
+        visibility.set_if_neq(Visibility::Hidden);
+    }
+}
+
+fn pressed(
+    press: On<PointerPress>,
+    mut docs: Query<&mut DiffDoc>,
+    lists: Query<(&ComputedNode, &UiGlobalTransform)>,
+    cameras: Query<&Camera>,
+) {
+    if press.button != PointerButton::Primary {
+        return;
+    }
+    let Ok(mut doc) = docs.get_mut(press.entity) else {
+        return;
+    };
+    if !doc.edit.on {
+        return;
+    }
+    let across = doc.list().and_then(|list| {
+        let (node, transform) = lists.get(list).ok()?;
+        let camera = cameras.iter().next()?;
+        let local = rich_point(
+            node,
+            transform,
+            camera,
+            press.pointer.position,
+        )?;
+        let width =
+            (node.content_box().size() - node.scrollbar_size).x;
+        Some(local.x / width.max(1.0))
+    });
+    doc.bypass_change_detection().edit.pressed = across;
+}
+
+fn keep_keys(
+    mut event: On<FocusedInput<KeyboardInput>>,
+    docs: Query<&DiffDoc>,
+    keymap: Res<Keymap>,
+    held: Option<Res<ButtonInput<KeyCode>>>,
+) {
+    let active = docs
+        .get(event.focused_entity)
+        .is_ok_and(|doc| doc.edit.active.is_some());
+    let press = KeyPress {
+        input: event.input.clone(),
+        mods: Mods::from_held(held.as_deref()),
+        focus: Some(event.focused_entity),
+    };
+    if active && keymap.resolve(&press).is_some() {
+        event.propagate(false);
+    }
+}
+
+fn new_line(
+    doc: &DiffDoc,
+    index: usize,
+    column: Column,
+) -> Option<(usize, u32)> {
+    if doc.is_compact() {
+        return None;
+    }
+    let DiffRow::Body { file, row } = doc.row(index)? else {
+        return None;
+    };
+    doc.files()[file].live.as_ref()?;
+    let line = match column {
+        Column::New => row.new_line()?,
+        Column::Only => match stacked_line(row)? {
+            (Lane::New, line, _) => line,
+            (Lane::Old, ..) => return None,
+        },
+        Column::Old => return None,
+    };
+    Some((file, line.index))
+}
+
+pub(crate) fn keys(
+    keys: Res<Keys>,
+    keymap: Res<Keymap>,
+    mut views: Query<(
+        Entity,
+        &mut DiffDoc,
+        &mut CodeSelection<Spot>,
+    )>,
+    docs: Query<&EditDoc>,
+    mut requests: MessageWriter<EditRequest>,
+    mut commands: Commands,
+) {
+    for (root, mut doc, mut selection) in &mut views {
+        let doc = doc.bypass_change_detection();
+        if let Some(across) = doc.edit.pressed.take() {
+            let range = selection.anchor();
+            let column = doc.column(across);
+            let placed = new_line(doc, range.start.row, column)
+                .filter(|_| range.start.row == range.end.row);
+            match placed {
+                Some((file, line)) => {
+                    let Some(entity) = doc.files()[file]
+                        .live
+                        .as_ref()
+                        .map(|live| live.doc)
+                    else {
+                        continue;
+                    };
+                    let Ok(editor) = docs.get(entity) else {
+                        continue;
+                    };
+                    let buffer = editor.editor().buffer();
+                    let start = buffer.line_start(line);
+                    let len = buffer.line_end(line) - start;
+                    let at = |spot: Spot| start + spot.byte.min(len);
+                    let caret = Selection {
+                        anchor: at(range.start),
+                        head: at(range.end),
+                    };
+                    requests.write(EditRequest::new(
+                        entity,
+                        Request::select(Selections::new(caret)),
+                    ));
+                    selection.clear();
+                    if doc.edit.active.replace(file).is_none() {
+                        commands.entity(root).remove::<Selects>();
+                    }
+                }
+                None => {
+                    if doc.edit.active.take().is_some() {
+                        commands.entity(root).insert(Selects);
+                    }
+                }
+            }
+        }
+        let Some(file) = doc.edit.active.filter(|_| doc.edit.on)
+        else {
+            continue;
+        };
+        let Some(live) = doc.files()[file].live.as_ref() else {
+            continue;
+        };
+        for press in keys.presses() {
+            if press.focus != Some(root) {
+                continue;
+            }
+            let Some(act) = keymap.resolve(press).map(Act::from)
+            else {
+                continue;
+            };
+            requests.write(EditRequest::new(
+                live.doc,
+                Request::new(move |tx| dispatch(tx, &act)),
+            ));
+        }
+    }
+}
+
+pub(crate) fn apply(
+    world: &mut World,
+    mut cursor: Local<MessageCursor<EditorChanged>>,
+) {
+    let changes: Vec<EditorChanged> = world
+        .get_resource::<Messages<EditorChanged>>()
+        .map(|messages| cursor.read(messages).cloned().collect())
+        .unwrap_or_default();
+    let roots: Vec<Entity> = world
+        .query_filtered::<Entity, With<DiffDoc>>()
+        .iter(world)
+        .collect();
+    for root in roots {
+        let Some(mut doc) = world.get_mut::<DiffDoc>(root) else {
+            continue;
+        };
+        {
+            let session = &mut doc.bypass_change_detection().edit;
+            session.reads_last_frame = session.reads_this_frame;
+            session.reads_this_frame = session.reads;
+            let since = session.reads_last_frame;
+            session.redrawn.retain(|redraw| redraw.reads > since);
+        }
+        for change in &changes {
+            let file = world.get::<DiffDoc>(root).and_then(|doc| {
+                doc.files().iter().position(|file| {
+                    file.live
+                        .as_ref()
+                        .is_some_and(|live| live.doc == change.doc)
+                })
+            });
+            if let Some(file) = file {
+                rediff(world, root, file, change);
+            }
+        }
+        catch_up(world, root);
+        reveal(world, root);
+    }
+}
+
+fn rediff(
+    world: &mut World,
+    root: Entity,
+    file: usize,
+    change: &EditorChanged,
+) {
+    let Some(doc) = world.get::<DiffDoc>(root) else {
+        return;
+    };
+    let Some(live) = doc.files()[file].live.as_ref() else {
+        return;
+    };
+    let Some(editor) = world.get::<EditDoc>(live.doc) else {
+        return;
+    };
+    let buffer = editor.editor().buffer();
+    let edits: Vec<(Range<u32>, String)> = change
+        .change
+        .line_edits()
+        .map(|edit| {
+            let start = buffer.line_start(edit.first);
+            let next = edit.first + edit.inserted;
+            let end = if next < buffer.line_count() {
+                buffer.line_start(next)
+            } else {
+                buffer.len()
+            };
+            let text = buffer.slice(start..end).into_owned();
+            (edit.first..edit.first + edit.removed, text)
+        })
+        .collect();
+    let list = doc.list();
+    let body = doc.body_start(file);
+    let collapsed = doc.is_collapsed(file);
+    let anchor = edits.first().map(|(lines, _)| lines.start);
+    let kept = anchor.and_then(|line| {
+        let row = doc.files()[file].rows.find(Anchor::New(line))?;
+        screen_top(world, list?, body + row as usize)
+    });
+
+    let mut doc = world.get_mut::<DiffDoc>(root).expect("the view");
+    let doc = doc.as_mut();
+    let started = Instant::now();
+    let mut splices = Vec::with_capacity(edits.len());
+    let mut redrawn: Option<Range<u32>> = None;
+    {
+        let shown = doc.file_mut(file);
+        let live = shown.live.as_mut().expect("a live file");
+        let width = number_width(&live.diff);
+        for (lines, text) in &edits {
+            let len = live.diff.new_lines().len();
+            let lines = lines.start.min(len)..lines.end.min(len);
+            let rediff = live.diff.edit_new(
+                lines.clone(),
+                text,
+                CONTEXT,
+                &mut shown.expansion,
+            );
+            let splice = shown.rows.patch(
+                &live.diff,
+                &shown.expansion,
+                &rediff,
+            );
+            let rows = changed_rows(&shown.rows, &rediff, splice);
+            redrawn = Some(redrawn.map_or(rows.clone(), |seen| {
+                seen.start.min(rows.start)..u32::MAX
+            }));
+            splices.push(splice);
+        }
+        if number_width(&live.diff) != width {
+            redrawn = Some(0..u32::MAX);
+        }
+    }
+    let took = started.elapsed();
+    let session = &mut doc.edit;
+    session.reads += 1;
+    session.rediff = Some((file, took));
+    if let Some(rows) = redrawn.filter(|rows| !rows.is_empty()) {
+        session.redrawn.push(Redraw {
+            reads: session.reads,
+            file,
+            rows,
+        });
+    }
+    let moved = splices
+        .iter()
+        .any(|splice| splice.removed + splice.inserted > 0);
+    let after = anchor.and_then(|line| {
+        doc.files()[file].rows.find(Anchor::New(line))
+    });
+    doc.place_files();
+    let Some(list) = list.filter(|_| !collapsed && moved) else {
+        return;
+    };
+    if let Some(mut rows) = world.get_mut::<VirtualList>(list) {
+        for splice in &splices {
+            rows.splice(
+                body + splice.at as usize,
+                splice.removed as usize,
+                splice.inserted as usize,
+            );
+        }
+    }
+    if let (Some(top), Some(row)) = (kept, after) {
+        keep_top(world, list, body + row as usize, top);
+    }
+}
+
+fn changed_rows(
+    rows: &Rows,
+    rediff: &Rediff,
+    splice: RowSplice,
+) -> Range<u32> {
+    let hunks =
+        rediff.hunks.start..rediff.hunks.start + rediff.new_hunks;
+    let mut changed = splice.at..splice.at + splice.inserted;
+    for hunk in [hunks.start, hunks.end.saturating_sub(1)] {
+        if hunks.contains(&hunk) {
+            let of = rows.hunk_rows(hunk);
+            changed =
+                changed.start.min(of.start)..changed.end.max(of.end);
+        }
+    }
+    if rediff.inserted != rediff.lines.len() as u32 {
+        changed.end = u32::MAX;
+    }
+    changed
+}
+
+fn screen_top(
+    world: &World,
+    list: Entity,
+    index: usize,
+) -> Option<f32> {
+    let rows = world.get::<VirtualList>(list)?;
+    let scroll = world.get::<ScrollPosition>(list)?.y;
+    let node = world.get::<ComputedNode>(list)?;
+    let height =
+        node.content_box().size().y * node.inverse_scale_factor();
+    let span = rows.row_span(index)?;
+    let top = span.top - scroll;
+    (top + span.height > 0.0 && top < height).then_some(top)
+}
+
+fn keep_top(world: &mut World, list: Entity, index: usize, top: f32) {
+    let Some(span) = world
+        .get::<VirtualList>(list)
+        .and_then(|rows| rows.row_span(index))
+    else {
+        return;
+    };
+    if let Some(mut scroll) = world.get_mut::<ScrollPosition>(list) {
+        let y = (span.top - top).max(0.0);
+        if scroll.y != y {
+            scroll.y = y;
+        }
+    }
+}
+
+fn catch_up(world: &mut World, root: Entity) {
+    let Some(doc) = world.get::<DiffDoc>(root) else {
+        return;
+    };
+    let first_list_row = doc
+        .list()
+        .and_then(|list| world.get::<VirtualList>(list))
+        .map_or(0, VirtualList::first_visible);
+    let docs: Vec<(Entity, u32)> = (0..doc.files().len())
+        .filter_map(|file| {
+            let live = doc.files()[file].live.as_ref()?;
+            Some((
+                live.doc,
+                last_shown_line(doc, file, first_list_row),
+            ))
+        })
+        .collect();
+    let mut moved = false;
+    let mut seen = Vec::with_capacity(docs.len());
+    for (entity, last) in docs {
+        let Some(mut editor) = world.get_mut::<EditDoc>(entity)
+        else {
+            continue;
+        };
+        let buffer = editor.editor().buffer();
+        let caret = buffer
+            .line_of(editor.editor().selections().primary().head);
+        let window = last.max(caret).saturating_add(2 * BUILT_MAX);
+        editor.bypass_change_detection().catch_up(window);
+        seen.push((entity, editor.damage().seq()));
+    }
+    let Some(mut doc) = world.get_mut::<DiffDoc>(root) else {
+        return;
+    };
+    let session = &mut doc.bypass_change_detection().edit;
+    for &(entity, seq) in &seen {
+        let was =
+            session.damage.iter().find(|(doc, _)| *doc == entity);
+        moved |= was.is_some_and(|&(_, was)| was != seq);
+    }
+    session.damage = seen;
+    if moved {
+        session.reads += 1;
+    }
+}
+
+fn last_shown_line(
+    doc: &DiffDoc,
+    file: usize,
+    list_row: usize,
+) -> u32 {
+    if doc.is_collapsed(file) {
+        return 0;
+    }
+    let at = list_row.saturating_sub(doc.body_start(file)) as u32;
+    doc.files()[file]
+        .rows
+        .range(at..at.saturating_add(2 * BUILT_MAX))
+        .filter_map(|row| row.new_line())
+        .last()
+        .map_or(0, |line| line.index)
+}
+
+fn reveal(world: &mut World, root: Entity) {
+    let Some(doc) = world.get::<DiffDoc>(root) else {
+        return;
+    };
+    let Some(file) = doc.edit.active else {
+        return;
+    };
+    let Some(live) = doc.files()[file].live.as_ref() else {
+        return;
+    };
+    let Some(editor) = world.get::<EditDoc>(live.doc) else {
+        return;
+    };
+    let head = editor.editor().selections().primary().head;
+    if doc.edit.in_sight == Some((file, head)) {
+        return;
+    }
+    let line = editor.editor().buffer().line_of(head);
+    let row = doc.files()[file]
+        .rows
+        .find(Anchor::New(line))
+        .map(|row| doc.body_start(file) + row as usize);
+    let list = doc.list();
+    if let Some(mut doc) = world.get_mut::<DiffDoc>(root) {
+        doc.bypass_change_detection().edit.in_sight =
+            Some((file, head));
+    }
+    let (Some(row), Some(list)) = (row, list) else {
+        return;
+    };
+    if screen_top(world, list, row).is_some() {
+        return;
+    }
+    if let Some(mut rows) = world.get_mut::<VirtualList>(list) {
+        rows.scroll_into_view(row);
+    }
+}
+
+type Texts<'a> = (
+    &'a DiffLine,
+    &'a ComputedNode,
+    &'a UiGlobalTransform,
+    &'a ComputedTextBlock,
+    &'a TextLayout,
+    Option<&'a CalculatedClip>,
+);
+
+type Bar<'a> =
+    (&'a mut Node, &'a mut UiGlobalTransform, &'a mut Visibility);
+
+pub(crate) fn draw(
+    views: Query<(
+        Entity,
+        &DiffDoc,
+        &ComputedNode,
+        &UiGlobalTransform,
+    )>,
+    docs: Query<&EditDoc>,
+    texts: Query<Texts, Without<DiffCaret>>,
+    mut bars: Query<Bar, (With<DiffCaret>, Without<DiffDoc>)>,
+    focus: Option<Res<InputFocus>>,
+) {
+    let focused = focus.and_then(|focus| focus.get());
+    for (root, doc, root_node, root_at) in &views {
+        let Some(bar) = doc.edit.bar else {
+            continue;
+        };
+        let Ok((mut node, mut transform, mut visibility)) =
+            bars.get_mut(bar)
+        else {
+            continue;
+        };
+        let placed = (focused == Some(root))
+            .then(|| caret(doc, &docs, &texts, root))
+            .flatten();
+        let Some((corner, size)) = placed else {
+            visibility.set_if_neq(Visibility::Hidden);
+            continue;
+        };
+        let logical = root_node.inverse_scale_factor();
+        let origin = root_at.translation + root_node.border_box().min;
+        let to = Node {
+            position_type: PositionType::Absolute,
+            left: px((corner.x - origin.x) * logical),
+            top: px((corner.y - origin.y) * logical),
+            width: px(size.x * logical),
+            height: px(size.y * logical),
+            ..Node::default()
+        };
+        node.set_if_neq(to);
+        *transform =
+            UiGlobalTransform::from_translation(corner + size / 2.0);
+        visibility.set_if_neq(Visibility::Inherited);
+    }
+}
+
+fn caret(
+    doc: &DiffDoc,
+    docs: &Query<&EditDoc>,
+    texts: &Query<Texts, Without<DiffCaret>>,
+    root: Entity,
+) -> Option<(Vec2, Vec2)> {
+    let file = doc.edit.active.filter(|_| doc.edit.on)?;
+    let shown = &doc.files()[file];
+    let editor = docs.get(shown.live.as_ref()?.doc).ok()?.editor();
+    let buffer = editor.buffer();
+    let head = editor.selections().primary().head;
+    let line = buffer.line_of(head);
+    let index = doc.body_start(file)
+        + shown.rows.find(Anchor::New(line))? as usize;
+    let column = match doc.layout() {
+        Layout::Stacked => Column::Only,
+        Layout::Split => Column::New,
+    };
+    let (_, node, at, block, layout, clip) =
+        texts.iter().find(|(tag, ..)| {
+            (tag.view, tag.index, tag.column) == (root, index, column)
+        })?;
+    let text = doc.diff(file).new_lines();
+    let content = if line < text.len() {
+        text.line(line)
+    } else {
+        ""
+    };
+    let byte = (head - buffer.line_start(line)).min(content.len());
+    let drawn = Shown::new(content).shown(byte);
+    let laid = drawn_layout(block, layout, node);
+    let scale = 1.0 / node.inverse_scale_factor();
+    let bbox =
+        Cursor::from_byte_index(&laid, drawn, Affinity::Downstream)
+            .geometry(&laid, CARET_WIDTH * scale);
+    let corner = (at.translation
+        + node.content_box().min
+        + Vec2::new(bbox.x0 as f32, bbox.y0 as f32))
+    .round();
+    let size =
+        Vec2::new(CARET_WIDTH * scale, (bbox.y1 - bbox.y0) as f32)
+            .round();
+    let middle = corner + Vec2::new(0.5, size.y / 2.0);
+    if clip.is_some_and(|clip| !clip.contains_point(middle)) {
+        return None;
+    }
+    Some((corner, size))
+}
+
+impl DiffDoc {
+    /// The diff-edit state of the file whose new side holds the
+    /// caret, `None` while no new-side press has placed one.
+    pub fn edit_status(
+        &self,
+        world: &World,
+    ) -> Option<DiffEditStatus> {
+        let file = self.edit.active?;
+        let shown = &self.files()[file];
+        let editor =
+            world.get::<EditDoc>(shown.live.as_ref()?.doc)?.editor();
+        let diff = self.diff(file);
+        let line = editor
+            .buffer()
+            .line_of(editor.selections().primary().head);
+        let row = shown
+            .rows
+            .find(Anchor::New(line))
+            .and_then(|row| shown.rows.get(row));
+        let marks = row
+            .filter(|row| {
+                row.new_line().is_some_and(|new| new.index == line)
+            })
+            .and_then(|row| row.words(diff))
+            .map_or_else(Vec::new, |(_, new)| new);
+        let hunk = diff.hunks().iter().find(|hunk| {
+            let start = hunk
+                .blocks()
+                .first()
+                .map_or(0, |block| block.new_range().start);
+            (start..start + hunk.new_len().max(1)).contains(&line)
+        });
+        Some(DiffEditStatus {
+            file,
+            hunks: diff.hunks().len(),
+            undo: editor.history().undo_depth(),
+            rediff: self
+                .edit
+                .rediff
+                .filter(|&(of, _)| of == file)
+                .map(|(_, took)| took),
+            marks,
+            hunk: hunk.map(|hunk| hunk.header().to_string()),
+            line,
+        })
+    }
+
+    /// Whether a press on a new-side line edits it.
+    pub fn is_editing(&self) -> bool {
+        self.edit.on
+    }
+}

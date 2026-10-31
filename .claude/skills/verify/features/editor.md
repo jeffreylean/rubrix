@@ -70,6 +70,15 @@ Most lanes edit lines 23 to 27 of `large.rs.txt`, the `Tone::` arms. Each starts
 - **Surround (lane 9).** Run `editor-surround.drive`. It double clicks `Body` on line 23, then types `(`, `[`, `{`, `"`, `'` and a backtick, with `mod+z` after each. Each pair wraps `Body`, which stays selected at `23:20..23:24`, and each undo puts back the text and `23:19..23:23`. Save `e4-surround.png`.
 - **Brackets (lane 10).** Run `editor-brackets.drive`. A click after the `{` that ends line 21 prints `bracket 30:5`, the `}` that closes `fn tone`. Then it clicks after the `(` in `"(none)"` on line 9,506. `expect kind 9506 25 string` shows that the lexer put that `(` in a string run, and the caret prints `bracket none`. Save `e4-brackets.png`.
 
+Six more scripts pin the milestone 2 fixes. Each fails at #29's merge, bbaac22.
+
+- `editor-m2-copy-mixed.drive` double clicks `Body` on line 23, adds a bare caret at `25:13` with `click mod`, and copies `Body` and the whole of line 25 with its break. The cut removes `Body` and line 25, so the row total drops to 10,372. Save `m2-copy-mixed.png`.
+- `editor-m2-column-wrap.drive` turns wrap on, types 24 words after line 23 so it wraps to two rows, and runs `drag` with `alt` from column 13 of its second row to line 25. Line 23 selects `23:124..23:130` on the row under the press, and lines 24 and 25 select `13..19`. Save `m2-column-wrap.png`.
+- `editor-m2-brackets-stale.drive` matches the `{` on line 4,124 to `bracket 4576:1`, types `/*` at the start of line 4,125, and clicks after the `{` again. It prints `bracket none` and `kind 4576 0 comment` before any view has built line 4,576. Typing `*/` after it brings `bracket 4576:1` back. Save `m2-brackets-stale.png`.
+- `editor-m2-mod-reclick.drive` makes carets at column 13 of lines 23, 25 and 27 with `click mod`, then clicks the one on line 27 again at once. That second click is a double click, so it keeps the other two carets and adds `Tone` on line 27. Typing `x` changes all three. Save `m2-mod-reclick.png`.
+- `editor-m2-mod-words.drive` clicks `23:13`, then runs `click double mod` on `Dim` on line 24 and `click triple mod` on line 26. The caret stays, and the word `24:19..24:22` and the line `26:1..27:1` are added. Save `m2-mod-words.png`.
+- `editor-m2-column-again.drive` runs the column lane's `drag` with `alt` twice from the same spot. The second drag counts as a double click and still selects `Tone::` on the five lines. Save `m2-column-again.png`.
+
 The perf scripts:
 
 - `editor-occurrence-100.drive` clicks the first `let`, on line 16, and presses `mod+d` 100 times, which gives 100 selections from line 16 to line 1,628. In a timed window it sends 100 `type x` steps, and writes `editor-occurrence-100.csv`. Then each `let` is 100 `x`, and the `let` on line 1,631 is not changed.
@@ -157,3 +166,13 @@ The recipes. `gen_drives.py` writes every `editor-find-*.drive`, and each count 
 - **Edits on 100,000 lines (M2 fix, L4-F3).** `editor-find-m2-edit-100k.drive` searches the regex `\s+theme` on the 100,000-line input, 663 matches. No line bound holds it, so each edit restarts at the match before it. It types `abcdefghij` on line 3 one char every 10 frames inside `frames start` and `frames stop editor-find-m2-edit-100k.csv`, then the count returns to 663. It checks the text on line 3 and the count, and does not check frame times. It saves them for the perf probe, which reads them with `frame-stats.sh`.
 
 Perf: run `editor-find-100k.drive`, and `editor-100k.drive` at trunk and at head, with `RUBRIX_NO_VSYNC=1` in `--release`, interleaved, five runs each, alone, through `perf-run.sh`. The find-field frame p95 is the p95 of `editor-find-100k.csv`, and its bar is 3.0 ms. The `final` time of a plain count must stay at or under 250 ms. The `editor-100k-type.csv` p95 at head must stay within 10% of trunk.
+
+## Milestone 1 fixes
+
+`gen_drives.py` writes one `editor-m1-*.drive` per finding of the milestone 1 review that broke a box. Each fails at the commit before its fix.
+
+- `editor-m1-underline.drive` composes `🎉`, `😀👍🎉`, and, in wrap mode, a 40-char CJK preedit that wraps line 126 onto 2 visual lines. No topic reads the underline bars, so check `m1-emoji-1.png`, `m1-emoji-2.png`, and `m1-preedit-wrap.png`: a bar under each emoji preedit and under each visual line of the wrapped one. `tests/ime.rs` checks the bars.
+- `editor-m1-ime-hidden.drive` scrolls the caret 60 rows out of view, where `log ime` prints `position 220 118`, the rows' top-left, and then composes with a cursor and with none. Each preedit puts line 120 at the top, and `position` and `caret` both print `305 136`.
+- `editor-m1-wrap-long-word.drive` types 200 `x` at the end of line 300 in wrap mode. The word breaks at the wrap width, so the row takes 3 visual lines and the caret at `300:252` is `visible true`.
+- `editor-m1-drag-below.drive` holds a drag below the view near the end of the file, which scrolls to the end and puts the head at `10373:1`. Then a drag held on the scrollbar strip and one past the right edge put the head at the end of the line under the pointer.
+- `editor-m1-drag-sideways.drive` opens `long-line.rs`, shows line 3's end, and holds a drag past the left edge, which scrolls back to `x 0` with the caret at `3:1`. A drag held past the right edge scrolls to the line's end, `3:401`, with the caret in view.

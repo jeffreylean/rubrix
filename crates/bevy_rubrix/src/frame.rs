@@ -107,6 +107,12 @@ impl<'w> Tx<'w> {
         });
     }
 
+    /// Keeps the view's primary caret in sight after this frame, as
+    /// an edit does, though nothing in the doc changed.
+    pub(crate) fn keep_in_sight(&mut self) {
+        self.acted = true;
+    }
+
     /// Copies `text` from the view, or the doc without one, to the
     /// app's clipboard.
     pub fn copy(&mut self, text: String) {
@@ -262,12 +268,13 @@ pub(crate) trait EditTarget {
         rows: usize,
     );
 
-    /// The text a pointer at `at` presses.
+    /// The text a pointer at `at` presses, or drags while `held`.
     fn hit(
         scene: &Scene,
         target: Entity,
         buffer: &Buffer,
         at: Vec2,
+        held: bool,
     ) -> Option<(Hit, Over)>;
 
     /// The list to scroll, and where, to keep the caret at `head` in
@@ -347,8 +354,9 @@ impl EditTarget for EditView {
         target: Entity,
         buffer: &Buffer,
         at: Vec2,
+        held: bool,
     ) -> Option<(Hit, Over)> {
-        geometry(scene, target)?.hit(buffer, at)
+        geometry(scene, target)?.hit(buffer, at, held)
     }
 
     fn reveal(
@@ -364,9 +372,18 @@ impl EditTarget for EditView {
 }
 
 /// What a key press does to the view it was sent to.
-enum Act {
+pub(crate) enum Act {
     Action(Action),
     Text(String),
+}
+
+impl From<Resolved<'_>> for Act {
+    fn from(resolved: Resolved<'_>) -> Act {
+        match resolved {
+            Resolved::Action(action) => Act::Action(action),
+            Resolved::Text(text) => Act::Text(text.to_owned()),
+        }
+    }
 }
 
 /// What a frame starts by settling: every doc's and marks' damage,
@@ -485,14 +502,11 @@ pub(crate) fn apply(world: &mut World, mut frame: Local<Frame>) {
                 let view = press.focus?;
                 let (_, edit, _, composing) =
                     scene.views.get(view).ok()?;
-                let act = match scene.keymap.resolve(press)? {
-                    _ if composing => return None,
-                    Resolved::Action(action) => Act::Action(action),
-                    Resolved::Text(text) => {
-                        Act::Text(text.to_owned())
-                    }
-                };
-                Some((view, edit.doc(), act))
+                let resolved = scene.keymap.resolve(press)?;
+                if composing {
+                    return None;
+                }
+                Some((view, edit.doc(), Act::from(resolved)))
             })
             .collect()
     };
@@ -612,7 +626,9 @@ fn strokes(
                         view,
                         held.editor().buffer(),
                         press.at,
-                    )?;
+                        false,
+                    )
+                    .filter(|(_, over)| !over.bar)?;
                     Some((
                         gesture,
                         hit,
@@ -658,6 +674,7 @@ fn strokes(
                         view,
                         held.editor().buffer(),
                         at,
+                        true,
                     )?;
                     Some(Ok((drag, hit, over, edit.list())))
                 },
@@ -674,7 +691,7 @@ fn strokes(
             Some(Ok((drag, hit, over, area))) => {
                 Tx::new(world, &mut frame.parts, doc, Some(view))
                     .stroke(drag.gesture, drag.from, hit, &drag.base);
-                if over.past != 0.0
+                if (over.past != 0.0 || over.past_x != 0.0)
                     && let Some(mut list) = area.and_then(|area| {
                         world.get_mut::<VirtualList>(area)
                     })
@@ -689,7 +706,7 @@ fn strokes(
 }
 
 /// One key, through the transaction of the view it was sent to.
-fn dispatch(tx: &mut Tx, act: &Act) {
+pub(crate) fn dispatch(tx: &mut Tx, act: &Act) {
     match act {
         Act::Text(text) => {
             tx.apply(Command::Type(text));

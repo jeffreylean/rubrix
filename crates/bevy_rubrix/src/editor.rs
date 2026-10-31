@@ -49,7 +49,7 @@ use crate::tokens::{Styles, SyntaxTokens};
 use crate::{numbers, select};
 
 /// The most lines a catch-up lexes in one frame.
-const CATCH_UP: u32 = 20_000;
+pub(crate) const CATCH_UP: u32 = 20_000;
 
 /// The steps of an editor's frame, for features and apps to order
 /// against.
@@ -159,6 +159,11 @@ impl EditDoc {
         self.highlights.stored_runs(line as u32)
     }
 
+    pub(crate) fn current_runs(&self, line: u32) -> Option<&[Run]> {
+        let stale = self.highlights.stale_from().unwrap_or(u32::MAX);
+        (line < stale).then(|| self.runs(line as usize))
+    }
+
     /// How many changes the doc has taken, undo and redo included.
     pub fn seq(&self) -> u64 {
         self.changes
@@ -233,6 +238,10 @@ impl EditDoc {
         let view = *view;
         self.paste = None;
         Some((text, view))
+    }
+
+    pub(crate) fn damage(&self) -> &Damage {
+        &self.damage
     }
 
     /// The generation of the highlights: it grows with each change
@@ -500,7 +509,9 @@ impl EditView {
     }
 
     /// The primary caret's bar in logical window pixels, as drawn
-    /// this frame, or `None` while its row is not built.
+    /// this frame, or `None` while its row is not built or clips it.
+    /// While an input method hides its cursor, the bar is not drawn,
+    /// and this is where it would stand, at the composition's start.
     pub fn caret_rect(&self) -> Option<Rect> {
         self.drawn.caret
     }

@@ -1,0 +1,45 @@
+page diff
+wait 30
+click 586 68
+wait 120
+click 1178 68
+wait 10
+log diff-edit
+expect diff-edit none
+click 734 68
+wait 120
+log diff
+expect diff files 1 rows 32 split
+click 1250 648
+key end
+wait 5
+log diff-edit
+expect diff-edit file 0 hunks 3 undo 0 rediff - marks 49..60 line 7997 hunk @@ -7998,7 +7994,7 @@
+key space
+type x
+wait 5
+log diff-edit
+expect diff-edit file 0 hunks 3 undo 1 rediff
+key shift+home
+key mod+c
+log copied
+expect copied "#[derive(Component, Clone, Copy, Debug, Default)] // changed x"
+click 735 648
+wait 5
+type z
+wait 5
+log diff-edit
+drag 230 648 735 648
+key mod+c
+log copied
+expect copied "#[derive(Component, Clone, Copy, Debug, Default)]"
+click 1250 648
+key end
+wait 5
+key shift+home
+key mod+c
+log copied
+expect copied "#[derive(Component, Clone, Copy, Debug, Default)] // changed x"
+wait 30
+screenshot e7-split.png
+exit

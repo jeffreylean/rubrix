@@ -1984,6 +1984,299 @@ write(
     "exit",
 )
 
+
+DIFF_FIXTURES = out.parent / "fixtures/diff"
+RETYPE_OLD = ["fn bill(price: u32, count: u32, total: u32) -> u32 {", "    price * count + total", "}"]
+RETYPE_NEW = ["fn bill(price: u32, count: u32, total: u32) -> u32 {", "    cost * count + tot", "}"]
+MERGE_OLD = ["fn merged(values: &[u32]) -> u32 {", *(f"    let v{n} = values[{n}];" for n in range(16)), "    v0 + v15", "}"]
+MERGE_CHANGED = [5, 14]
+MERGE_NEW = [line.replace("];", "] * 2;") if n in MERGE_CHANGED else line for n, line in enumerate(MERGE_OLD, start=1)]
+for stem, old, new in [("retype", RETYPE_OLD, RETYPE_NEW), ("merge", MERGE_OLD, MERGE_NEW)]:
+    (DIFF_FIXTURES / f"{stem}-old.rs").write_text("\n".join(old) + "\n")
+    (DIFF_FIXTURES / f"{stem}-new.rs").write_text("\n".join(new) + "\n")
+
+PAIRS, HUNDRED_K_PAIR = "click 304 32", "click 380 32"
+EDIT = "click 1178 68"
+LIST_TOP = 117
+VIEW_MAX = 800 - LIST_TOP
+VIEW_SHOWN = 650
+SPLIT_OLD_END_X, SPLIT_OLD_GUTTER_X = 735, 230
+GAP_ALL_X = 420
+LEAD = 5 * ROW
+BUILT_ON_SHOW = 51
+CONTEXT = 3
+
+
+class Pair:
+
+    def __init__(self, name, old_lines, changes, revealed=(), split=False):
+        self.name, self.old_count, self.changes = name, old_lines, changes
+        self.revealed, self.split = revealed, split
+
+    def hunks(self):
+        hunks = []
+        for at, removed, added in self.changes:
+            start, end = max(at - CONTEXT, 0), min(at + removed + CONTEXT, self.old_count)
+            if hunks and start <= hunks[-1][1]:
+                hunks[-1][1] = max(hunks[-1][1], end)
+                hunks[-1][2] += added - removed
+            else:
+                hunks.append([start, end, added - removed])
+        return hunks
+
+    def header(self, old_line):
+        shift = 0
+        for start, end, grown in self.hunks():
+            if start < old_line <= end:
+                count = lambda n: "" if n == 1 else f",{n}"
+                old, new = end - start, end - start + grown
+                return f"@@ -{start + 1}{count(old)} +{start + 1 + shift}{count(new)} @@"
+            shift += grown
+
+    def rows(self, file):
+        rows = [(file, "header", self.name)]
+        old = shift = gap = 0
+
+        def context(upto):
+            nonlocal old
+            while old < upto:
+                rows.append((file, "line", old + 1, old + 1 + shift))
+                old += 1
+
+        def skip(upto):
+            nonlocal old, gap
+            if upto == old + 1:
+                context(upto)
+            elif upto > old:
+                if gap in self.revealed:
+                    context(upto)
+                else:
+                    rows.append((file, "gap", upto - old))
+                    old = upto
+                gap += 1
+
+        changes = iter(self.changes)
+        for start, end, _ in self.hunks():
+            skip(start)
+            while True:
+                at, removed, added = next(changes)
+                context(at)
+                gone = [old + 1 + k for k in range(removed)]
+                came = [at + 1 + shift + k for k in range(added)]
+                if self.split:
+                    pad = max(removed, added)
+                    rows += [(file, "line", *pair) for pair in zip(gone + [None] * pad, came + [None] * pad)][:pad]
+                else:
+                    rows += [(file, "line", n, None) for n in gone] + [(file, "line", None, n) for n in came]
+                old += removed
+                shift += added - removed
+                if old + CONTEXT >= end:
+                    break
+            context(end)
+        skip(self.old_count)
+        return rows
+
+
+def shown(*pairs):
+    return [row for file, pair in enumerate(pairs) for row in pair.rows(file)]
+
+
+def tall(row):
+    return HEADER if row[1] in ("header", "gap") else ROW
+
+
+def top(rows, index):
+    return sum(map(tall, rows[:index]))
+
+
+def described(rows, index):
+    file, kind, *rest = rows[index]
+    if kind == "header":
+        return f"header {file} {rest[0]}"
+    if kind == "gap":
+        return f"gap {file} hidden {rest[0]}"
+    old, new = ("-" if n is None else n for n in rest)
+    return f"line {file} old {old} new {new}"
+
+
+def row_of(rows, file, old=None, new=None):
+    return next(i for i, row in enumerate(rows) if row[0] == file and row[1] == "line" and (old is None or row[2] == old) and (new is None or row[3] == new))
+
+
+def reach(rows, index, lead=LEAD):
+    end = top(rows, index) + tall(rows[index])
+    if end <= VIEW_SHOWN:
+        return [], LIST_TOP + top(rows, index) + tall(rows[index]) // 2
+    guessed = [tall(row) if at < BUILT_ON_SHOW else ROW for at, row in enumerate(rows)]
+    scroll = sum(guessed[:index]) - lead
+    assert scroll + VIEW_MAX <= sum(guessed), "the view stops short of the scroll"
+    first, above = 0, 0
+    while above + guessed[first] <= scroll:
+        above += guessed[first]
+        first += 1
+    steps = [CENTER, TOP, f"scroll 0 -{scroll}", "wait 10", "log diff", f"expect diff first {first} {described(rows, first)}"]
+    return steps, LIST_TOP + top(rows, index) - top(rows, first) - (scroll - above) + tall(rows[index]) // 2
+
+
+def at_end(y):
+    return [f"click {LINE_END_X} {y}", "key end", "wait 5"]
+
+
+FRESH = "stale 0"
+
+
+def diff_edit(*fields):
+    return ["log diff-edit", [f"expect diff-edit {field}" for field in fields]]
+
+
+def diff_rows(rows, shape="stacked"):
+    return ["log diff", f"expect diff files {rows[-1][0] + 1} rows {len(rows)} {shape}"]
+
+
+def copy_line(text):
+    return ["key shift+home", "key mod+c", "log copied", f"expect copied {rust_debug(text.lstrip())}"]
+
+
+def diff_edit_lane(name, source, *steps):
+    write(f"diff-edit-{name}", "page diff", "wait 30", source, SETTLE, EDIT, "wait 10", diff_edit("none"), *steps, "exit")
+
+
+LARGE_RS_EDITS = [(2000, 6, 0), (5000, 0, 2), (8000, 1, 1)]
+LARGE_PAIR = Pair("large.rs", len(LARGE_RS_LINES), LARGE_RS_EDITS)
+CHANGED_OLD, CHANGED_NEW = 8001, 7997
+CHANGED = LARGE_RS_LINES[CHANGED_OLD - 1] + " // changed"
+ADDED_NEW, ADDED = 4996, "const PAIRED: bool = true;"
+MERGE = Pair("merge.rs", len(MERGE_OLD), [(n - 1, 1, 1) for n in MERGE_CHANGED])
+RETYPE = Pair("retype.rs", len(RETYPE_OLD), [(1, 1, 1)])
+FIXTURE_PAIRS = [
+    Pair(f"{stem}{ext}", len((DIFF_FIXTURES / f"{stem}-old{ext}").read_text().splitlines()), changes)
+    for stem, ext, changes in [
+        ("forty", ".txt", [(0, 20, 20)]),
+        ("gap", ".txt", [(0, 1, 1), (304, 1, 1)]),
+        ("long", ".rs", [(1, 1, 1)]),
+        ("realign", ".rs", [(1, 3, 1)]),
+        ("words", ".rs", [(1, 1, 1)]),
+        ("wrap", ".rs", [(1, 1, 1)]),
+    ]
+]
+ALL_PAIRS = [LARGE_PAIR, MERGE, RETYPE, *FIXTURE_PAIRS]
+
+rows = shown(LARGE_PAIR)
+reached, y = reach(rows, row_of(rows, 0, new=CHANGED_NEW))
+at_changed = [reached, at_end(y)]
+in_hunk = f"line {CHANGED_NEW} hunk {LARGE_PAIR.header(CHANGED_OLD)}"
+steps = [diff_rows(rows), at_changed, diff_edit(f"file 0 hunks 3 undo 0 rediff - marks 49..60 {in_hunk}")]
+steps += ["key space", "type x", "wait 5", diff_edit(f"file 0 hunks 3 undo 1 rediff", f"marks 49..62 {in_hunk}", FRESH), diff_rows(rows)]
+diff_edit_lane("type", PAIR, steps, "wait 30", "screenshot e7-type.png", "screenshot e7-regress.png")
+
+GAP_LINE_NEW = 3000
+GAP_LINE_OLD = GAP_LINE_NEW + 6
+rows = shown(LARGE_PAIR)
+_, gap_y = reach(rows, 14)
+assert rows[14][1] == "gap"
+revealed = shown(Pair("large.rs", len(LARGE_RS_LINES), LARGE_RS_EDITS, revealed={1}))
+reached, y = reach(revealed, row_of(revealed, 0, new=GAP_LINE_NEW))
+steps = [f"click {GAP_ALL_X} {gap_y}", "wait 30", diff_rows(revealed), reached, at_end(y)]
+steps += [diff_edit(f"file 0 hunks 3 undo 0 rediff - marks - line {GAP_LINE_NEW} hunk -"), "type y", "wait 5"]
+split = Pair("large.rs", len(LARGE_RS_LINES), sorted(LARGE_RS_EDITS + [(GAP_LINE_OLD - 1, 1, 1)]))
+steps += [diff_edit(f"file 0 hunks 4 undo 1 rediff", f"line {GAP_LINE_NEW} hunk {split.header(GAP_LINE_OLD)}", FRESH)]
+steps += ["log diff", f"expect diff files 1 rows {len(revealed) + 1} stacked", "log rows"]
+diff_edit_lane("unchanged", PAIR, steps, "wait 30", "screenshot e7-unchanged.png")
+
+rows = shown(LARGE_PAIR)
+steps = [at_changed, diff_edit(f"file 0 hunks 3 undo 0 rediff - marks 49..60 {in_hunk}")]
+steps += [["key backspace"] * len(" // changed"), "wait 5", diff_edit(f"file 0 hunks 2 undo", f"marks - line {CHANGED_NEW} hunk -", FRESH)]
+steps += ["log diff", f"expect diff files 1 rows {len(rows) - 1} stacked"]
+diff_edit_lane("revert", PAIR, steps, "wait 30", "screenshot e7-revert.png")
+
+MERGE_LINE = 8
+rows = shown(*ALL_PAIRS)
+reached, y = reach(rows, row_of(rows, 1, new=MERGE_LINE))
+steps = [diff_rows(rows), reached, at_end(y)]
+steps += [diff_edit(f"file 1 hunks 2 undo 0 rediff - marks - line {MERGE_LINE} hunk {MERGE.header(MERGE_LINE)}")]
+merged = Pair("merge.rs", len(MERGE_OLD), [(4, 1, 1), (MERGE_LINE - 1, 1, 1), (13, 1, 1)])
+steps += ["key space", "type // edited", "wait 5", diff_edit(f"file 1 hunks 1 undo", f"line {MERGE_LINE} hunk {merged.header(MERGE_LINE)}", FRESH)]
+steps += ["log diff", f"expect diff files {len(ALL_PAIRS)} rows {len(rows) - len(MERGE.rows(1)) + len(merged.rows(1))} stacked"]
+diff_edit_lane("merge", PAIRS, steps, "wait 30", "screenshot e7-merge.png")
+
+rows = shown(Pair("large.rs", len(LARGE_RS_LINES), LARGE_RS_EDITS, split=True))
+reached, y = reach(rows, row_of(rows, 0, new=CHANGED_NEW))
+assert rows[row_of(rows, 0, new=CHANGED_NEW)][2] == CHANGED_OLD
+steps = [LAYOUT, SETTLE, diff_rows(rows, "split"), reached, at_end(y)]
+steps += [diff_edit(f"file 0 hunks 3 undo 0 rediff - marks 49..60 {in_hunk}"), "key space", "type x", "wait 5"]
+steps += [diff_edit(f"file 0 hunks 3 undo 1 rediff"), copy_line(CHANGED + " x")]
+steps += [f"click {SPLIT_OLD_END_X} {y}", "wait 5", "type z", "wait 5", "log diff-edit"]
+old_line = LARGE_RS_LINES[CHANGED_OLD - 1]
+steps += [f"drag {SPLIT_OLD_GUTTER_X} {y} {SPLIT_OLD_END_X} {y}", "key mod+c", "log copied", f"expect copied {rust_debug(old_line)}"]
+steps += [at_end(y), copy_line(CHANGED + " x")]
+diff_edit_lane("split", PAIR, steps, "wait 30", "screenshot e7-split.png")
+
+ENTERS = 20
+rows = shown(*ALL_PAIRS)
+reached, y = reach(rows, row_of(rows, 0, new=ADDED_NEW))
+steps = [diff_rows(rows), reached, at_end(y), diff_edit(f"file 0 hunks 3 undo 0 rediff - marks - line {ADDED_NEW} hunk")]
+entered = shown(Pair("large.rs", len(LARGE_RS_LINES), [(2000, 6, 0), (5000, 0, 2 + ENTERS), (8000, 1, 1)]), *ALL_PAIRS[1:])
+below = row_of(entered, 0, old=5001)
+assert entered[below][3] == ADDED_NEW + 1 + ENTERS
+reached, _ = reach(entered, below, lead=0)
+steps += [["key enter"] * ENTERS, "wait 5", diff_edit(f"file 0 hunks 3 undo"), diff_rows(entered), reached, diff_edit(FRESH)]
+steps += ["log rows", f"expect rows first_visible {below} spawned", f"expect rows total {len(entered)} following"]
+diff_edit_lane("enter", PAIRS, steps, "wait 30", "screenshot e7-enter.png")
+
+MERGE_V3 = MERGE_NEW[MERGE_CHANGED[0] - 1]
+rows = shown(*ALL_PAIRS)
+reached, y = reach(rows, row_of(rows, 1, new=MERGE_CHANGED[0]))
+at_first = [CENTER, TOP, "wait 10", at_changed]
+steps = [at_changed, "key space", "type one", "wait 5", diff_edit(f"file 0 hunks 3 undo 1 rediff")]
+steps += [reached, at_end(y), diff_edit(f"file 1 hunks 2 undo 0 rediff")]
+steps += ["key space", "type two", "wait 5", diff_edit(f"file 1 hunks 2 undo 1 rediff"), copy_line(MERGE_V3 + " two")]
+steps += [at_end(y), "key mod+z", "wait 5", diff_edit(f"file 1 hunks 2 undo 0 rediff"), at_end(y), copy_line(MERGE_V3)]
+steps += [at_first, diff_edit(f"file 0 hunks 3 undo 1 rediff", FRESH), copy_line(CHANGED + " one")]
+diff_edit_lane("undo", PAIRS, steps, "wait 30", "screenshot e7-undo.png")
+
+RETYPE_NEW_LINE = RETYPE_NEW[1]
+rows = shown(*ALL_PAIRS)
+reached, y = reach(rows, row_of(rows, 2, new=2))
+cost, tot = (RETYPE_NEW_LINE.index(word) for word in (" cost", " tot"))
+steps = [reached, at_end(y), diff_edit(f"file 2 hunks 1 undo 0 rediff - marks {cost + 1}..{cost + 5},{tot + 1}..{tot + 4} line 2")]
+steps += ["type a", "wait 5", "log diff-edit", "type l", "wait 5", diff_edit(f"file 2 hunks 1 undo", f"marks {cost + 1}..{cost + 5} line 2", FRESH)]
+diff_edit_lane("words", PAIRS, steps, "wait 30", "screenshot e7-words.png")
+
+HUNDRED_K_OLD = LARGE_RS_LINES * 10
+HUNDRED_K_LINES = len(HUNDRED_K_OLD)
+HUNDRED_K_LINE = 50_000
+
+
+def edit_suffix(at):
+    """The change ` // edit` makes to line `at`. Where the line repeats the
+    one before, the diff matches the old line to that one and shows a removed
+    line, the match, then the added line, and where it repeats the one after,
+    the added line, the match, then a removed line."""
+    if HUNDRED_K_OLD[at - 1 : at] == HUNDRED_K_OLD[at : at + 1]:
+        return [(at - 1, 1, 0), (at + 1, 0, 1)]
+    if HUNDRED_K_OLD[at + 1 : at + 2] == HUNDRED_K_OLD[at : at + 1]:
+        return [(at, 0, 1), (at + 1, 1, 0)]
+    return [(at, 1, 1)]
+
+
+hundred_k = Pair("large.rs", HUNDRED_K_LINES, [change for at in range(0, HUNDRED_K_LINES, 100) for change in edit_suffix(at)])
+rows = shown(hundred_k)
+reached, y = reach(rows, row_of(rows, 0, new=HUNDRED_K_LINE))
+typed = Pair("large.rs", HUNDRED_K_LINES, sorted(hundred_k.changes + [(HUNDRED_K_LINE - 1, 1, 1)]))
+HUNDRED_K_HUNKS = len(range(0, HUNDRED_K_LINES, 100))
+steps = [diff_rows(rows), reached, at_end(y)]
+steps += [diff_edit(f"file 0 hunks {HUNDRED_K_HUNKS} undo 0 rediff - marks - line {HUNDRED_K_LINE} hunk {hundred_k.header(HUNDRED_K_LINE)}")]
+steps += [window("diff-edit-100k.csv", ["type x"] * 200), "wait 5"]
+steps += [diff_edit(f"file 0 hunks {HUNDRED_K_HUNKS} undo", f"line {HUNDRED_K_LINE} hunk {typed.header(HUNDRED_K_LINE)}", FRESH)]
+diff_edit_lane("100k", HUNDRED_K_PAIR, steps, "wait 30", "screenshot e7-100k.png")
+
+rows = shown(*ALL_PAIRS)
+reached, y = reach(rows, row_of(rows, 0, new=ADDED_NEW))
+steps = [reached, at_end(y), diff_edit(f"file 0 hunks 3 undo 0 rediff - marks - line {ADDED_NEW}")]
+steps += [window("diff-edit-pairs.csv", ["type x"] * 100), "wait 5", diff_edit(f"file 0 hunks 3 undo", FRESH), copy_line(ADDED + "x" * 100)]
+diff_edit_lane("pairs", PAIRS, steps, "wait 30", "screenshot e7-pairs.png")
+
+
 import re
 
 FIND_FIELD = "click 745 151"
@@ -2331,6 +2624,185 @@ doc.insert(start, "x" * 200)
 steps += [doc.text(LINE), caret((LINE, start[1] + 200))]
 steps += [remote("remote 50: ", *(f"u{i + 1} {LINE}:{column + 200} " for i, column in enumerate(carets)))]
 collab("100k", steps, "log typing", "log rows", "wait 30", "screenshot e6-100k.png")
+
+
+# A value marked "measured" was read from a live run at the fix's head.
+
+def m1(name, *steps):
+    editor(f"m1-{name}", *steps)
+
+
+def wrap_lines(text, columns):
+    """Visual lines of `text` at `columns`, as a wrap that breaks at
+    word starts and inside a word wider than a line."""
+    lines, start, word = 1, 0, None
+    for column, c in enumerate(text):
+        if c == " ":
+            word = None
+            continue
+        if column - start >= columns:
+            start = word if word is not None and word > start else column
+            lines += 1
+        if word is None:
+            word = column
+    return lines
+
+
+doc = Doc(LARGE_RS_LINES)
+steps = [at_ime_line(doc)]
+for shot, emoji in enumerate(["🎉", "😀👍🎉"], 1):
+    end = len(emoji.encode())
+    shown = f"page preedit {ime_debug(emoji)} cursor {end}..{end}"
+    steps += [preedit(emoji), "wait 30", ime(shown), f"screenshot m1-emoji-{shot}.png", "ime preedit", "wait 5"]
+LINE = 126
+GROWN = "你好世界" * 10
+steps += [WRAP, "wait 60", doc.scroll_to(LINE - 10), f"click {doc.end(LINE)}", "key end", "wait 2"]
+steps += [preedit(GROWN), "wait 30", ime(f"page preedit {ime_debug(GROWN)}")]
+steps += [f"log row {LINE}", f"expect row {LINE} top {(LINE - 1) * ROW} height {2 * ROW} lines 2"]
+m1("underline", steps, "screenshot m1-preedit-wrap.png")
+
+AREA = (220, 118)  # measured: the top-left of the editor's rows
+REVEALED_DY = 1  # measured: a caret revealed from above sits 1 px lower than the row grid
+doc = Doc(LARGE_RS_LINES)
+at = (IME_LINE, IME_COLUMN)
+steps = [doc.scroll_to(IME_LINE - 20), f"click {doc.at(*at)}", "wait 2", caret(at), candidate_box(doc, at)]
+for cursor in ["0 0", ""]:
+    doc.top = IME_LINE - 20
+    steps += [CENTER, f"scroll 0 -{60 * ROW}", "wait 10", "log caret", "expect caret 1 primary 1 120:5..120:5 visible false"]
+    steps += [ime(f"position {AREA[0]} {AREA[1]} last")]
+    doc.top = IME_LINE
+    steps += [f"ime preedit {COMPOSED} {cursor}".strip(), "wait 10", "log rows", f"expect rows first_visible {IME_LINE - 1} "]
+    steps += [caret(at), candidate_box(doc, at, REVEALED_DY), "ime preedit", "wait 5"]
+m1("ime-hidden", steps, "wait 30", "screenshot m1-ime-hidden.png")
+
+doc = Doc(LARGE_RS_LINES)
+LINE = 300
+WORD = "x" * 200
+end = (LINE, len(doc.line(LINE)) + 1)
+steps = [WRAP, "wait 60", doc.scroll_to(LINE - 10), f"click {doc.end(LINE)}", caret(end)]
+end = doc.insert(end, WORD)
+lines = wrap_lines(doc.line(LINE), WRAP_COLUMNS)
+assert lines == 3, lines
+steps += [f"type {WORD}", "wait 10", doc.text(LINE), caret(end)]
+steps += [f"log row {LINE}", f"expect row {LINE} top {(LINE - 1) * ROW} height {lines * ROW} lines {lines}"]
+m1("wrap-long-word", steps, "wait 30", "screenshot m1-wrap-long-word.png")
+
+doc = Doc(LARGE_RS_LINES)
+LAST = doc.rows()
+TOP = LAST - 50
+LAST_TOP = 10335  # measured: the first visible line once the view ends
+at = (TOP + 5, 5)
+steps = [doc.scroll_to(TOP), f"press {doc.at(*at)}", "move 700 799", "wait 120"]
+steps += ["log rows", f"expect rows first_visible {LAST_TOP - 1} ", caret(at, (LAST, 1)), "release"]
+doc.top = LAST_TOP
+at = (LAST - 30, 5)
+steps += [f"press {doc.at(*at)}"]
+for x, n in [(1262, at[0] + 1), (1275, at[0] + 2)]:
+    steps += [f"move {x} {doc.y(n)}", "wait 10", caret(at, (n, len(doc.line(n)) + 1))]
+m1("drag-below", steps, "release", "wait 30", "screenshot m1-drag-below.png")
+
+LONG = (Path(__file__).parent / "fixtures/long-line.rs").read_text().split("\n")
+doc = Doc(LONG[:-1] if LONG[-1] == "" else LONG)
+LINE = 3
+END = len(doc.line(LINE)) + 1
+FAR_X = "2355.789"  # measured: the sideways offset once End shows the line's end
+PRESSED_FAR = 372  # measured: the column under x 1000 at that offset
+PRESSED_NEAR = 91  # measured: the column under x 1000 at offset 0
+DRAGGED_X = "2352.989"  # measured: the offset a drag past the right stops at, the line's end in view
+steps = ["open ../fixtures/long-line.rs", "wait 30", f"click {doc.end(LINE)}", "key end", "wait 10"]
+steps += ["log rows", f"expect rows x {FAR_X}", f"press 1000 {doc.y(LINE)}", f"move 100 {doc.y(LINE)}", "wait 120"]
+steps += ["log rows", "expect rows x 0", caret((LINE, 1), (LINE, PRESSED_FAR)), "release"]
+steps += [f"press 1000 {doc.y(LINE)}", f"move 1275 {doc.y(LINE)}", "wait 240"]
+steps += ["log rows", f"expect rows x {DRAGGED_X}", caret((LINE, PRESSED_NEAR), (LINE, END)), "release"]
+m1("drag-sideways", steps, "wait 30", "screenshot m1-drag-sideways.png")
+
+def wrap_starts(line):
+    starts = [1]
+    for word in re.finditer(r"\S+", line):
+        if word.start() + 1 > starts[-1] and word.end() + 1 - starts[-1] > WRAP_COLUMNS:
+            starts.append(word.start() + 1)
+    return starts
+
+
+def bracket_caret(n, column, bracket):
+    return ["log caret", f"expect caret 1 primary 1 {n}:{column}..{n}:{column} visible true bracket {bracket}"]
+
+
+doc = Doc(LARGE_RS_LINES)
+LINE, CARET = TONE_LINES[0], TONE_LINES[2]
+word = word_around(doc.line(LINE), doc.line(LINE).index("Body") + 2)
+body, caret_at = ((LINE, word[0]), (LINE, word[1])), (CARET, TONE_COLUMN)
+steps = [f"click {doc.at(LINE, word[0] + 1)} double", f"click {doc.at(*caret_at)} mod", selections([body, (caret_at, caret_at)])]
+copied = doc.between(*body) + "\n" + doc.line(CARET) + "\n"
+steps += ["key mod+c", "clipboard", "log copied", f"expect copied {rust_debug(copied)}"]
+doc.lines[LINE - 1] = doc.line(LINE)[: word[0] - 1] + doc.line(LINE)[word[1] - 1 :]
+del doc.lines[CARET - 1]
+steps += ["key mod+x", "wait 5", texts(doc, [LINE, CARET]), rows_total(doc), carets_at([body[0], (CARET, 1)])]
+steps += ["log copied", f"expect copied {rust_debug(copied)}", undo(1, 0)]
+editor("m2-copy-mixed", steps, "wait 30", "screenshot m2-copy-mixed.png")
+
+doc = Doc(LARGE_RS_LINES)
+LINE = TONE_LINES[0]
+WORDS = " ".join(["abcd"] * 24)
+doc.insert((LINE, len(doc.line(LINE)) + 1), " " + WORDS)
+second = wrap_starts(doc.line(LINE))[1]
+assert len(wrap_starts(doc.line(LINE))) == 2 and all(len(doc.line(n)) < WRAP_COLUMNS for n in TONE_LINES[1:3])
+steps = [WRAP, "wait 60", f"click {doc.end(LINE)}", "key space", f"type {WORDS}", "wait 10", doc.text(LINE)]
+steps += [f"log row {LINE}", f"expect row {LINE} top {(LINE - 1) * ROW} height {2 * ROW} lines 2"]
+left, right = TONE_COLUMN, TONE_COLUMN + len("Tone::")
+row_two, last = doc.y(LINE) + ROW, doc.y(TONE_LINES[2]) + ROW
+steps += [f"drag {column_x(left)} {row_two} {column_x(right)} {last} alt", "wait 5"]
+across = [((LINE, second + left - 1), (LINE, second + right - 1))]
+across += [((n, left), (n, right)) for n in TONE_LINES[1:3]]
+steps += [selections(across)]
+after = replace(doc, across, ["x"] * len(across))
+steps += ["type x", "wait 5", texts(doc, TONE_LINES[:3]), carets_at(after)]
+editor("m2-column-wrap", steps, "wait 30", "screenshot m2-column-wrap.png")
+
+doc = Doc(LARGE_RS_LINES)
+OPEN = 4124
+CLOSE = next(n for n in range(OPEN + 1, doc.rows()) if doc.line(n) == "}")
+assert doc.line(OPEN) == "impl DockTree {" and "*/" not in "\n".join(doc.lines[OPEN:])
+brace = len(doc.line(OPEN)) + 1
+steps = [doc.scroll_to(OPEN - 1), f"click {doc.end(OPEN)}", bracket_caret(OPEN, brace, f"{CLOSE}:1")]
+steps += [f"log kind {CLOSE} 0", f"expect kind {CLOSE} 0 punctuation.bracket"]
+doc.insert((OPEN + 1, 1), "/*")
+steps += [f"click {doc.at(OPEN + 1, 1)}", "type /*", "wait 5", doc.text(OPEN + 1)]
+steps += [f"click {doc.end(OPEN)}", bracket_caret(OPEN, brace, "none")]
+steps += [f"log kind {CLOSE} 0", f"expect kind {CLOSE} 0 comment"]
+doc.insert((OPEN + 1, 3), "*/")
+steps += [f"click {doc.at(OPEN + 1, 3)}", "type */", "wait 5", doc.text(OPEN + 1)]
+steps += [f"click {doc.end(OPEN)}", bracket_caret(OPEN, brace, f"{CLOSE}:1")]
+steps += [f"log kind {CLOSE} 0", f"expect kind {CLOSE} 0 punctuation.bracket"]
+editor("m2-brackets-stale", steps, "wait 30", "screenshot m2-brackets-stale.png")
+
+doc = Doc(LARGE_RS_LINES)
+points = [(n, TONE_COLUMN) for n in TONE_LINES[::2]]
+steps = [f"click {doc.at(*points[0])}", [f"click {doc.at(*p)} mod" for p in points[1:]], carets_at(points)]
+tone = tuple((points[-1][0], c) for c in word_around(doc.line(points[-1][0]), TONE_COLUMN))
+sels = [(p, p) for p in points[:-1]] + [tone]
+steps += [f"click {doc.at(*points[-1])} mod", selections(sels)]
+after = replace(doc, sels, ["x"] * len(sels))
+steps += ["type x", "wait 5", texts(doc, [n for n, _ in points]), carets_at(after), undo(1, 0)]
+editor("m2-mod-reclick", steps, "wait 30", "screenshot m2-mod-reclick.png")
+
+doc = Doc(LARGE_RS_LINES)
+first, line, word_line = (TONE_LINES[0], TONE_COLUMN), TONE_LINES[3], TONE_LINES[1]
+dim = word_around(doc.line(word_line), doc.line(word_line).index("Dim") + 2)
+words = ((word_line, dim[0]), (word_line, dim[1]))
+lines = ((line, 1), (line + 1, 1))
+steps = [f"click {doc.at(*first)}", f"click {doc.at(word_line, dim[0] + 1)} double mod", selections([(first, first), words])]
+steps += [f"click {doc.at(line, TONE_COLUMN)} triple mod", selections([(first, first), words, lines])]
+editor("m2-mod-words", steps, "wait 30", "screenshot m2-mod-words.png")
+
+doc = Doc(LARGE_RS_LINES)
+left, right = TONE_COLUMN, TONE_COLUMN + len("Tone::")
+across = [((n, left), (n, right)) for n in TONE_LINES]
+drag = f"drag {doc.at(TONE_LINES[0], left)} {doc.at(TONE_LINES[-1], right)} alt"
+steps = [drag, "wait 5", selections(across), drag, "wait 5", selections(across)]
+after = replace(doc, across, ["x"] * len(across))
+steps += ["type x", "wait 5", texts(doc, TONE_LINES), carets_at(after), undo(1, 0)]
+editor("m2-column-again", steps, "wait 30", "screenshot m2-column-again.png")
 
 doc = Doc(LARGE_RS_LINES)
 TONE = (23, 13)
