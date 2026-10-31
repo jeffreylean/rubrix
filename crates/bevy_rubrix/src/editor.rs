@@ -175,12 +175,12 @@ impl EditDoc {
         let change = edit(&mut self.editor)?;
         let edits: Vec<LineEdit> = change.line_edits().collect();
         let end = reach(&edits, &self.editor);
-        let hull = self.highlights.edit_many(
+        let lexed = self.highlights.edit_many_lines(
             edits.iter().copied(),
             self.editor.buffer(),
             0..end,
         );
-        self.damage.note(&edits, [hull]);
+        self.damage.note(&edits, lexed);
         self.changes += 1;
         Some(Applied {
             change,
@@ -202,12 +202,12 @@ impl EditDoc {
         if stale >= end {
             return;
         }
-        let hull = self.highlights.edit_many(
+        let lexed = self.highlights.edit_many_lines(
             core::iter::empty(),
             self.editor.buffer(),
             0..end,
         );
-        self.damage.note(&[], [hull]);
+        self.damage.note(&[], lexed);
     }
 
     pub(crate) fn settle(&mut self) {
@@ -233,6 +233,13 @@ impl EditDoc {
         let view = *view;
         self.paste = None;
         Some((text, view))
+    }
+
+    /// The generation of the highlights: it grows with each change
+    /// and each catch-up, which can change runs while
+    /// [`EditDoc::seq`] stays.
+    pub(crate) fn highlight_seq(&self) -> u64 {
+        self.damage.seq()
     }
 }
 
@@ -773,6 +780,46 @@ mod tests {
             0,
             "it read the change"
         );
+    }
+
+    #[test]
+    fn carets_far_apart_reread_only_their_rows() {
+        let mut world = World::new();
+        let text = "let a = 1;\n".repeat(300);
+        let doc = world.spawn(EditDoc::new(Lang::Rust, &text)).id();
+        let view = world.spawn_empty().id();
+        let feed = EditFeed { view, doc };
+        let mut stamps = [None; 199];
+        let mut mount = |world: &World| {
+            let mut fired = Vec::new();
+            for (row, stamp) in stamps.iter_mut().enumerate() {
+                let (fires, now) = feed.reread(world, row, *stamp);
+                *stamp = Some(now);
+                if fires {
+                    fired.push(row);
+                }
+            }
+            fired
+        };
+        world.get_mut::<EditDoc>(doc).expect("a doc").settle();
+        mount(&world);
+        let mut edit = world.get_mut::<EditDoc>(doc).expect("a doc");
+        edit.settle();
+        let buffer = edit.editor().buffer();
+        let mut carets = Selections::new(Selection::caret(
+            buffer.line_start(5) + 3,
+        ));
+        carets.add(Selection::caret(buffer.line_start(150) + 3));
+        let typed = edit.run(
+            |editor| {
+                editor.set_selections(carets);
+                editor
+                    .apply(Command::Type("x"), &Monospace::default())
+            },
+            |_, _| 300,
+        );
+        assert!(typed.is_some());
+        assert_eq!(mount(&world), [5, 150]);
     }
 
     #[test]

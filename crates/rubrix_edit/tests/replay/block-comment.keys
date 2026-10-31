@@ -1,0 +1,16 @@
+# Shift+Alt+A wraps a selection in `/* ` and ` */` with the inner text still selected, a second press unwraps it, and at a caret it puts the caret inside `/*  */`.
+select 17:20 17:27
+key block-comment
+expect line 17     Color::srgb_u8(/* r, g, b */)
+expect carets 1 primary 1 17:23..17:30
+key block-comment
+expect line 17     Color::srgb_u8(r, g, b)
+expect carets 1 primary 1 17:20..17:27
+expect undo-depth 2
+caret 13:4
+key block-comment
+expect line 13 pub/*  */ struct Monokai;
+expect carets 1 primary 1 13:7
+key undo
+expect line 13 pub struct Monokai;
+expect carets 1 primary 1 13:4

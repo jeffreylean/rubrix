@@ -39,6 +39,20 @@ extern crate std;
 #[cfg(feature = "find")]
 pub mod find;
 
+mod brackets;
+mod comment;
+mod lines;
+mod occurrence;
+mod surround;
+
+pub use brackets::{
+    Brackets, SCAN_CHARS, SCAN_LINES, matching as matching_bracket,
+    skipped as bracket_skips,
+};
+pub use comment::{Markers, markers};
+pub use lines::TAB;
+pub use occurrence::{column, toggle_caret};
+
 mod ranges;
 mod state;
 

@@ -612,7 +612,10 @@ fn parse_combo(combo: &str, os: Os) -> Result<Vec<Press>, String> {
         _ => {
             let mut chars = name.chars();
             match (chars.next(), chars.next()) {
-                (Some(c), None) if c.is_ascii_alphanumeric() => {
+                (Some(c), None)
+                    if c.is_ascii_alphanumeric()
+                        || "/[]\\-=,.;'`".contains(c) =>
+                {
                     character(if shift {
                         c.to_ascii_uppercase()
                     } else {
@@ -3049,7 +3052,7 @@ exit
         assert_eq!(logged(&app, "text 4 "), ["\"let x = 1;\""]);
         assert_eq!(
             logged(&app, "caret "),
-            ["1 primary 1 4:11..4:11 visible true"]
+            ["1 primary 1 4:11..4:11 visible true bracket none"]
         );
         assert_eq!(logged(&app, "undo "), ["1 redo 0"]);
         assert_eq!(
@@ -3069,5 +3072,26 @@ exit
             ["top 51 height 17 lines 1"]
         );
         assert_eq!(logged(&app, "typing "), ["edits 1 hidden 0"]);
+    }
+
+    #[test]
+    fn a_mod_chord_takes_a_symbol_key() {
+        for os in [Os::Linux, Os::Macos] {
+            let command = modifier("mod", os).expect("mod");
+            for symbol in ['/', ']', '['] {
+                let form = format!("key mod+{symbol}");
+                let [Step::Key(presses)] = &steps_on(os, &form)[..]
+                else {
+                    panic!("{form} is one key step");
+                };
+                let key = Key::Character(symbol.to_string().into());
+                assert_eq!(presses[0], command, "{form} on {os:?}");
+                assert_eq!(presses[1].key, key, "{form} on {os:?}");
+                assert_eq!(
+                    presses[1].text, None,
+                    "{form} types no text"
+                );
+            }
+        }
     }
 }

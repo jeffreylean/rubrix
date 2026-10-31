@@ -1,0 +1,14 @@
+# mod+/ comments lines 16 and 17 with `// ` at their indent, a second press uncomments them, and each press is one undo step.
+select 16:1 18:1
+key comment
+expect line 16     // let [_, r, g, b] = rgb.to_be_bytes();
+expect line 17     // Color::srgb_u8(r, g, b)
+expect line 18 }
+expect undo-depth 1
+key comment
+expect line 16     let [_, r, g, b] = rgb.to_be_bytes();
+expect line 17     Color::srgb_u8(r, g, b)
+expect undo-depth 2
+key undo
+expect line 16     // let [_, r, g, b] = rgb.to_be_bytes();
+expect line 17     // Color::srgb_u8(r, g, b)

@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use bevy::app::{App, Update};
 use bevy::camera::Camera;
+use bevy::ecs::change_detection::Mut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::ChildOf;
@@ -318,7 +319,10 @@ impl RowSlot {
 #[derive(Component)]
 struct SidewaysContent(RowSlot);
 
-fn fit(node: &mut Node, sideways: bool) {
+/// Takes the `Mut`, not `&mut Node`, so a cell that already fits is
+/// not marked changed: a changed `Node` makes bevy_ui lay it out
+/// again.
+fn fit(node: &mut Mut<Node>, sideways: bool) {
     let (width, shrink) = if sideways {
         (Val::Auto, 0.0)
     } else {

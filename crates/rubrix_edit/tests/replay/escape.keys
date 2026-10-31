@@ -1,0 +1,11 @@
+# Escape collapses several carets to the primary, keeps the primary range of several ranges, and then turns that range into a caret at its head.
+caret 3:1
+add-caret 13:1
+add-caret 5:1
+key collapse
+expect carets 1 primary 1 5:1
+column 11:5 12:9
+key collapse
+expect carets 1 primary 1 12:5..12:9
+key collapse
+expect carets 1 primary 1 12:9

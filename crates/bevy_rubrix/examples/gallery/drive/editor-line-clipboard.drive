@@ -1,0 +1,41 @@
+page editor
+wait 120
+click 306.6 381
+log caret
+expect caret 1 primary 1 16:5..16:5 visible true
+key mod+c
+clipboard
+log copied
+expect copied "    let [_, r, g, b] = rgb.to_be_bytes();\n"
+log undo
+expect undo 0 redo 0
+key mod+x
+wait 5
+log text 16
+expect text 16 "    Color::srgb_u8(r, g, b)"
+log rows
+expect rows total 10372 following
+log copied
+expect copied "    let [_, r, g, b] = rgb.to_be_bytes();\n"
+log undo
+expect undo 1 redo 0
+click 373.8 483
+click 373.8 500 mod
+click 373.8 517 mod
+log caret
+expect caret 3 primary 3 22:13..22:13 23:13..23:13 24:13..24:13
+paste a\nb\nc
+wait 5
+log text 22
+expect text 22 "            aTone::Body => hex(0xFCFCFA),"
+log text 23
+expect text 23 "            bTone::Dim => hex(0x939293),"
+log text 24
+expect text 24 "            cTone::Faint => hex(0x727072),"
+log caret
+expect caret 3 primary 3 22:14..22:14 23:14..23:14 24:14..24:14
+log undo
+expect undo 2 redo 0
+wait 30
+screenshot e4-line-clipboard.png
+exit

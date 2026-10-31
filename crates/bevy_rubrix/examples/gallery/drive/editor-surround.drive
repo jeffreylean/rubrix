@@ -1,0 +1,104 @@
+page editor
+wait 120
+click 432.6 500 double
+log caret
+expect caret 1 primary 1 23:19..23:23 visible true
+type (
+wait 5
+log text 23
+expect text 23 "            Tone::(Body) => hex(0xFCFCFA),"
+log caret
+expect caret 1 primary 1 23:20..23:24 visible true
+log undo
+expect undo 1 redo 0
+key mod+z
+wait 5
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log caret
+expect caret 1 primary 1 23:19..23:23 visible true
+log undo
+expect undo 0 redo 1
+type [
+wait 5
+log text 23
+expect text 23 "            Tone::[Body] => hex(0xFCFCFA),"
+log caret
+expect caret 1 primary 1 23:20..23:24 visible true
+log undo
+expect undo 1 redo 0
+key mod+z
+wait 5
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log caret
+expect caret 1 primary 1 23:19..23:23 visible true
+log undo
+expect undo 0 redo 1
+type {
+wait 5
+log text 23
+expect text 23 "            Tone::{Body} => hex(0xFCFCFA),"
+log caret
+expect caret 1 primary 1 23:20..23:24 visible true
+log undo
+expect undo 1 redo 0
+key mod+z
+wait 5
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log caret
+expect caret 1 primary 1 23:19..23:23 visible true
+log undo
+expect undo 0 redo 1
+type "
+wait 5
+log text 23
+expect text 23 "            Tone::\"Body\" => hex(0xFCFCFA),"
+log caret
+expect caret 1 primary 1 23:20..23:24 visible true
+log undo
+expect undo 1 redo 0
+key mod+z
+wait 5
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log caret
+expect caret 1 primary 1 23:19..23:23 visible true
+log undo
+expect undo 0 redo 1
+type '
+wait 5
+log text 23
+expect text 23 "            Tone::'Body' => hex(0xFCFCFA),"
+log caret
+expect caret 1 primary 1 23:20..23:24 visible true
+log undo
+expect undo 1 redo 0
+key mod+z
+wait 5
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log caret
+expect caret 1 primary 1 23:19..23:23 visible true
+log undo
+expect undo 0 redo 1
+type `
+wait 5
+log text 23
+expect text 23 "            Tone::`Body` => hex(0xFCFCFA),"
+log caret
+expect caret 1 primary 1 23:20..23:24 visible true
+log undo
+expect undo 1 redo 0
+key mod+z
+wait 5
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log caret
+expect caret 1 primary 1 23:19..23:23 visible true
+log undo
+expect undo 0 redo 1
+wait 30
+screenshot e4-surround.png
+exit

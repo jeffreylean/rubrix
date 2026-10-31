@@ -1,0 +1,23 @@
+# Copy and cut at a bare caret take the caret's whole line with its
+# break, and carets on one line copy it once. A cut is one undo step
+# that restores the line and the caret.
+caret 13:5
+copy
+expect copied pub struct Monokai;\n
+caret 13:1
+add-caret 13:8
+copy
+expect copied pub struct Monokai;\n
+caret 3:1
+add-caret 5:4
+copy
+expect copied use core::time::Duration;\nuse bevy::color::Color;\n
+caret 13:5
+key cut
+expect line 13 
+expect line 14 fn hex(rgb: u32) -> Color {
+expect undo-depth 1
+key undo
+expect line 13 pub struct Monokai;
+expect carets 1 primary 1 13:5
+expect undo-depth 0

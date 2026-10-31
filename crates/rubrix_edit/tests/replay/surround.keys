@@ -1,0 +1,38 @@
+# Typing each of ( [ { " ' and a backtick over `Monokai` wraps it with the word still selected, and undo unwraps it.
+select 13:12 13:19
+type (
+expect line 13 pub struct (Monokai);
+expect carets 1 primary 1 13:13..13:20
+key undo
+expect line 13 pub struct Monokai;
+expect carets 1 primary 1 13:12..13:19
+type [
+expect line 13 pub struct [Monokai];
+expect carets 1 primary 1 13:13..13:20
+key undo
+expect line 13 pub struct Monokai;
+expect carets 1 primary 1 13:12..13:19
+type {
+expect line 13 pub struct {Monokai};
+expect carets 1 primary 1 13:13..13:20
+key undo
+expect line 13 pub struct Monokai;
+expect carets 1 primary 1 13:12..13:19
+type "
+expect line 13 pub struct "Monokai";
+expect carets 1 primary 1 13:13..13:20
+key undo
+expect line 13 pub struct Monokai;
+expect carets 1 primary 1 13:12..13:19
+type '
+expect line 13 pub struct 'Monokai';
+expect carets 1 primary 1 13:13..13:20
+key undo
+expect line 13 pub struct Monokai;
+expect carets 1 primary 1 13:12..13:19
+type `
+expect line 13 pub struct `Monokai`;
+expect carets 1 primary 1 13:13..13:20
+key undo
+expect line 13 pub struct Monokai;
+expect carets 1 primary 1 13:12..13:19

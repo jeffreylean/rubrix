@@ -1,0 +1,12 @@
+# Three mod+D presses on `let` select it and the next two, and typing `var` changes all three in one undo step.
+caret 16:6
+key next-occurrence
+expect carets 1 primary 1 16:5..16:8
+key next-occurrence 2
+expect carets 3 primary 3 16:5..16:8 75:9..75:12 126:5..126:8
+type var
+expect line 16     var [_, r, g, b] = rgb.to_be_bytes();
+expect line 75         var millis = match motion {
+expect line 126     var mut registry = world.resource_mut::<DockRegistry<Monokai>>();
+expect carets 3 primary 3 16:8 75:12 126:8
+expect undo-depth 1

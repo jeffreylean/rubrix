@@ -5,17 +5,17 @@ use core::ops::Range;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use bevy::app::{App, PostUpdate};
+use bevy::app::{App, Last, PostUpdate};
 use bevy::camera::{
     Camera, NormalizedRenderTarget, RenderTargetInfo,
 };
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
-use bevy::ecs::query::With;
+use bevy::ecs::query::{Changed, With};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::system::Query;
+use bevy::ecs::system::{Query, ResMut};
 use bevy::ecs::world::World;
 use bevy::input::mouse::MouseScrollUnit;
 use bevy::input::touch::TouchPhase;
@@ -2604,4 +2604,43 @@ fn splice_timing() {
             took[took.len() * 95 / 100]
         );
     }
+}
+
+#[derive(Resource, Default)]
+struct NodeWrites(usize);
+
+fn count_node_writes(
+    nodes: Query<(), Changed<Node>>,
+    mut writes: ResMut<NodeWrites>,
+) {
+    writes.0 += nodes.iter().count();
+}
+
+#[test]
+fn a_still_sideways_list_writes_no_node() {
+    let mut app = laid_out();
+    app.insert_resource(Count(100));
+    let row = |slot: RowSlot| {
+        let text = frame().width(px(300.0)).height(px(20.0));
+        hrow((slot.sideways(text.boxed()),)).boxed()
+    };
+    mount::<Plain>(
+        app.world_mut(),
+        column((virtual_list(
+            resource::<Count, _>(|count| count.0),
+            ESTIMATE,
+            row,
+        )
+        .sideways(true),))
+        .width(px(200.0))
+        .height(px(VIEW)),
+    );
+    settle(&mut app);
+    app.init_resource::<NodeWrites>()
+        .add_systems(Last, count_node_writes);
+    app.update();
+    app.world_mut().resource_mut::<NodeWrites>().0 = 0;
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<NodeWrites>().0, 0);
 }
