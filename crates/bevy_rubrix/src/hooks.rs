@@ -32,11 +32,11 @@ pub trait Follows: Component<Mutability = Mutable> {
     fn follow(&mut self, change: &Change);
 }
 
-/// Moves every `C` through its doc's changes. [`RubrixPlugin`]
-/// (crate::RubrixPlugin) adds it for [`RemoteCarets`]
-/// (crate::RemoteCarets) and [`Markers`]; add it for each
-/// [`LineAnnotations`] payload an app uses, or a `Follows` of its
-/// own.
+/// Moves every `C` through its doc's changes.
+/// [`RubrixPlugin`](crate::RubrixPlugin) adds it for
+/// [`RemoteCarets`](crate::RemoteCarets) and [`Markers`]. Add it for
+/// each [`LineAnnotations`] payload an app uses, or a `Follows` of
+/// its own.
 pub struct FollowPlugin<C>(PhantomData<fn() -> C>);
 
 impl<C> Default for FollowPlugin<C> {
