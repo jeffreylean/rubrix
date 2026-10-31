@@ -340,11 +340,10 @@ pub(crate) fn over(
 ) -> Option<Over> {
     let local = rich_point(node, transform, camera, at)?;
     let logical = node.inverse_scale_factor();
-    let content = node.content_box().size();
-    let size = (content - node.scrollbar_size).max(Vec2::ONE);
+    let size = node.content_box().size().max(Vec2::ONE);
     let held = local.clamp(Vec2::ZERO, size - 1.0);
     let bar = local.cmpge(Vec2::ZERO).all()
-        && local.cmplt(content).all()
+        && local.cmplt(size + node.scrollbar_size).all()
         && (local.x >= size.x || local.y >= size.y);
     let view = size.y * logical;
     let past = if local.y < 0.0 {
@@ -553,9 +552,8 @@ pub(crate) fn follow_drags<D: Selectable>(
     }
 }
 
-/// Steps `list` toward a pointer held past an edge: up or down a row
-/// past its top or bottom, and sideways past the text's left or
-/// right.
+/// Steps `list` toward a pointer held past an edge: up or down past
+/// its top or bottom, and sideways past the text's left or right.
 pub(crate) fn reveal_past(list: &mut VirtualList, over: &Over) {
     let at_start = over.past_x < 0.0 && over.caret_x <= 0.0;
     if over.past_x != 0.0 && !at_start {

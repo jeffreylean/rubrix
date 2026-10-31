@@ -492,8 +492,7 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
                     + laid.node.content_box().min.x
                     + scroll.x * scale;
                 let rows = transform.translation.x
-                    + node.content_box().max.x
-                    - node.scrollbar_size.x;
+                    + node.content_box().max.x;
                 let raw = at.x * scale - viewport.x;
                 let x = raw.min(rows - 1.0).max(text);
                 over.past_x = (raw - x) / scale;

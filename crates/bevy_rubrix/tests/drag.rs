@@ -4,11 +4,12 @@ use bevy::app::App;
 use bevy::ecs::entity::Entity;
 use bevy::math::{Rect, Vec2};
 use bevy::ui::{ComputedNode, ScrollPosition, UiGlobalTransform};
+use bevy_fynix::scroll::ScrollbarStyle;
 use bevy_fynix::views::VirtualList;
 use bevy_rubrix::{EditDoc, EditView, Lang};
 use support::{
     drag_on, edit_line, hold_on, laid_out, list, mount_editor,
-    point_at, release_on,
+    point_at, press_on, release_on,
 };
 
 fn settle(app: &mut App) {
@@ -27,7 +28,7 @@ fn head(app: &App, doc: Entity) -> usize {
         .head
 }
 
-/// The list's box in logical window px, its scrollbars included.
+/// The list's rows in logical window px, its scrollbars left out.
 fn list_box(app: &mut App) -> Rect {
     let area = list(app);
     let world = app.world();
@@ -54,8 +55,6 @@ fn caret_shown(app: &App, view: Entity) -> bool {
         .caret_shown()
 }
 
-/// Holds the pointer at `to` for `frames` frames of a drag from
-/// `from`.
 fn hold_at(
     app: &mut App,
     on: Entity,
@@ -163,4 +162,49 @@ fn a_drag_held_past_a_side_scrolls_the_view_sideways() {
     );
     assert_eq!(head(&app, doc), 0, "to the line's start");
     assert!(caret_shown(&app, view), "with the caret in view");
+}
+
+#[test]
+fn a_press_on_the_scrollbar_leaves_the_caret_and_one_beside_it_moves_it()
+ {
+    let mut app = laid_out();
+    let text: String =
+        (0..200).map(|n| format!("line {n}\n")).collect();
+    let (view, doc) =
+        mount_editor(&mut app, Lang::Plain, &text, 600.0, 300.0);
+    app.world_mut().resource_mut::<ScrollbarStyle>().floating = false;
+    settle(&mut app);
+    let area = list(&mut app);
+    let bar = app
+        .world()
+        .get::<ComputedNode>(area)
+        .expect("a node")
+        .scrollbar_size
+        * app
+            .world()
+            .get::<ComputedNode>(area)
+            .expect("a node")
+            .inverse_scale_factor();
+    assert!(bar.x > 0.0, "the list shows a vertical scrollbar");
+    let shown = list_box(&mut app);
+    let row = edit_line(&mut app, view, 2);
+    let y = point_at(&app, row, 0).y;
+
+    press_on(
+        &mut app,
+        row,
+        Vec2::new(shown.max.x + bar.x / 2.0, y),
+        1,
+    );
+    settle(&mut app);
+    assert_eq!(head(&app, doc), 0, "the scrollbar takes the press");
+
+    press_on(&mut app, row, Vec2::new(shown.max.x - 1.0, y), 1);
+    settle(&mut app);
+    let end = text.match_indices('\n').nth(2).expect("line 2").0;
+    assert_eq!(
+        head(&app, doc),
+        end,
+        "a press just left of the scrollbar lands on the row"
+    );
 }
