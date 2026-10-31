@@ -1709,7 +1709,6 @@ write(
 )
 TOGGLE_100K, MARKERS, ANNOTATE, FIFTY_CARETS, RESPAWN = BUTTONS
 THOUSAND_MARKERS = "click 1041 68"
-PAST_DOUBLE_CLICK = "wait 60"
 
 
 def collab(name, *steps):
@@ -1862,7 +1861,7 @@ line_end = len(doc.line(LINE)) + 1
 carets = [start[1] + (line_end - start[1]) * i // 49 for i in range(50)]
 steps = [TOGGLE_100K, "wait 60", doc.scroll_to(LINE), rows_total(doc)]
 steps += [f"click {doc.at(*start)}", caret(start), FIFTY_CARETS, THOUSAND_MARKERS, "wait 5"]
-steps += [PAST_DOUBLE_CLICK, f"click {doc.at(*start)}", caret(start)]
+steps += [f"click {doc.at(LINE + 1, 1)}", f"click {doc.at(*start)}", caret(start)]
 steps += [remote("remote 50: ", *(f"u{i + 1} {LINE}:{column} shown" for i, column in enumerate(carets)))]
 steps += ["log markers", "expect markers markers 1000: "]
 steps += [window("collab-100k-type.csv", ["type x"] * 200)]

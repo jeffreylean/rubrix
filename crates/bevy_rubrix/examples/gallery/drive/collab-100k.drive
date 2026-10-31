@@ -13,7 +13,7 @@ expect caret 1 primary 1 50000:9..50000:9 visible true
 click 734 68
 click 1041 68
 wait 5
-wait 60
+click 281.4 143
 click 348.6 126
 log caret
 expect caret 1 primary 1 50000:9..50000:9 visible true
