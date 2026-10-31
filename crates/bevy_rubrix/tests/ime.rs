@@ -366,3 +366,24 @@ fn a_preedit_shows_a_hidden_caret_under_the_candidate_box() {
         send(&mut app, [preedit("", None)]);
     }
 }
+
+#[test]
+fn a_preedit_past_the_right_edge_scrolls_to_its_cursor() {
+    let mut app = laid_out();
+    app.add_plugins((InputFocusPlugin, TextInputPlugin))
+        .init_resource::<Seen>()
+        .add_systems(Last, see);
+    app.world_mut().spawn((Window::default(), PrimaryWindow));
+    let (view, doc) =
+        mount_editor(&mut app, Lang::Plain, "x\n", 600.0, 300.0);
+    settle(&mut app);
+    select(&mut app, doc, view, &[1]);
+    focus(&mut app, view);
+    let long = "好".repeat(100);
+    send(&mut app, [preedit(&long, Some((long.len(), long.len())))]);
+    settle(&mut app);
+    let caret = caret_rect(&app, view)
+        .expect("the view scrolls to the preedit's cursor");
+    let (_, position) = last_seen(&mut app);
+    assert_eq!(position, Vec2::new(caret.min.x, caret.max.y));
+}

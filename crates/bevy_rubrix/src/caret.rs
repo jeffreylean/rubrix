@@ -37,7 +37,7 @@ use crate::code_view::Overflow;
 use crate::damage::{End, Shift, row_edits};
 use crate::editor::{EditDoc, EditInput, EditLine, EditView};
 use crate::keymap::content;
-use crate::marks::{MarkKind, Marks};
+use crate::marks::{Mark, MarkKind, Marks};
 use crate::rows::{ADVANCE, LINE_HEIGHT, Shown, inserts};
 use crate::select::{self, Layer, Over, SelectionRects};
 
@@ -527,15 +527,23 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         ))
     }
 
-    /// Where to scroll so the caret at `head` shows: its visual line
-    /// in a laid-out row, or the whole row by its estimate.
+    /// Where to scroll so the primary caret at `head` shows: its
+    /// visual line in a laid-out row, or the whole row by its
+    /// estimate. While an input method composes at `head`, the caret
+    /// sits at the composition's cursor.
     pub(crate) fn reveal(
         &self,
         buffer: &Buffer,
         head: usize,
     ) -> Reveal {
         let line = buffer.line_of(head);
-        let caret = self.caret(buffer, head);
+        let shown = self.shown(buffer, line);
+        let rel = head - buffer.line_start(line);
+        let marks =
+            self.marks.into_iter().flat_map(|marks| marks.on(line));
+        let into = composing(marks, rel).flatten().unwrap_or(0);
+        let caret =
+            self.caret_in(line, &shown, shown.shown(rel) + into);
         let y = if self.laid(line).is_some() {
             caret.top..caret.top + caret.height
         } else {
@@ -556,8 +564,7 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
 
     fn view_height(&self) -> f32 {
         self.parts.areas.get(self.area).map_or(0.0, |(node, ..)| {
-            (node.content_box().height() - node.scrollbar_size.y)
-                * node.inverse_scale_factor()
+            node.content_box().height() * node.inverse_scale_factor()
         })
     }
 }
@@ -729,6 +736,21 @@ type Overlays<'w, 's> = Query<
     Without<CaretBar>,
 >;
 
+/// The caret of the composition inserted at `rel` among `marks`:
+/// `Some(Some(into))` puts it `into` bytes into the preedit,
+/// `Some(None)` hides it, and `None` means no composition is there.
+fn composing<'m>(
+    mut marks: impl Iterator<Item = &'m Mark>,
+    rel: usize,
+) -> Option<Option<usize>> {
+    marks.find_map(|mark| match &mark.kind {
+        MarkKind::Insert { at, caret, .. } if *at == rel => {
+            Some(*caret)
+        }
+        _ => None,
+    })
+}
+
 /// Draws every editable view's selections and carets from this
 /// frame's layout, after `UiSystems::PostLayout`.
 ///
@@ -873,16 +895,7 @@ pub(crate) fn draw(
             let mut at = geometry.shown(buffer, line).shown(rel);
             let mut drawn = true;
             if selection == primary {
-                let insert =
-                    marks.on(line).find_map(|mark| {
-                        match &mark.kind {
-                            MarkKind::Insert {
-                                at, caret, ..
-                            } if *at == rel => Some(*caret),
-                            _ => None,
-                        }
-                    });
-                match insert {
+                match composing(marks.on(line), rel) {
                     Some(Some(into)) => at += into,
                     Some(None) => drawn = false,
                     None => {}
@@ -969,8 +982,7 @@ pub(crate) fn draw(
                 let logical = node.inverse_scale_factor();
                 let box_ = node.content_box();
                 let min = (at.translation + box_.min) * logical;
-                let max = min
-                    + (box_.size() - node.scrollbar_size) * logical;
+                let max = min + box_.size() * logical;
                 let centre = caret.center();
                 centre.cmpge(min).all() && centre.cmple(max).all()
             })
