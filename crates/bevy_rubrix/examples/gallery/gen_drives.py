@@ -2333,12 +2333,7 @@ steps += [remote("remote 50: ", *(f"u{i + 1} {LINE}:{column + 200} " for i, colu
 collab("100k", steps, "log typing", "log rows", "wait 30", "screenshot e6-100k.png")
 
 
-# m2fb: the milestone 2 fixes to E4's gestures and commands.
-
-
 def wrap_starts(line):
-    """The 1-based column where each visual row of `line` starts, as the
-    view wraps it at word boundaries in `WRAP_COLUMNS` columns."""
     starts = [1]
     for word in re.finditer(r"\S+", line):
         if word.start() + 1 > starts[-1] and word.end() + 1 - starts[-1] > WRAP_COLUMNS:

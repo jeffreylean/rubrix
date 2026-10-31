@@ -402,17 +402,12 @@ const LINES: Gesture = Gesture(|stroke| {
     spanning(line(&stroke.from), line(&stroke.to))
 });
 
-/// Two clicks with `mod` held: [`WORDS`] added to the selections, as
-/// in Pierre.
 const ADD_WORDS: Gesture =
     Gesture(|stroke| added(stroke.base, (WORDS.0)(stroke).primary()));
 
-/// Three clicks with `mod` held: [`LINES`] added to the selections.
 const ADD_LINES: Gesture =
     Gesture(|stroke| added(stroke.base, (LINES.0)(stroke).primary()));
 
-/// `base` with `selection` added as the primary, merged with any
-/// selection it overlaps.
 pub(crate) fn added(
     base: &Selections,
     selection: Selection,
@@ -587,9 +582,6 @@ const MACOS: &[Entry] = &[
     ("ctrl+b", go(Motion::Left)),
 ];
 
-/// (modifiers, clicks, gesture). `""` is no modifier. A modifier
-/// keeps its gesture at every click count, so a quick second press
-/// still adds or still selects a column.
 const GESTURES: &[(&str, u8, Gesture)] = &[
     ("", 1, PLACE),
     ("shift", 1, EXTEND),

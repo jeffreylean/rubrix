@@ -41,17 +41,18 @@ pub fn skipped(runs: &[Run]) -> Vec<Range<usize>> {
 ///
 /// `ignored(line)` gives the byte ranges of that line's content to
 /// skip, its strings and comments, so a bracket in them neither
-/// matches nor counts. `None` when no bracket is beside `at` or its
-/// match is not within reach.
+/// matches nor counts, or `None` when they are not known. `None` when
+/// no bracket is beside `at`, its match is not within reach, or the
+/// scan reads a line whose ranges are not known.
 pub fn matching(
     buffer: &Buffer,
     at: usize,
-    mut ignored: impl FnMut(u32) -> Vec<Range<usize>>,
+    mut ignored: impl FnMut(u32) -> Option<Vec<Range<usize>>>,
 ) -> Option<Brackets> {
     let line = buffer.line_of(at);
     let start = buffer.line_start(line);
     let content = buffer.content(line).as_bytes();
-    let skipped = ignored(line);
+    let skipped = ignored(line)?;
     let bracket = |rel: usize| {
         let byte = *content.get(rel)?;
         let pair = PAIRS
@@ -81,7 +82,7 @@ fn scan(
     (line, rel): (u32, usize),
     (open, close): (u8, u8),
     forward: bool,
-    mut ignored: impl FnMut(u32) -> Vec<Range<usize>>,
+    mut ignored: impl FnMut(u32) -> Option<Vec<Range<usize>>>,
 ) -> Option<usize> {
     let (same, other) = if forward {
         (open, close)
@@ -98,7 +99,7 @@ fn scan(
             line.checked_sub(step)
         }?;
         let content = buffer.content(current).as_bytes();
-        let skipped = ignored(current);
+        let skipped = ignored(current)?;
         let span = match (step, forward) {
             (0, true) => rel..content.len(),
             (0, false) => 0..rel + 1,

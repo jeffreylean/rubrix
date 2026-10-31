@@ -464,23 +464,32 @@ pub(crate) fn paste_lines(
     })
 }
 
-/// Pierre's `resolveSelectionCut`: each range cuts its text, and each
-/// bare caret its line with the break after it. The last line takes
-/// the break before it, so no empty line is left. Cuts that overlap
-/// or touch join.
-pub(crate) fn cut(buffer: &Buffer, selections: &Selections) -> Plan {
-    let count = buffer.line_count();
-    let line = |line: u32| {
-        if line + 1 < count {
-            buffer.line_start(line)..buffer.line_start(line + 1)
-        } else if line > 0 {
-            buffer.line_end(line - 1)..buffer.len()
-        } else {
-            0..buffer.len()
-        }
+fn line_with_break_after(buffer: &Buffer, line: u32) -> Range<usize> {
+    let end = if line + 1 < buffer.line_count() {
+        buffer.line_start(line + 1)
+    } else {
+        buffer.len()
     };
+    buffer.line_start(line)..end
+}
+
+fn line_with_a_break_unless_alone(
+    buffer: &Buffer,
+    line: u32,
+) -> Range<usize> {
+    if line + 1 < buffer.line_count() {
+        line_with_break_after(buffer, line)
+    } else if line > 0 {
+        buffer.line_end(line - 1)..buffer.len()
+    } else {
+        0..buffer.len()
+    }
+}
+
+pub(crate) fn cut(buffer: &Buffer, selections: &Selections) -> Plan {
+    let caret = line_with_a_break_unless_alone;
     let mut edits: Vec<(Range<usize>, String)> = Vec::new();
-    for region in regions(buffer, selections, line) {
+    for region in regions(buffer, selections, caret) {
         match edits.last_mut() {
             _ if region.is_empty() => {}
             Some((last, _)) if region.start <= last.end => {
@@ -495,26 +504,13 @@ pub(crate) fn cut(buffer: &Buffer, selections: &Selections) -> Plan {
     }
 }
 
-/// Pierre's `getSelectionText`: each range's text and each bare
-/// caret's line with its break, in buffer order, the text two
-/// selections share once. A line break joins two pieces that do not
-/// touch, unless the first already ends in one.
 pub(crate) fn copy(
     buffer: &Buffer,
     selections: &Selections,
 ) -> String {
-    let count = buffer.line_count();
-    let line = |line: u32| {
-        let end = if line + 1 < count {
-            buffer.line_start(line + 1)
-        } else {
-            buffer.len()
-        };
-        buffer.line_start(line)..end
-    };
     let mut text = String::new();
     let mut copied: Option<usize> = None;
-    for region in regions(buffer, selections, line) {
+    for region in regions(buffer, selections, line_with_break_after) {
         match copied {
             _ if region.is_empty() => {}
             Some(end) if region.start <= end => {
@@ -535,18 +531,16 @@ pub(crate) fn copy(
     text
 }
 
-/// The bytes each selection gives a copy or a cut, sorted: a range
-/// its own, a bare caret what `line` gives for its line.
 fn regions(
     buffer: &Buffer,
     selections: &Selections,
-    line: impl Fn(u32) -> Range<usize>,
+    caret: fn(&Buffer, u32) -> Range<usize>,
 ) -> Vec<Range<usize>> {
     let mut regions: Vec<Range<usize>> = selections
         .iter()
         .map(|selection| {
             if selection.is_caret() {
-                line(buffer.line_of(selection.head))
+                caret(buffer, buffer.line_of(selection.head))
             } else {
                 selection.range()
             }

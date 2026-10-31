@@ -93,14 +93,6 @@ pub const BRACKET: MarkLayer = MarkLayer("bracket");
 
 const BRACKET_ALPHA: f32 = 0.3;
 
-/// Finds each doc's bracket pair again when its text, its lexing or
-/// its primary head moved, and brings every view's `bracket` layer to
-/// it. A view built since, such as after a theme toggle, takes the
-/// pair too.
-///
-/// It first lexes the stale lines up to the scan's reach, so a match
-/// reads the runs of the text it scans. A line still stale after that
-/// leaves the doc with no match until the catch-up reaches it.
 pub(crate) fn match_brackets(
     mut docs: Query<(
         Entity,
@@ -119,17 +111,9 @@ pub(crate) fn match_brackets(
         let doc = &*doc;
         let lexed = doc.highlight_seq();
         let find = || {
-            let mut stale = false;
-            let brackets = matching_bracket(
-                doc.editor().buffer(),
-                head,
-                |line| {
-                    let runs = doc.current_runs(line);
-                    stale |= runs.is_none();
-                    runs.map(bracket_skips).unwrap_or_default()
-                },
-            );
-            brackets.filter(|_| !stale)
+            matching_bracket(doc.editor().buffer(), head, |line| {
+                doc.current_runs(line).map(bracket_skips)
+            })
         };
         let brackets = match held {
             Some(held)
@@ -214,11 +198,9 @@ mod tests {
     use super::*;
     use crate::editor::CATCH_UP;
 
-    /// A doc whose `{` on line `open` matches the `}` five lines
-    /// down, after `/*` typed at the start of the text with the
-    /// lexing held to lines `0..10`, so the comment's runs past line
-    /// 10 are stale.
-    fn commented_after(open: u32) -> (World, Entity) {
+    const LEXED_LINES: u32 = 10;
+
+    fn stale_comment_above(open: u32) -> (World, Entity) {
         let pad = "x\n".repeat(open as usize - 1);
         let text = format!("a\n{pad}{{\n{}}}\n", "x\n".repeat(4));
         let mut doc = EditDoc::new(Lang::Rust, &text);
@@ -235,7 +217,7 @@ mod tests {
                 ));
                 change
             },
-            |_, _| 10,
+            |_, _| LEXED_LINES,
         );
         assert!(opened.is_some());
         let mut world = World::new();
@@ -254,7 +236,7 @@ mod tests {
 
     #[test]
     fn the_match_lexes_the_lines_it_scans_first() {
-        let (mut world, entity) = commented_after(600);
+        let (mut world, entity) = stale_comment_above(600);
         assert_eq!(
             found(&mut world, entity),
             None,
@@ -265,7 +247,8 @@ mod tests {
     #[test]
     fn the_match_trusts_no_line_still_stale_after_the_catch_up() {
         let past_one_catch_up = CATCH_UP + SCAN_LINES;
-        let (mut world, entity) = commented_after(past_one_catch_up);
+        let (mut world, entity) =
+            stale_comment_above(past_one_catch_up);
         assert_eq!(found(&mut world, entity), None);
     }
 }

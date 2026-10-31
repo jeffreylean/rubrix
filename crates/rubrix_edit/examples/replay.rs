@@ -661,7 +661,7 @@ fn bracket(editor: &Editor, lang: Lang) -> String {
         rubrix_highlight::highlight(lang, &buffer.to_string());
     let head = editor.selections().primary().head;
     matching_bracket(buffer, head, |line| {
-        bracket_skips(highlights.stored_runs(line))
+        Some(bracket_skips(highlights.stored_runs(line)))
     })
     .map_or_else(
         || "none".to_owned(),

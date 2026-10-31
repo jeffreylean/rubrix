@@ -159,8 +159,6 @@ impl EditDoc {
         self.highlights.stored_runs(line as u32)
     }
 
-    /// Line `line`'s runs, or `None` while they may be older than its
-    /// text.
     pub(crate) fn current_runs(&self, line: u32) -> Option<&[Run]> {
         let stale = self.highlights.stale_from().unwrap_or(u32::MAX);
         (line < stale).then(|| self.runs(line as usize))
