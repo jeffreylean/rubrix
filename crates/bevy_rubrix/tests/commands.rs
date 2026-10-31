@@ -69,7 +69,7 @@ fn go(motion: Motion) -> Action {
     })
 }
 
-/// E4's chords on both platforms, written with `mod`.
+/// The chords bound on both platforms, written with `mod`.
 fn shared() -> Vec<(&'static str, Action)> {
     vec![
         ("tab", command(Command::Indent)),

@@ -403,8 +403,6 @@ mod tests {
     use crate::buffer::Buffer;
     use crate::selection::{Selection, Selections};
 
-    /// No `Lang` has a block marker and no line marker, so this
-    /// builds one.
     #[test]
     fn line_mode_without_a_line_marker_wraps_the_lines_in_a_block() {
         let markers = Markers {

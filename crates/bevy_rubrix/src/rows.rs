@@ -18,6 +18,7 @@ use bevy_fynix::views::{
 use bevy_fynix::{
     AnyView, Bevy, Cx, Signal, ViewExt, component, derived,
 };
+use rubrix_edit::TAB;
 use rubrix_highlight::{Run, spans};
 
 use crate::code_view::{CodeDoc, CodeLine, Overflow};
@@ -30,8 +31,6 @@ pub(crate) const LINE_HEIGHT: f32 = 1.2;
 
 /// JetBrains Mono's advance, as a factor of the font size.
 pub(crate) const ADVANCE: f32 = 0.6;
-
-const TAB: usize = 4;
 
 /// What every row of a code list draws with, read from the theme when
 /// the view is built.

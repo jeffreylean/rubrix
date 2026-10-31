@@ -6,8 +6,7 @@ use alloc::vec::Vec;
 use crate::command::{After, Plan};
 use crate::selection::Selections;
 
-/// What typing each opener over a selection puts around it. Pierre
-/// also wraps in `<` and `>`, which the plan leaves out.
+/// What typing each opener over a selection puts around it.
 const PAIRS: [(&str, &str); 6] = [
     ("(", ")"),
     ("[", "]"),

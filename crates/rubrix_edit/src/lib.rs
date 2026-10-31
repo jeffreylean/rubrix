@@ -43,4 +43,5 @@ pub use brackets::{
     Brackets, SCAN_CHARS, SCAN_LINES, matching as matching_bracket,
 };
 pub use comment::{Markers, markers};
+pub use lines::TAB;
 pub use occurrence::{column, toggle_caret};

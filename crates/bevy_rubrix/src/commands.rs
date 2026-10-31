@@ -59,15 +59,15 @@ pub(crate) const ADD_CARET: Gesture = Gesture(|stroke| {
 });
 
 /// Alt+drag: one selection per line from the press to the pointer,
-/// each ending at the pointer's column even when the pointer's own
-/// line is shorter.
+/// at the columns under the press and the pointer even where their
+/// own lines are shorter.
 pub(crate) const COLUMN: Gesture = Gesture(|stroke| {
     let (from, to) = (stroke.from, stroke.to);
     column(
         stroke.buffer,
         stroke.layout,
-        (from.line, from.x),
-        (to.line, stroke.pointer),
+        (from.line, from.pointer),
+        (to.line, to.pointer),
     )
 });
 
@@ -78,8 +78,10 @@ pub(crate) const COLUMN: Gesture = Gesture(|stroke| {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct BracketMatch {
     brackets: Option<Brackets>,
-    /// The doc's seq and primary head the match was found at.
-    read: (u64, usize),
+    /// The doc's seq when the match was found.
+    seq: u64,
+    /// The primary head the match was found at.
+    head: usize,
 }
 
 impl BracketMatch {
@@ -91,8 +93,6 @@ impl BracketMatch {
 /// The layer of [`Marks`] that holds the bracket pair.
 pub const BRACKET: MarkLayer = MarkLayer("bracket");
 
-/// Stronger than a selection's tint, so a pair inside a selection
-/// still shows.
 const BRACKET_ALPHA: f32 = 0.3;
 
 /// Finds each doc's bracket pair again when its text or its primary
@@ -105,15 +105,17 @@ pub(crate) fn match_brackets(
     mut commands: Commands,
 ) {
     for (entity, doc, held) in &mut docs {
-        let read =
+        let (seq, head) =
             (doc.seq(), doc.editor().selections().primary().head);
         let find = || {
-            matching_bracket(doc.editor().buffer(), read.1, |line| {
+            matching_bracket(doc.editor().buffer(), head, |line| {
                 skipped(doc, line)
             })
         };
         let brackets = match held {
-            Some(held) if held.read == read => held.brackets,
+            Some(held) if (held.seq, held.head) == (seq, head) => {
+                held.brackets
+            }
             Some(mut held) => {
                 let brackets = find();
                 let held = if held.brackets == brackets {
@@ -121,14 +123,20 @@ pub(crate) fn match_brackets(
                 } else {
                     &mut *held
                 };
-                *held = BracketMatch { brackets, read };
+                *held = BracketMatch {
+                    brackets,
+                    seq,
+                    head,
+                };
                 brackets
             }
             None => {
                 let brackets = find();
-                commands
-                    .entity(entity)
-                    .insert(BracketMatch { brackets, read });
+                commands.entity(entity).insert(BracketMatch {
+                    brackets,
+                    seq,
+                    head,
+                });
                 brackets
             }
         };

@@ -13,9 +13,9 @@ use crate::motion::{
 };
 use crate::selection::{Selection, Selections};
 
-/// The columns between indent stops, the tab width the code view
-/// draws.
-const TAB: usize = 4;
+/// The columns between tab stops: where Tab and Backspace stop in
+/// leading spaces, and where a view draws a tab to.
+pub const TAB: usize = 4;
 
 /// The lines the selections cover, as sorted half-open line ranges,
 /// as Pierre's `getSelectedLineBlocks` finds them.

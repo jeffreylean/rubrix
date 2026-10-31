@@ -1,5 +1,5 @@
 //! Selections added by pointer and by search: add next occurrence,
-//! Alt+click carets and column selection.
+//! mod+click carets and column selection.
 
 use alloc::vec::Vec;
 use core::ops::Range;
@@ -134,7 +134,7 @@ fn spans(buffer: &Buffer, line: u32, parts: &[&str]) -> bool {
         && buffer.line(line + last as u32).starts_with(parts[last])
 }
 
-/// Alt+click at `at`: removes the selection that holds `at`, unless
+/// mod+click at `at`: removes the selection that holds `at`, unless
 /// it is the only one, or else adds a caret at `at` as the new
 /// primary.
 pub fn toggle_caret(

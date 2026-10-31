@@ -53,6 +53,10 @@ pub struct Hit {
     pub line: u32,
     pub offset: usize,
     pub x: f32,
+    /// The pointer's own x in the units of `x`, before it snapped to
+    /// the text, so past the end of a short line it stays where the
+    /// pointer is.
+    pub pointer: f32,
 }
 
 /// How carets blink: on for `period`, then off for `period`, and on
@@ -455,15 +459,14 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
     }
 
     /// The text at `at`, logical window px, as a pointer would press
-    /// it, the pointer's own x in [`Hit::x`]'s units, unsnapped, and
-    /// where it is against the list. `None` on a scrollbar or off the
-    /// list. A press left of a row's visible text, on the gutter,
-    /// lands at the line's start.
+    /// it, and where it is against the list. `None` on a scrollbar or
+    /// off the list. A press left of a row's visible text, on the
+    /// gutter, lands at the line's start.
     pub(crate) fn hit(
         &self,
         buffer: &Buffer,
         at: Vec2,
-    ) -> Option<(Hit, f32, Over)> {
+    ) -> Option<(Hit, Over)> {
         let camera = self.parts.cameras.iter().next()?;
         let (node, transform, scroll) =
             self.parts.areas.get(self.area).ok()?;
@@ -507,7 +510,15 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         let offset = pointed.map_or(start, |(offset, _)| offset);
         let x = self.caret(buffer, offset).x;
         let pointer = pointed.map_or(x, |(_, pointer)| pointer);
-        Some((Hit { line, offset, x }, pointer, over))
+        Some((
+            Hit {
+                line,
+                offset,
+                x,
+                pointer,
+            },
+            over,
+        ))
     }
 
     /// Where to scroll so the caret at `head` shows: its visual line
