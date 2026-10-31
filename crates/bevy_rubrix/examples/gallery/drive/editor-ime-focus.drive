@@ -1,0 +1,20 @@
+page editor
+wait 120
+move 740 400
+click 740 400
+wait 2
+log ime
+expect ime enabled true
+page code
+wait 10
+log ime
+expect ime enabled false
+page editor
+wait 120
+click 740 400
+wait 2
+log ime
+expect ime enabled true
+wait 30
+screenshot e3-focus.png
+exit

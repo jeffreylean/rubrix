@@ -1,0 +1,22 @@
+# Needs fcitx5 Pinyin and launch.sh --ime-live, which gives the gallery the keyboard focus.
+page editor
+wait 120
+move 740 400
+scroll 0 -2023
+wait 10
+click 306.6 126
+log caret
+expect caret 1 primary 1 120:5..120:5 visible true
+wtype nihao
+wait 30
+log ime
+expect ime last preedit
+wtype 1
+wait 30
+log text 120
+expect text 120 "    你好    .run();"
+log ime
+expect ime page preedit none
+wait 30
+screenshot e3-live-pinyin.png
+exit
