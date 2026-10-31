@@ -1,0 +1,51 @@
+page editor
+wait 120
+click 586 68
+wait 60
+click 281.4 126
+key mod+f
+wait 5
+click 930 151
+wait 5
+click 745 151
+key mod+a
+type \s+theme
+wait 120
+# python re.findall(r'\s+theme', 100k, re.I) -> 663
+log find
+expect find open query "\\s+theme"
+expect find of 663 marked
+click 281.4 160
+frames start
+wait 60
+type a
+wait 9
+type b
+wait 9
+type c
+wait 9
+type d
+wait 9
+type e
+wait 9
+type f
+wait 9
+type g
+wait 9
+type h
+wait 9
+type i
+wait 9
+type j
+wait 9
+wait 20
+frames stop editor-find-m2-edit-100k.csv
+wait 120
+log text 3
+expect text 3 "abcdefghijuse core::time::Duration;"
+log find
+expect find open query "\\s+theme"
+expect find of 663 marked
+wait 30
+screenshot m2fa-edit-100k.png
+exit

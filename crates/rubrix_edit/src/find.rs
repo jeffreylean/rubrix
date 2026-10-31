@@ -4,25 +4,44 @@
 //! it with a regex, so a match can run across lines. It works in
 //! slices: [`Search::step`] does as much as a time budget allows and
 //! picks up where it stopped on the next call, so a view can spread a
-//! search of a large buffer over frames. [`Search::edited`] follows
-//! an edit, keeping the matches before the edited line and scanning
-//! again from there.
+//! search of a large buffer over frames. It steps the regex's lazy
+//! DFAs by hand, so it can stop inside the scan for one match, which
+//! a `Regex` call cannot. [`Search::edited`] follows an edit, keeping
+//! the matches that end before the first line a match reaching the
+//! edit could start on, and scanning again from there.
 
 use std::borrow::Cow;
+use std::boxed::Box;
 use std::ops::Range;
 use std::string::{String, ToString};
 use std::time::{Duration, Instant};
 use std::vec::Vec;
 
 use regex::{Captures, Regex, RegexBuilder};
+use regex_automata::hybrid::LazyStateID;
+use regex_automata::hybrid::dfa::Config as DfaConfig;
+use regex_automata::hybrid::regex::{
+    Builder as LazyBuilder, Cache, Regex as LazyRegex,
+};
+use regex_automata::util::prefilter::Prefilter;
+use regex_automata::util::syntax::Config as SyntaxConfig;
+use regex_automata::{Anchored, Input, MatchError, MatchKind, Span};
+use regex_syntax::ParserBuilder;
+use regex_syntax::ast::Ast;
+use regex_syntax::ast::parse::Parser;
+use regex_syntax::ast::print::Printer;
+use regex_syntax::hir::{Class, Hir, HirKind};
 use rubrix_highlight::Lines;
 
 use crate::history::Kind;
-use crate::motion::{is_word, word_at};
+use crate::motion::{is_word, snap, word_at};
 use crate::{Buffer, Change, Editor, Selection, Selections};
 
 /// A search stops after this many matches, as Pierre's does.
 pub const MAX_MATCHES: usize = 100_000;
+
+const BYTES_PER_CLOCK_CHECK: usize = 1 << 14;
+const PREFILTER_WINDOW: usize = 1 << 16;
 
 /// What to look for.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -42,10 +61,50 @@ pub struct Query {
 enum Pattern {
     Empty,
     Invalid(String),
-    Regex(Regex),
+    Regex {
+        regex: Regex,
+        lazy: Option<Box<Lazy>>,
+        most_breaks: Option<u32>,
+    },
+}
+
+#[derive(Debug)]
+struct Lazy {
+    regex: LazyRegex,
+    cache: Cache,
+    universal_start: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Leg {
+    Forward {
+        at: usize,
+        sid: LazyStateID,
+        last_end: Option<usize>,
+    },
+    Reverse {
+        at: usize,
+        sid: LazyStateID,
+        end: usize,
+        start: Option<usize>,
+    },
+}
+
+enum Next {
+    Found(Range<usize>),
+    Nothing,
+    Paused,
+}
+
+enum Scan<T> {
+    Unfinished,
+    Done(T),
 }
 
 /// The matches of one [`Query`] in a buffer, found a slice at a time.
+///
+/// A match counts only when both its ends are grapheme cluster
+/// boundaries, so the editor can select it as it stands.
 ///
 /// A search keeps its own copy of the text, so it must see every
 /// change made to the buffer it scans, through [`Search::edited`].
@@ -57,6 +116,7 @@ pub struct Search {
     text: String,
     copied: u32,
     at: Option<usize>,
+    leg: Option<Leg>,
     matches: Vec<Range<usize>>,
 }
 
@@ -69,6 +129,7 @@ impl Search {
             text: String::new(),
             copied: 0,
             at: None,
+            leg: None,
             matches: Vec::new(),
         };
         search.set_query(query);
@@ -81,14 +142,15 @@ impl Search {
         self.whole_word = query.whole_word;
         self.expand = query.regex;
         self.matches.clear();
-        self.at =
-            matches!(self.pattern, Pattern::Regex(_)).then_some(0);
+        self.leg = None;
+        self.at = matches!(self.pattern, Pattern::Regex { .. })
+            .then_some(0);
     }
 
     /// Follows a change made to `buffer`, which holds the text after
-    /// it. Keeps the matches that end before the line above the first
-    /// edited line, so a match that ran from that line into the edit
-    /// is found again, and scans on from there.
+    /// it. A pattern with no bound on its line breaks scans again
+    /// from the last match before the edited line, so it misses a
+    /// branch that starts before that match, such as `x|a[\s\S]*z`.
     pub fn edited(&mut self, buffer: &Buffer, change: &Change) {
         let Some(first) = change.replacements().next() else {
             return;
@@ -99,22 +161,37 @@ impl Search {
                 .truncate(buffer.line_start(line).saturating_sub(1));
             self.copied = line;
         }
-        let from = buffer.line_start(line.saturating_sub(1));
+        let Pattern::Regex { most_breaks, .. } = self.pattern else {
+            return;
+        };
+        let from = match most_breaks {
+            Some(breaks) => {
+                buffer.line_start(line.saturating_sub(breaks))
+            }
+            None => {
+                let line_start = buffer.line_start(line);
+                let before = self
+                    .matches
+                    .partition_point(|m| m.end <= line_start);
+                before
+                    .checked_sub(1)
+                    .map_or(0, |last| self.matches[last].start)
+            }
+        };
         let kept = self.matches.partition_point(|m| m.end <= from);
         let restart = self
             .matches
             .get(kept)
             .map_or(from, |m| m.start.min(from));
         self.matches.truncate(kept);
-        if let Pattern::Regex(_) = self.pattern {
-            self.at =
-                Some(self.at.map_or(restart, |at| at.min(restart)));
-        }
+        self.leg = None;
+        self.at = Some(self.at.map_or(restart, |at| at.min(restart)));
     }
 
     /// Scans for about `budget`, and returns whether the search has
-    /// ended. A single regex step can run past the budget when the
-    /// regex has no literal to look for and no match is near.
+    /// ended. It can run past the budget when the lazy DFA cannot
+    /// scan the pattern, as with a Unicode `\b` next to non-ASCII
+    /// text, and the scan falls back to one `Regex` call.
     pub fn step(
         &mut self,
         buffer: &Buffer,
@@ -162,28 +239,41 @@ impl Search {
         if !self.copy(buffer, deadline) {
             return false;
         }
-        let Pattern::Regex(regex) = &self.pattern else {
+        let Pattern::Regex { regex, lazy, .. } = &mut self.pattern
+        else {
             self.at = None;
             return true;
         };
         let mut steps = 0_u32;
         while self.matches.len() < MAX_MATCHES {
-            let Some(found) = regex.find_at(&self.text, at) else {
+            let next = lazy.as_mut().map(|lazy| {
+                lazy.find(&self.text, at, &mut self.leg, deadline)
+            });
+            let found = match next {
+                Some(Ok(Next::Paused)) => {
+                    self.at = Some(at);
+                    return false;
+                }
+                Some(Ok(Next::Found(range))) => Some(range),
+                Some(Ok(Next::Nothing)) => None,
+                Some(Err(_)) | None => {
+                    regex.find_at(&self.text, at).map(|m| m.range())
+                }
+            };
+            let Some(range) = found else {
                 break;
             };
-            let range = found.range();
             if !range.is_empty()
                 && (!self.whole_word
                     || whole_word(&self.text, &range))
+                && on_cluster_boundaries(buffer, &self.text, &range)
             {
                 at = range.end;
                 self.matches.push(range);
+            } else if range.start < self.text.len() {
+                at = self.text.ceil_char_boundary(range.start + 1);
             } else {
-                let Some(c) = self.text[range.start..].chars().next()
-                else {
-                    break;
-                };
-                at = range.start + c.len_utf8();
+                break;
             }
             steps += 1;
             if steps.is_multiple_of(32)
@@ -233,7 +323,7 @@ impl Search {
     ) -> Cow<'t, str> {
         let range = &self.matches[index];
         let captures = match &self.pattern {
-            Pattern::Regex(regex) if self.expand => {
+            Pattern::Regex { regex, .. } if self.expand => {
                 regex.captures_at(&self.text, range.start)
             }
             _ => None,
@@ -320,55 +410,349 @@ fn compile(query: &Query) -> Pattern {
     } else {
         Cow::Owned(regex::escape(&query.text))
     };
-    let built = RegexBuilder::new(&crlf_newlines(&source))
-        .case_insensitive(!query.match_case)
-        .multi_line(true)
-        .crlf(true)
-        .build();
-    match built {
-        Ok(regex) => Pattern::Regex(regex),
-        Err(error) => Pattern::Invalid(
+    build(&source, !query.match_case).unwrap_or_else(|error| {
+        Pattern::Invalid(
             error
-                .to_string()
                 .lines()
                 .last()
                 .unwrap_or_default()
                 .trim_start_matches("error: ")
                 .to_string(),
-        ),
+        )
+    })
+}
+
+fn build(
+    source: &str,
+    case_insensitive: bool,
+) -> Result<Pattern, String> {
+    let mut ast = Parser::new()
+        .parse(source)
+        .map_err(|error| error.to_string())?;
+    crlf_newlines(&mut ast);
+    let mut pattern = String::with_capacity(source.len());
+    Printer::new()
+        .print(&ast, &mut pattern)
+        .expect("a String takes every write");
+    let hir = ParserBuilder::new()
+        .case_insensitive(case_insensitive)
+        .multi_line(true)
+        .crlf(true)
+        .build()
+        .parse(&pattern)
+        .map_err(|error| error.to_string())?;
+    let regex = RegexBuilder::new(&pattern)
+        .case_insensitive(case_insensitive)
+        .multi_line(true)
+        .crlf(true)
+        .build()
+        .map_err(|error| error.to_string())?;
+    Ok(Pattern::Regex {
+        regex,
+        lazy: Lazy::new(&pattern, &hir, case_insensitive),
+        most_breaks: most_breaks(&hir),
+    })
+}
+
+impl Lazy {
+    fn new(
+        pattern: &str,
+        hir: &Hir,
+        case_insensitive: bool,
+    ) -> Option<Box<Lazy>> {
+        let prefilter =
+            Prefilter::from_hir_prefix(MatchKind::LeftmostFirst, hir);
+        let regex = LazyBuilder::new()
+            .syntax(
+                SyntaxConfig::new()
+                    .case_insensitive(case_insensitive)
+                    .multi_line(true)
+                    .crlf(true),
+            )
+            .dfa(
+                DfaConfig::new()
+                    .specialize_start_states(prefilter.is_some())
+                    .prefilter(prefilter)
+                    .unicode_word_boundary(true)
+                    .minimum_cache_clear_count(None),
+            )
+            .build(pattern)
+            .ok()?;
+        let universal_start = regex
+            .forward()
+            .get_nfa()
+            .look_set_prefix_any()
+            .is_empty();
+        Some(Box::new(Lazy {
+            cache: regex.create_cache(),
+            regex,
+            universal_start,
+        }))
+    }
+
+    fn find(
+        &mut self,
+        text: &str,
+        from: usize,
+        leg: &mut Option<Leg>,
+        deadline: Option<Instant>,
+    ) -> Result<Next, MatchError> {
+        let hay = text.as_bytes();
+        let mut current = match leg.take() {
+            Some(leg) => leg,
+            None => Leg::Forward {
+                at: from,
+                sid: self.regex.forward().start_state_forward(
+                    self.cache.forward_mut(),
+                    &Input::new(hay).span(from..hay.len()),
+                )?,
+                last_end: None,
+            },
+        };
+        loop {
+            match &mut current {
+                Leg::Forward { at, sid, last_end } => {
+                    match self.forward(hay, at, sid, last_end)? {
+                        Scan::Unfinished => {}
+                        Scan::Done(None) => return Ok(Next::Nothing),
+                        Scan::Done(Some(end)) if end == from => {
+                            return Ok(Next::Found(from..from));
+                        }
+                        Scan::Done(Some(end)) => {
+                            let input = Input::new(hay)
+                                .span(from..end)
+                                .anchored(Anchored::Yes);
+                            let sid = self
+                                .regex
+                                .reverse()
+                                .start_state_reverse(
+                                    self.cache.reverse_mut(),
+                                    &input,
+                                )?;
+                            current = Leg::Reverse {
+                                at: end,
+                                sid,
+                                end,
+                                start: None,
+                            };
+                            continue;
+                        }
+                    }
+                }
+                Leg::Reverse {
+                    at,
+                    sid,
+                    end,
+                    start,
+                } => {
+                    if let Scan::Done(start) =
+                        self.reverse(hay, from, at, sid, start)?
+                    {
+                        return Ok(Next::Found(start..*end));
+                    }
+                }
+            }
+            if deadline.is_some_and(|end| Instant::now() >= end) {
+                *leg = Some(current);
+                return Ok(Next::Paused);
+            }
+        }
+    }
+
+    fn forward(
+        &mut self,
+        hay: &[u8],
+        at: &mut usize,
+        sid: &mut LazyStateID,
+        last_end: &mut Option<usize>,
+    ) -> Result<Scan<Option<usize>>, MatchError> {
+        let dfa = self.regex.forward();
+        let cache = self.cache.forward_mut();
+        let stop =
+            at.saturating_add(BYTES_PER_CLOCK_CHECK).min(hay.len());
+        while *at < stop {
+            if sid.is_start()
+                && last_end.is_none()
+                && let Some(pre) = dfa.get_config().get_prefilter()
+            {
+                let needle = pre.max_needle_len();
+                let window = at
+                    .saturating_add(PREFILTER_WINDOW.max(2 * needle))
+                    .min(hay.len());
+                let next =
+                    match pre.find(hay, Span::from(*at..window)) {
+                        Some(span) => span.start,
+                        None if window == hay.len() => {
+                            return Ok(Scan::Done(None));
+                        }
+                        None => window + 1 - needle,
+                    };
+                if next > *at {
+                    *at = next;
+                    if !self.universal_start {
+                        *sid = dfa.start_state_forward(
+                            cache,
+                            &Input::new(hay).span(next..hay.len()),
+                        )?;
+                    }
+                    continue;
+                }
+            }
+            *sid = dfa
+                .next_state(cache, *sid, hay[*at])
+                .map_err(|_| MatchError::gave_up(*at))?;
+            if sid.is_match() {
+                *last_end = Some(*at);
+            } else if sid.is_dead() {
+                return Ok(Scan::Done(*last_end));
+            } else if sid.is_quit() {
+                return Err(MatchError::quit(hay[*at], *at));
+            }
+            *at += 1;
+        }
+        if *at < hay.len() {
+            return Ok(Scan::Unfinished);
+        }
+        *sid = dfa
+            .next_eoi_state(cache, *sid)
+            .map_err(|_| MatchError::gave_up(*at))?;
+        if sid.is_match() {
+            *last_end = Some(*at);
+        }
+        Ok(Scan::Done(*last_end))
+    }
+
+    fn reverse(
+        &mut self,
+        hay: &[u8],
+        from: usize,
+        at: &mut usize,
+        sid: &mut LazyStateID,
+        start: &mut Option<usize>,
+    ) -> Result<Scan<usize>, MatchError> {
+        let dfa = self.regex.reverse();
+        let cache = self.cache.reverse_mut();
+        let stop = at.saturating_sub(BYTES_PER_CLOCK_CHECK).max(from);
+        let found = |start: Option<usize>| {
+            start.expect("a reverse scan finds the forward match")
+        };
+        while *at > stop {
+            let byte = hay[*at - 1];
+            *sid = dfa
+                .next_state(cache, *sid, byte)
+                .map_err(|_| MatchError::gave_up(*at - 1))?;
+            if sid.is_match() {
+                *start = Some(*at);
+            } else if sid.is_dead() {
+                return Ok(Scan::Done(found(*start)));
+            } else if sid.is_quit() {
+                return Err(MatchError::quit(byte, *at - 1));
+            }
+            *at -= 1;
+        }
+        if *at > from {
+            return Ok(Scan::Unfinished);
+        }
+        match from.checked_sub(1).map(|before| hay[before]) {
+            Some(byte) => {
+                *sid = dfa
+                    .next_state(cache, *sid, byte)
+                    .map_err(|_| MatchError::gave_up(from))?;
+                if sid.is_quit() {
+                    return Err(MatchError::quit(byte, from - 1));
+                }
+            }
+            None => {
+                *sid = dfa
+                    .next_eoi_state(cache, *sid)
+                    .map_err(|_| MatchError::gave_up(from))?;
+            }
+        }
+        if sid.is_match() {
+            *start = Some(from);
+        }
+        Ok(Scan::Done(found(*start)))
     }
 }
 
-/// `source` with each newline outside a character class, typed or as
-/// `\n`, matching an optional `\r` before it, so a query written with
-/// `\n` matches across the lines of a CRLF buffer too.
-fn crlf_newlines(source: &str) -> String {
-    let mut out = String::with_capacity(source.len());
-    let mut chars = source.chars();
-    let mut class = false;
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' => match chars.next() {
-                Some('n') if !class => out.push_str(r"(?:\r?\n)"),
-                Some(next) => {
-                    out.push('\\');
-                    out.push(next);
-                }
-                None => out.push('\\'),
-            },
-            '\n' if !class => out.push_str(r"(?:\r?\n)"),
-            '[' => {
-                class = true;
-                out.push(c);
+fn crlf_newlines(ast: &mut Ast) {
+    match ast {
+        Ast::Literal(literal) if literal.c == '\n' => {
+            *ast = Parser::new()
+                .parse(r"(?:\r?\n)")
+                .expect("a valid pattern");
+        }
+        Ast::Repetition(repetition) => {
+            crlf_newlines(&mut repetition.ast)
+        }
+        Ast::Group(group) => crlf_newlines(&mut group.ast),
+        Ast::Alternation(alternation) => {
+            alternation.asts.iter_mut().for_each(crlf_newlines);
+        }
+        Ast::Concat(concat) => {
+            concat.asts.iter_mut().for_each(crlf_newlines);
+        }
+        _ => {}
+    }
+}
+
+fn most_breaks(hir: &Hir) -> Option<u32> {
+    match hir.kind() {
+        HirKind::Empty | HirKind::Look(_) => Some(0),
+        HirKind::Literal(literal) => u32::try_from(
+            literal.0.iter().filter(|&&b| b == b'\n').count(),
+        )
+        .ok(),
+        HirKind::Class(Class::Unicode(class)) => Some(u32::from(
+            class
+                .ranges()
+                .iter()
+                .any(|r| r.start() <= '\n' && '\n' <= r.end()),
+        )),
+        HirKind::Class(Class::Bytes(class)) => Some(u32::from(
+            class
+                .ranges()
+                .iter()
+                .any(|r| r.start() <= b'\n' && b'\n' <= r.end()),
+        )),
+        HirKind::Repetition(repetition) => {
+            match most_breaks(&repetition.sub)? {
+                0 => Some(0),
+                breaks => breaks.checked_mul(repetition.max?),
             }
-            ']' => {
-                class = false;
-                out.push(c);
-            }
-            _ => out.push(c),
+        }
+        HirKind::Capture(capture) => most_breaks(&capture.sub),
+        HirKind::Concat(subs) => {
+            subs.iter().try_fold(0_u32, |sum, sub| {
+                sum.checked_add(most_breaks(sub)?)
+            })
+        }
+        HirKind::Alternation(subs) => {
+            subs.iter().try_fold(0_u32, |most, sub| {
+                Some(most.max(most_breaks(sub)?))
+            })
         }
     }
-    out
+}
+
+fn on_cluster_boundaries(
+    buffer: &Buffer,
+    text: &str,
+    range: &Range<usize>,
+) -> bool {
+    let bytes = text.as_bytes();
+    let on_boundary = |at: usize| {
+        match (at.checked_sub(1).map(|i| bytes[i]), bytes.get(at)) {
+            // Between two ASCII bytes, only `\r\n` stays one cluster.
+            (Some(before), Some(&after))
+                if before.is_ascii() && after.is_ascii() =>
+            {
+                (before, after) != (b'\r', b'\n')
+            }
+            _ => snap(buffer, at) == at,
+        }
+    };
+    on_boundary(range.start) && on_boundary(range.end)
 }
 
 fn whole_word(text: &str, range: &Range<usize>) -> bool {

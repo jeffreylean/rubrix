@@ -1,0 +1,24 @@
+page editor
+wait 120
+click 273.0 126
+key mod+f
+wait 5
+click 930 151
+wait 5
+click 745 151
+key mod+a
+type e(
+wait 10
+log find
+expect find label "Invalid regex: unclosed group"
+wait 30
+screenshot m2fa-error.png
+click 745 151
+key mod+a
+type (?<=a)b
+wait 10
+log find
+expect find label "Invalid regex: look-around, including look-ahead and look-behind, is not supported"
+wait 30
+screenshot m2fa-error-long.png
+exit

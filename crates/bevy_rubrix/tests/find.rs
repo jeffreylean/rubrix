@@ -4,13 +4,19 @@ use core::time::Duration;
 
 use bevy::app::App;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::hierarchy::Children;
+use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::resource::Resource;
-use bevy::input::keyboard::KeyCode;
-use bevy::input_focus::{FocusCause, InputFocus};
-use bevy::text::{EditableText, TextBackgroundColor};
+use bevy::input::keyboard::{Key, KeyCode};
+use bevy::input_focus::{
+    FocusCause, InputDispatchPlugin, InputFocus,
+};
+use bevy::math::Rect;
+use bevy::text::{EditableText, TextBackgroundColor, TextLayoutInfo};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
-use bevy::ui::px;
+use bevy::ui::widget::Text;
+use bevy::ui::{ComputedNode, UiGlobalTransform, px};
+use bevy::ui_widgets::Activate;
+use bevy::window::{PrimaryWindow, Window};
 use bevy_fynix::views::{FrameProps, VirtualList, column};
 use bevy_fynix::{FynixPlugin, Theme, mount, resource};
 use bevy_rubrix::find::{FIND, FindBar, find_bar};
@@ -21,12 +27,19 @@ use bevy_rubrix::{
 use rubrix_edit::Buffer;
 use rubrix_edit::find::Search;
 use support::diff::Plain;
-use support::{chord, edit_line, editor, lay_out, list};
+use support::{chord, edit_line, editor, key_with, lay_out, list};
 
 #[derive(Resource)]
 struct Editing(Entity);
 
 fn editing(text: &str) -> (App, Entity, Entity) {
+    editing_at(text, 1.0)
+}
+
+fn editing_at(
+    text: &str,
+    scale_factor: f32,
+) -> (App, Entity, Entity) {
     let mut app = App::new();
     app.add_plugins((
         TimePlugin,
@@ -37,7 +50,9 @@ fn editing(text: &str) -> (App, Entity, Entity) {
     .insert_resource(TimeUpdateStrategy::ManualDuration(
         Duration::from_millis(50),
     ));
-    lay_out(&mut app, 1.0);
+    lay_out(&mut app, scale_factor);
+    app.add_plugins(InputDispatchPlugin);
+    app.world_mut().spawn((Window::default(), PrimaryWindow));
     let doc =
         app.world_mut().spawn(EditDoc::new(Lang::Rust, text)).id();
     app.insert_resource(Editing(doc));
@@ -192,4 +207,122 @@ fn a_sliced_100k_line_search_finds_what_one_pass_finds() {
         (all.len(), None),
         "the sliced search finds the matches one pass finds"
     );
+}
+
+fn focused(app: &App) -> Option<Entity> {
+    app.world().resource::<InputFocus>().get()
+}
+
+#[test]
+fn no_key_in_a_field_leaves_the_focus_on_nothing() {
+    let (mut app, view, _) = editing("theme\ntheme\n");
+    let (ctrl, alt, shift) =
+        (KeyCode::ControlLeft, KeyCode::AltLeft, KeyCode::ShiftLeft);
+    let presses: [(&[KeyCode], KeyCode, Key); 6] = [
+        (&[ctrl], KeyCode::Enter, Key::Enter),
+        (&[alt], KeyCode::Enter, Key::Enter),
+        (&[ctrl, shift], KeyCode::Enter, Key::Enter),
+        (&[shift, alt], KeyCode::Enter, Key::Enter),
+        (&[shift], KeyCode::Escape, Key::Escape),
+        (&[ctrl], KeyCode::Escape, Key::Escape),
+    ];
+    for replacing in [false, true] {
+        for (mods, code, key) in presses.clone() {
+            let open =
+                if replacing { &[ctrl, alt][..] } else { &[ctrl] };
+            chord(&mut app, open, KeyCode::KeyF, "f");
+            settle(&mut app);
+            let field = focused(&app).filter(|&field| field != view);
+            let field = field.expect("a field has the focus");
+            key_with(&mut app, mods, code, key.clone());
+            settle(&mut app);
+            assert_eq!(
+                focused(&app),
+                Some(field),
+                "{mods:?} {key:?} in the {} field",
+                if replacing { "replace" } else { "find" }
+            );
+            key_with(&mut app, &[], KeyCode::Escape, Key::Escape);
+            settle(&mut app);
+            assert!(
+                !bar(&mut app).is_open(),
+                "Escape closes the bar"
+            );
+            assert_eq!(
+                focused(&app),
+                Some(view),
+                "the view has the focus"
+            );
+        }
+    }
+}
+
+struct Drawn {
+    node: Rect,
+    width: f32,
+}
+
+fn drawn(app: &mut App, text: &str) -> Drawn {
+    let world = app.world_mut();
+    let mut labels = world.query::<(
+        &Text,
+        &ComputedNode,
+        &UiGlobalTransform,
+        &TextLayoutInfo,
+    )>();
+    let (_, node, at, info) = labels
+        .iter(world)
+        .find(|(label, ..)| label.0 == text)
+        .unwrap_or_else(|| panic!("a label reading {text:?}"));
+    Drawn {
+        node: Rect::from_center_size(at.translation, node.size()),
+        width: info.size.x,
+    }
+}
+
+fn press(app: &mut App, button_text: &str) {
+    let world = app.world_mut();
+    let label = world
+        .query::<(Entity, &Text)>()
+        .iter(world)
+        .find(|(_, label)| label.0 == button_text)
+        .map(|(label, _)| label)
+        .expect("a button label");
+    let button =
+        world.get::<ChildOf>(label).expect("a button").parent();
+    world.trigger(Activate { entity: button });
+    settle(app);
+}
+
+#[test]
+fn a_regex_error_reads_whole_in_the_bar() {
+    for scale in [1.0, 2.0] {
+        let (mut app, _, _) = editing_at("theme\n", scale);
+        open(&mut app);
+        press(&mut app, ".*");
+        let field = focused(&app).expect("the find field");
+        app.world_mut()
+            .get_mut::<EditableText>(field)
+            .expect("a field")
+            .editor_mut()
+            .set_text("e(");
+        counts_until_final(&mut app);
+        let error = "Invalid regex: unclosed group";
+        assert_eq!(bar(&mut app).label(), error);
+        let Drawn { node, width } = drawn(&mut app, error);
+        assert!(
+            width <= node.width() + 0.5,
+            "at scale {scale}, the error draws {width} px in a {} \
+             px label",
+            node.width()
+        );
+        for button in ["Aa", "W", ".*", "Prev", "Next", "Close"] {
+            let other = drawn(&mut app, button).node;
+            assert!(
+                node.intersect(other).is_empty(),
+                "at scale {scale}, the error {node:?} runs under \
+                 {button} {other:?}"
+            );
+        }
+    }
 }

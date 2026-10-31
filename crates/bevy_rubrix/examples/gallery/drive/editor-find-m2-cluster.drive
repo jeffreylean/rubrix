@@ -1,0 +1,30 @@
+page editor
+wait 120
+click 273.0 126
+paste family 👨‍👩‍👧 end\n
+wait 5
+key mod+alt+f
+wait 5
+click 745 151
+key mod+a
+type 👩
+wait 10
+log find
+expect find open query "👩" 0 of 0
+expect find label "No results"
+key mod+a
+type 👨‍👩‍👧
+wait 10
+log find
+expect find open query "👨\u{200d}👩\u{200d}👧" 1 of 1
+log caret
+expect caret 1 primary 1 1:8..1:13 visible true
+wait 30
+screenshot m2fa-cluster.png
+click 745 179
+type Y
+key enter
+wait 10
+log text 1
+expect text 1 "family Y end"
+exit
