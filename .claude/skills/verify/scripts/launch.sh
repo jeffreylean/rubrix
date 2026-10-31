@@ -52,7 +52,10 @@ if [ -n "$addr" ]; then
   if [ "$floating" != "true" ]; then
     hyprctl dispatch "hl.dsp.window.float({ window = \"$w\", action = \"toggle\" })" > /dev/null
   fi
-  hyprctl dispatch "hl.dsp.window.resize({ window = \"$w\", x = 1280, y = 800 })" > /dev/null
+  scale=${RUBRIX_SCALE:-1}
+  width=$(awk -v s="$scale" 'BEGIN { printf "%d", 1280 * s + 0.5 }')
+  height=$(awk -v s="$scale" 'BEGIN { printf "%d", 800 * s + 0.5 }')
+  hyprctl dispatch "hl.dsp.window.resize({ window = \"$w\", x = $width, y = $height })" > /dev/null
   hyprctl dispatch "hl.dsp.window.move({ window = \"$w\", x = 80, y = 80 })" > /dev/null
   if [ "$ime_live" -eq 1 ]; then
     hyprctl dispatch "hl.dsp.focus({ window = \"$w\" })" > /dev/null

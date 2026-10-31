@@ -23,6 +23,7 @@ It creates `<out dir>` if it is missing, builds the gallery in release, runs it 
 - A scripted run presents without vsync. An unfocused window under vsync ran at 1 frame per second here (1024 ms per frame, measured), and its screenshots came out black. Set `RUBRIX_NO_VSYNC=0` only to prove the vsync default, and expect slow, black frames. `RUBRIX_NO_VSYNC` takes only `0` or `1`. Any other value exits with code 2 and a message.
 - Two galleries can run at once. Give each its own drive script and out dir.
 - `TIMEOUT=<seconds>` (default 300) kills a script that hangs.
+- `RUBRIX_SCALE=<factor>` draws the gallery at that scale factor, at the same 1280 by 800 logical size, and launch.sh resizes the window to match. `RUBRIX_SCALE=2` runs a script at a Mac's Retina scale on Linux: positions, `expect` lines and `log` values stay in logical pixels, and screenshots come out 2560 by 1600. Any value that is not a positive number exits with code 2.
 - `launch.sh --ime-live <drive script> <out dir>` also focuses the gallery window through Hyprland once it exists, so `wtype` steps and a real input method reach it. It warns that the run takes keyboard focus from the desktop, and gives focus back to the window that had it when the gallery exits. Only this mode runs `wtype` steps. Hyprland does not move focus while the display sleeps, and launch.sh then warns that a `wtype` step will exit with code 2.
 
 ## Run every script
@@ -31,7 +32,7 @@ It creates `<out dir>` if it is missing, builds the gallery in release, runs it 
 .claude/skills/verify/scripts/run-all.sh <out dir>
 ```
 
-It runs every `drive/*.drive` through `launch.sh`, one at a time, and every replay script in `crates/rubrix_edit/tests/replay/` through `rubrix_edit`'s `examples/replay.rs` once that directory exists. It prints one row per script, `pass`, `fail`, or `skip`, with the exit code and the check count, and ends with `run-all: <passed> of <ran> scripts pass, <skipped> skipped`. It exits 0 only when every script that ran passed. The table at the top of the script lists the scripts that must fail with a given exit code and the ones it skips on macOS, on Linux, or everywhere, each with its reason. A PR that adds such a script adds its row. Each script's log is `<out dir>/<script>.txt`.
+It runs every `drive/*.drive` through `launch.sh`, one at a time, and every replay script in `crates/rubrix_edit/tests/replay/` through `rubrix_edit`'s `examples/replay.rs` once that directory exists. It prints one row per script, `pass`, `fail`, or `skip`, with the exit code and the check count, and ends with `run-all: <passed> of <ran> scripts pass, <skipped> skipped`. It exits 0 only when every script that ran passed. The table at the top of the script lists the scripts that must fail with a given exit code and the ones it skips on macOS, on Linux, or everywhere, each with its reason. A PR that adds such a script adds its row. A second table, `again`, names scripts that run once more with an environment variable, such as `editor-mouse.drive` at `RUBRIX_SCALE=2`; each such run is its own row, `<script>@<VAR>=<value>`. Each script's log is `<out dir>/<script>.txt`.
 
 ## Acceptance
 
