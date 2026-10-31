@@ -1,0 +1,40 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -2023
+wait 10
+click 306.6 126
+log caret
+expect caret 1 primary 1 120:5..120:5 visible true
+ime preedit 🎉 4 4
+wait 30
+log ime
+expect ime page preedit "🎉" cursor 4..4
+screenshot m1-emoji-1.png
+ime preedit
+wait 5
+ime preedit 😀👍🎉 12 12
+wait 30
+log ime
+expect ime page preedit "😀👍🎉" cursor 12..12
+screenshot m1-emoji-2.png
+ime preedit
+wait 5
+click 734 68
+wait 60
+move 740 400
+scroll 0 100000000
+scroll 100000000 0
+scroll 0 -1955
+wait 10
+click 1250 296
+key end
+wait 2
+ime preedit 你好世界你好世界你好世界你好世界你好世界你好世界你好世界你好世界你好世界你好世界 120 120
+wait 30
+log ime
+expect ime page preedit "你好世界你好世界你好世界你好世界你好世界你好世界你好世界你好世界你好世界你好世界"
+log row 126
+expect row 126 top 2125 height 34 lines 2
+screenshot m1-preedit-wrap.png
+exit

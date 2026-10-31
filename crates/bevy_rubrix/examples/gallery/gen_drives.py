@@ -2331,3 +2331,95 @@ doc.insert(start, "x" * 200)
 steps += [doc.text(LINE), caret((LINE, start[1] + 200))]
 steps += [remote("remote 50: ", *(f"u{i + 1} {LINE}:{column + 200} " for i, column in enumerate(carets)))]
 collab("100k", steps, "log typing", "log rows", "wait 30", "screenshot e6-100k.png")
+
+
+# m1f: the milestone 1 review's findings that break a box, one script each.
+# A value marked "measured" was read from a live run at the fix's head.
+
+def m1(name, *steps):
+    editor(f"m1-{name}", *steps)
+
+
+def wrap_lines(text, columns):
+    """Visual lines of `text` at `columns`, as a wrap that breaks at
+    word starts and inside a word wider than a line, as Zed does."""
+    lines, start, word = 1, 0, None
+    for column, c in enumerate(text):
+        if c == " ":
+            word = None
+            continue
+        if column - start >= columns:
+            start = word if word is not None and word > start else column
+            lines += 1
+        if word is None:
+            word = column
+    return lines
+
+
+doc = Doc(LARGE_RS_LINES)
+steps = [at_ime_line(doc)]
+for shot, emoji in enumerate(["🎉", "😀👍🎉"], 1):
+    end = len(emoji.encode())
+    shown = f"page preedit {ime_debug(emoji)} cursor {end}..{end}"
+    steps += [preedit(emoji), "wait 30", ime(shown), f"screenshot m1-emoji-{shot}.png", "ime preedit", "wait 5"]
+LINE = 126
+GROWN = "你好世界" * 10
+steps += [WRAP, "wait 60", doc.scroll_to(LINE - 10), f"click {doc.end(LINE)}", "key end", "wait 2"]
+steps += [preedit(GROWN), "wait 30", ime(f"page preedit {ime_debug(GROWN)}")]
+steps += [f"log row {LINE}", f"expect row {LINE} top {(LINE - 1) * ROW} height {2 * ROW} lines 2"]
+m1("underline", steps, "screenshot m1-preedit-wrap.png")
+
+AREA = (220, 118)  # measured: the top-left of the editor's rows
+REVEALED_DY = 1  # measured: a caret revealed from above sits 1 px lower than the row grid
+doc = Doc(LARGE_RS_LINES)
+at = (IME_LINE, IME_COLUMN)
+steps = [doc.scroll_to(IME_LINE - 20), f"click {doc.at(*at)}", "wait 2", caret(at), candidate_box(doc, at)]
+for cursor in ["0 0", ""]:
+    doc.top = IME_LINE - 20
+    steps += [CENTER, f"scroll 0 -{60 * ROW}", "wait 10", "log caret", "expect caret 1 primary 1 120:5..120:5 visible false"]
+    steps += [ime(f"position {AREA[0]} {AREA[1]} last")]
+    doc.top = IME_LINE
+    steps += [f"ime preedit {COMPOSED} {cursor}".strip(), "wait 10", "log rows", f"expect rows first_visible {IME_LINE - 1} "]
+    steps += [caret(at), candidate_box(doc, at, REVEALED_DY), "ime preedit", "wait 5"]
+m1("ime-hidden", steps, "wait 30", "screenshot m1-ime-hidden.png")
+
+doc = Doc(LARGE_RS_LINES)
+LINE = 300
+WORD = "x" * 200
+end = (LINE, len(doc.line(LINE)) + 1)
+steps = [WRAP, "wait 60", doc.scroll_to(LINE - 10), f"click {doc.end(LINE)}", caret(end)]
+end = doc.insert(end, WORD)
+lines = wrap_lines(doc.line(LINE), WRAP_COLUMNS)
+assert lines == 3, lines
+steps += [f"type {WORD}", "wait 10", doc.text(LINE), caret(end)]
+steps += [f"log row {LINE}", f"expect row {LINE} top {(LINE - 1) * ROW} height {lines * ROW} lines {lines}"]
+m1("wrap-long-word", steps, "wait 30", "screenshot m1-wrap-long-word.png")
+
+doc = Doc(LARGE_RS_LINES)
+LAST = doc.rows()
+TOP = LAST - 50
+LAST_TOP = 10335  # measured: the first visible line once the view ends
+at = (TOP + 5, 5)
+steps = [doc.scroll_to(TOP), f"press {doc.at(*at)}", "move 700 799", "wait 120"]
+steps += ["log rows", f"expect rows first_visible {LAST_TOP - 1} ", caret(at, (LAST, 1)), "release"]
+doc.top = LAST_TOP
+at = (LAST - 30, 5)
+steps += [f"press {doc.at(*at)}"]
+for x, n in [(1262, at[0] + 1), (1275, at[0] + 2)]:
+    steps += [f"move {x} {doc.y(n)}", "wait 10", caret(at, (n, len(doc.line(n)) + 1))]
+m1("drag-below", steps, "release", "wait 30", "screenshot m1-drag-below.png")
+
+LONG = (Path(__file__).parent / "fixtures/long-line.rs").read_text().split("\n")
+doc = Doc(LONG[:-1] if LONG[-1] == "" else LONG)
+LINE = 3
+END = len(doc.line(LINE)) + 1
+FAR_X = "2355.789"  # measured: the sideways offset once End shows the line's end
+PRESSED_FAR = 372  # measured: the column under x 1000 at that offset
+PRESSED_NEAR = 91  # measured: the column under x 1000 at offset 0
+DRAGGED_X = "2352.989"  # measured: the offset a drag past the right stops at, the line's end in view
+steps = ["open ../fixtures/long-line.rs", "wait 30", f"click {doc.end(LINE)}", "key end", "wait 10"]
+steps += ["log rows", f"expect rows x {FAR_X}", f"press 1000 {doc.y(LINE)}", f"move 100 {doc.y(LINE)}", "wait 120"]
+steps += ["log rows", "expect rows x 0", caret((LINE, 1), (LINE, PRESSED_FAR)), "release"]
+steps += [f"press 1000 {doc.y(LINE)}", f"move 1275 {doc.y(LINE)}", "wait 240"]
+steps += ["log rows", f"expect rows x {DRAGGED_X}", caret((LINE, PRESSED_NEAR), (LINE, END)), "release"]
+m1("drag-sideways", steps, "wait 30", "screenshot m1-drag-sideways.png")
