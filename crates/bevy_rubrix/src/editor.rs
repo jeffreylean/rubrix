@@ -500,7 +500,9 @@ impl EditView {
     }
 
     /// The primary caret's bar in logical window pixels, as drawn
-    /// this frame, or `None` while its row is not built.
+    /// this frame, or `None` while its row is not built or clips it.
+    /// While an input method hides its cursor, the bar is not drawn,
+    /// and this is where it would stand, at the composition's start.
     pub fn caret_rect(&self) -> Option<Rect> {
         self.drawn.caret
     }

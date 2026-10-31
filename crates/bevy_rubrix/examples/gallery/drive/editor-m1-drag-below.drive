@@ -1,0 +1,26 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -175474
+wait 10
+press 306.6 211
+move 700 799
+wait 120
+log rows
+expect rows first_visible 10334 
+log caret
+expect caret 1 primary 1 10328:5..10373:1 visible true
+release
+press 306.6 262
+move 1262 279
+wait 10
+log caret
+expect caret 1 primary 1 10343:5..10344:23 visible true
+move 1275 296
+wait 10
+log caret
+expect caret 1 primary 1 10343:5..10345:7 visible true
+release
+wait 30
+screenshot m1-drag-below.png
+exit

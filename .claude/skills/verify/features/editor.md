@@ -151,3 +151,13 @@ The recipes. `gen_drives.py` writes every `editor-find-*.drive`, and each count 
 - **Close (lane 10).** `editor-find-close.drive` searches `e` on the 100,000-line input. The count reads `1 of 100000 capped` with the label `1 of 100000+`. Escape prints `closed` and `marked 0`, and a typed `x` replaces the selected `e` on line 1. Save `e5-close.png`.
 
 Perf: run `editor-find-100k.drive`, and `editor-100k.drive` at trunk and at head, with `RUBRIX_NO_VSYNC=1` in `--release`, interleaved, five runs each, alone, through `perf-run.sh`. The find-field frame p95 is the p95 of `editor-find-100k.csv`, and its bar is 3.0 ms. The `final` time of a plain count must stay at or under 250 ms. The `editor-100k-type.csv` p95 at head must stay within 10% of trunk.
+
+## Milestone 1 fixes
+
+`gen_drives.py` writes one `editor-m1-*.drive` per finding of the milestone 1 review that broke a box. Each fails at the commit before its fix.
+
+- `editor-m1-underline.drive` composes `🎉`, `😀👍🎉`, and, in wrap mode, a 40-char CJK preedit that wraps line 126 onto 2 visual lines. No topic reads the underline bars, so check `m1-emoji-1.png`, `m1-emoji-2.png`, and `m1-preedit-wrap.png`: a bar under each emoji preedit and under each visual line of the wrapped one. `tests/ime.rs` checks the bars.
+- `editor-m1-ime-hidden.drive` scrolls the caret 60 rows out of view, where `log ime` prints `position 220 118`, the rows' top-left, and then composes with a cursor and with none. Each preedit puts line 120 at the top, and `position` and `caret` both print `305 136`.
+- `editor-m1-wrap-long-word.drive` types 200 `x` at the end of line 300 in wrap mode. The word breaks at the wrap width, so the row takes 3 visual lines and the caret at `300:252` is `visible true`.
+- `editor-m1-drag-below.drive` holds a drag below the view near the end of the file, which scrolls to the end and puts the head at `10373:1`. Then a drag held on the scrollbar strip and one past the right edge put the head at the end of the line under the pointer.
+- `editor-m1-drag-sideways.drive` opens `long-line.rs`, shows line 3's end, and holds a drag past the left edge, which scrolls back to `x 0` with the caret at `3:1`. A drag held past the right edge scrolls to the line's end, `3:401`, with the caret in view.

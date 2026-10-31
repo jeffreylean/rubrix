@@ -420,5 +420,5 @@ fn switching_overflow_keeps_the_list_and_flips_wrap() {
     assert_eq!(after, before, "the same list");
     assert_eq!(axis, OverflowAxis::Clip);
     assert_eq!(breaks.len(), 20);
-    assert!(breaks.iter().all(|&b| b == LineBreak::WordBoundary));
+    assert!(breaks.iter().all(|&b| b == LineBreak::WordOrCharacter));
 }

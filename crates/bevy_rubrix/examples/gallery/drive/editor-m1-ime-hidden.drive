@@ -1,0 +1,54 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -1683
+wait 10
+click 306.6 466
+wait 2
+log caret
+expect caret 1 primary 1 120:5..120:5 visible true
+log ime
+expect ime enabled true
+expect ime position 305 475 last
+expect ime caret 305 475
+move 740 400
+scroll 0 -1020
+wait 10
+log caret
+expect caret 1 primary 1 120:5..120:5 visible false
+log ime
+expect ime position 220 118 last
+ime preedit 你好 0 0
+wait 10
+log rows
+expect rows first_visible 119 
+log caret
+expect caret 1 primary 1 120:5..120:5 visible true
+log ime
+expect ime enabled true
+expect ime position 305 136 last
+expect ime caret 305 136
+ime preedit
+wait 5
+move 740 400
+scroll 0 -1020
+wait 10
+log caret
+expect caret 1 primary 1 120:5..120:5 visible false
+log ime
+expect ime position 220 118 last
+ime preedit 你好
+wait 10
+log rows
+expect rows first_visible 119 
+log caret
+expect caret 1 primary 1 120:5..120:5 visible true
+log ime
+expect ime enabled true
+expect ime position 305 136 last
+expect ime caret 305 136
+ime preedit
+wait 5
+wait 30
+screenshot m1-ime-hidden.png
+exit

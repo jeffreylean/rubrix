@@ -8,17 +8,19 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Query, ResMut};
 use bevy::input::keyboard::{Key, KeyCode};
 use bevy::input_focus::{FocusCause, InputFocus, InputFocusPlugin};
-use bevy::math::Vec2;
+use bevy::math::{Rect, Vec2};
 use bevy::text::{TextSpan, Underline};
-use bevy::ui::{BackgroundColor, ComputedNode};
+use bevy::ui::{BackgroundColor, ComputedNode, UiGlobalTransform};
 use bevy::ui_widgets::TextInputPlugin;
 use bevy::window::{Ime, PrimaryWindow, Window};
+use bevy_fynix::views::{VirtualList, rich_layout};
 use bevy_rubrix::{
-    EditDoc, EditRequest, EditView, Lang, Preedit, Request,
+    EditDoc, EditRequest, EditView, Lang, Overflow, Preedit, Request,
     Selection, Selections,
 };
 use support::{
-    edit_line, key_with, laid_out, mount_editor, text_of, type_text,
+    Wrapping, edit_line, key_with, laid_out, mount_editor, text_of,
+    type_text,
 };
 
 const TEXT: &str = "fn main() {\n    run();\n}\n";
@@ -132,6 +134,94 @@ fn a_preedit_shows_underlined_at_the_caret_and_edits_nothing() {
     assert_eq!(bars, 1, "a bar at least a pixel tall under it");
 }
 
+/// The window-space rects of the preedit's underline bars, top first.
+fn bars(app: &mut App) -> Vec<Rect> {
+    let mut bars: Vec<Rect> = app
+        .world_mut()
+        .query_filtered::<(&ComputedNode, &UiGlobalTransform), With<BackgroundColor>>()
+        .iter(app.world())
+        .filter(|(node, at)| {
+            node.size().x > 10.0
+                && (1.0..=2.0).contains(&node.size().y)
+                && at.translation.x > -1.0e4
+        })
+        .map(|(node, at)| {
+            Rect::from_center_size(at.translation, node.size())
+        })
+        .collect();
+    bars.sort_by(|a, b| a.min.y.total_cmp(&b.min.y));
+    bars
+}
+
+/// The window-space y range of each visual line of `line`'s row.
+fn visual_lines(
+    app: &mut App,
+    view: Entity,
+    line: u32,
+) -> Vec<(f32, f32)> {
+    let row = edit_line(app, view, line);
+    let world = app.world();
+    let node = world.get::<ComputedNode>(row).expect("a node");
+    let at =
+        world.get::<UiGlobalTransform>(row).expect("a transform");
+    let top = at.translation.y + node.content_box().min.y;
+    rich_layout(world, row)
+        .expect("a layout")
+        .lines()
+        .map(|visual| {
+            let metrics = visual.metrics();
+            (
+                top + metrics.block_min_coord,
+                top + metrics.block_max_coord,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_preedit_that_wraps_is_underlined_on_each_visual_line() {
+    let (mut app, view, _) = focused();
+    app.insert_resource(Wrapping(Overflow::Wrap));
+    settle(&mut app);
+    let long = "preedit ".repeat(30);
+    send(&mut app, [preedit(&long, Some((long.len(), long.len())))]);
+    settle(&mut app);
+    let lines = visual_lines(&mut app, view, 1);
+    assert!(lines.len() >= 2, "the preedit wraps: {lines:?}");
+    let bars = bars(&mut app);
+    assert_eq!(
+        bars.len(),
+        lines.len(),
+        "a bar per visual line: {bars:?}"
+    );
+    for (bar, (top, bottom)) in bars.iter().zip(&lines) {
+        let middle = (top + bottom) / 2.0;
+        assert!(
+            middle <= bar.min.y && bar.max.y <= *bottom,
+            "{bar:?} sits under the text of its own visual line \
+             {top}..{bottom}, whose blocks overlap their neighbours'"
+        );
+    }
+}
+
+#[test]
+fn a_preedit_of_emoji_only_is_underlined() {
+    let (mut app, view, _) = focused();
+    for emoji in ["🎉", "😀👍🎉"] {
+        let end = emoji.len();
+        send(&mut app, [preedit(emoji, Some((end, end)))]);
+        settle(&mut app);
+        let (top, bottom) = visual_lines(&mut app, view, 1)[0];
+        let bars = bars(&mut app);
+        assert_eq!(bars.len(), 1, "one bar under {emoji}: {bars:?}");
+        assert!(
+            top <= bars[0].min.y && bars[0].max.y <= bottom,
+            "{:?} sits inside the row {top}..{bottom}",
+            bars[0]
+        );
+    }
+}
+
 #[test]
 fn a_commit_at_three_carets_is_one_undo_step() {
     let (mut app, view, doc) = focused();
@@ -230,4 +320,70 @@ fn the_window_takes_ime_while_the_editor_has_focus() {
     assert_eq!(position, Vec2::new(caret.min.x, caret.max.y));
     app.world_mut().resource_mut::<InputFocus>().clear();
     assert!(!last_seen(&mut app).0, "off a frame after it leaves");
+}
+
+fn caret_rect(app: &App, view: Entity) -> Option<Rect> {
+    app.world()
+        .get::<EditView>(view)
+        .and_then(EditView::caret_rect)
+}
+
+fn scroll_to(app: &mut App, row: usize) {
+    app.world_mut()
+        .query::<&mut VirtualList>()
+        .single_mut(app.world_mut())
+        .expect("one list")
+        .scroll_to(row);
+    settle(app);
+}
+
+#[test]
+fn a_preedit_shows_a_hidden_caret_under_the_candidate_box() {
+    let mut app = laid_out();
+    app.add_plugins((InputFocusPlugin, TextInputPlugin))
+        .init_resource::<Seen>()
+        .add_systems(Last, see);
+    app.world_mut().spawn((Window::default(), PrimaryWindow));
+    let text = "let x = 1;\n".repeat(200);
+    let (view, doc) =
+        mount_editor(&mut app, Lang::Rust, &text, 600.0, 300.0);
+    settle(&mut app);
+    select(&mut app, doc, view, &[4]);
+    focus(&mut app, view);
+    for cursor in [Some((0, 0)), None] {
+        scroll_to(&mut app, 150);
+        assert_eq!(
+            caret_rect(&app, view),
+            None,
+            "the caret is out of view"
+        );
+        send(&mut app, [preedit("你好", cursor)]);
+        settle(&mut app);
+        let caret = caret_rect(&app, view)
+            .expect("the preedit brings the caret into view");
+        let (_, position) = last_seen(&mut app);
+        assert_eq!(position, Vec2::new(caret.min.x, caret.max.y));
+        send(&mut app, [preedit("", None)]);
+    }
+}
+
+#[test]
+fn a_preedit_past_the_right_edge_scrolls_to_its_cursor() {
+    let mut app = laid_out();
+    app.add_plugins((InputFocusPlugin, TextInputPlugin))
+        .init_resource::<Seen>()
+        .add_systems(Last, see);
+    app.world_mut().spawn((Window::default(), PrimaryWindow));
+    let (view, doc) =
+        mount_editor(&mut app, Lang::Plain, "x\n", 600.0, 300.0);
+    settle(&mut app);
+    select(&mut app, doc, view, &[1]);
+    focus(&mut app, view);
+    let long = "好".repeat(100);
+    send(&mut app, [preedit(&long, Some((long.len(), long.len())))]);
+    settle(&mut app);
+    let caret = caret_rect(&app, view)
+        .expect("the view scrolls to the preedit's cursor");
+    let (_, position) = last_seen(&mut app);
+    assert_eq!(position, Vec2::new(caret.min.x, caret.max.y));
 }
