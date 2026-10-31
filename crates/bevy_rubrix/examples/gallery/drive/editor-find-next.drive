@@ -1,0 +1,35 @@
+page editor
+wait 120
+click 357.0 126
+key mod+f
+wait 10
+# grep -oi theme large.rs.txt | wc -l -> 132
+log find
+expect find open query "theme" 1 of 132
+key enter
+wait 10
+log find
+expect find open query "theme" 2 of 132
+log caret
+expect caret 1 primary 1 11:19..11:24 visible true
+key mod+g
+wait 10
+log find
+expect find open query "theme" 3 of 132
+log caret
+expect caret 1 primary 1 108:46..108:51 visible true
+key shift+enter
+wait 10
+log find
+expect find open query "theme" 2 of 132
+log caret
+expect caret 1 primary 1 11:19..11:24 visible true
+key mod+shift+g
+wait 10
+log find
+expect find open query "theme" 1 of 132
+log caret
+expect caret 1 primary 1 1:9..1:14 visible true
+wait 30
+screenshot e5-next.png
+exit

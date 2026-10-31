@@ -6,6 +6,7 @@ mod code_view;
 mod damage;
 mod diff_view;
 mod editor;
+pub mod find;
 mod frame;
 mod hooks;
 mod ime;
@@ -135,9 +136,15 @@ impl Plugin for RubrixPlugin {
             )
             .add_systems(
                 PreUpdate,
-                hooks::draw_markers
-                    .after(EditSystems::Apply)
-                    .run_if(any_with_component::<EditView>),
+                (
+                    hooks::draw_markers
+                        .after(EditSystems::Apply)
+                        .run_if(any_with_component::<EditView>),
+                    find::follow
+                        .after(EditSystems::Apply)
+                        .after(InputFocusSystems::Dispatch)
+                        .run_if(any_with_component::<find::FindBar>),
+                ),
             )
             .add_systems(
                 Update,
