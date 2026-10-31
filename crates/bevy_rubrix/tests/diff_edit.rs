@@ -390,17 +390,13 @@ diff --git a/a.rs b/a.rs
     assert!(status(&mut app).is_none());
 }
 
-fn drawn_line(app: &mut App, line: u32) -> Vec<String> {
-    app.world_mut()
-        .query::<&mut DiffDoc>()
-        .single_mut(app.world_mut())
-        .expect("one view")
-        .reveal(0, 1, Side::All);
-    settle(app);
-    let index = row_where(app, 0, |row| {
+fn row_of_new_line(app: &mut App, line: u32) -> usize {
+    row_where(app, 0, |row| {
         row.new_line().is_some_and(|new| new.index == line)
-    });
-    scroll_to(app, index);
+    })
+}
+
+fn drawn_row(app: &mut App, index: usize) -> Vec<String> {
     drawn(app)
         .into_iter()
         .find(|&(at, _)| at == index)
@@ -408,33 +404,51 @@ fn drawn_line(app: &mut App, line: u32) -> Vec<String> {
         .expect("a slot draws the row")
 }
 
-fn far_rows_after_opening_a_comment(turn_off: bool) {
-    let body: String =
-        (1..1000).map(|n| format!("let a{n} = {n};\n")).collect();
-    let old = format!("let x = 1;\n{body}");
-    let new = format!("let x = 2;\n{body}");
-    let edited = format!("/*let x = 2;\n{body}");
-    let mut app = editing(
-        DiffSource::texts("a.rs", &old, &new),
-        Layout::Stacked,
-    );
+fn drawn_line(app: &mut App, line: u32) -> Vec<String> {
+    app.world_mut()
+        .query::<&mut DiffDoc>()
+        .single_mut(app.world_mut())
+        .expect("one view")
+        .reveal(0, 1, Side::All);
+    settle(app);
+    let index = row_of_new_line(app, line);
+    scroll_to(app, index);
+    drawn_row(app, index)
+}
+
+fn comment_opened(old: &str, new: &str) -> (App, App) {
+    let mut app =
+        editing(DiffSource::texts("a.rs", old, new), Layout::Stacked);
     let addition = row_where(&mut app, 0, |row| {
         matches!(row, Row::Addition { .. })
     });
     click_stacked(&mut app, addition, 0);
     type_text(&mut app, "/*");
     settle(&mut app);
+    let edited = format!("/*{new}");
     assert_eq!(new_text(&mut app, 0), edited);
+    let fresh = editing(
+        DiffSource::texts("a.rs", old, &edited),
+        Layout::Stacked,
+    );
+    (app, fresh)
+}
+
+fn far_rows_after_opening_a_comment(turn_off: bool) {
+    let body: String =
+        (1..1000).map(|n| format!("let a{n} = {n};\n")).collect();
+    let (mut app, mut fresh) = comment_opened(
+        &format!("let x = 1;\n{body}"),
+        &format!("let x = 2;\n{body}"),
+    );
     if turn_off {
         app.world_mut().resource_mut::<Editing>().0 = false;
         settle(&mut app);
     }
-    let live = drawn_line(&mut app, 900);
-    let mut fresh = editing(
-        DiffSource::texts("a.rs", &old, &edited),
-        Layout::Stacked,
+    assert_eq!(
+        drawn_line(&mut app, 900),
+        drawn_line(&mut fresh, 900)
     );
-    assert_eq!(live, drawn_line(&mut fresh, 900));
 }
 
 #[test]
@@ -446,6 +460,26 @@ fn a_row_scrolled_far_below_the_caret_draws_the_lexing_an_edit_changed()
 #[test]
 fn rows_still_catch_up_on_an_edit_after_editing_turns_off() {
     far_rows_after_opening_a_comment(true);
+}
+
+#[test]
+fn a_row_past_a_hidden_gap_draws_the_lexing_an_edit_changed() {
+    let (mut app, mut fresh) = comment_opened(
+        &numbered_with(
+            1000,
+            &[(1, "let x = 1;"), (901, "let far = 1;")],
+        ),
+        &numbered_with(
+            1000,
+            &[(1, "let x = 2;"), (901, "let far = 2;")],
+        ),
+    );
+    let live = row_of_new_line(&mut app, 900);
+    let shown = row_of_new_line(&mut fresh, 900);
+    assert_eq!(
+        drawn_row(&mut app, live),
+        drawn_row(&mut fresh, shown)
+    );
 }
 
 fn gutter_widths(app: &mut App) -> Vec<usize> {

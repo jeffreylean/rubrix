@@ -693,13 +693,13 @@ fn catch_up(world: &mut World, root: Entity) {
             let live = doc.files()[file].live.as_ref()?;
             Some((
                 live.doc,
-                first_shown_line(doc, file, first_list_row),
+                last_shown_line(doc, file, first_list_row),
             ))
         })
         .collect();
     let mut moved = false;
     let mut seen = Vec::with_capacity(docs.len());
-    for (entity, shown) in docs {
+    for (entity, last) in docs {
         let Some(mut editor) = world.get_mut::<EditDoc>(entity)
         else {
             continue;
@@ -707,7 +707,7 @@ fn catch_up(world: &mut World, root: Entity) {
         let buffer = editor.editor().buffer();
         let caret = buffer
             .line_of(editor.editor().selections().primary().head);
-        let window = shown.max(caret).saturating_add(2 * BUILT_MAX);
+        let window = last.max(caret).saturating_add(2 * BUILT_MAX);
         editor.bypass_change_detection().catch_up(window);
         seen.push((entity, editor.damage().seq()));
     }
@@ -726,7 +726,7 @@ fn catch_up(world: &mut World, root: Entity) {
     }
 }
 
-fn first_shown_line(
+fn last_shown_line(
     doc: &DiffDoc,
     file: usize,
     list_row: usize,
@@ -738,7 +738,8 @@ fn first_shown_line(
     doc.files()[file]
         .rows
         .range(at..at.saturating_add(2 * BUILT_MAX))
-        .find_map(|row| row.new_line())
+        .filter_map(|row| row.new_line())
+        .last()
         .map_or(0, |line| line.index)
 }
 

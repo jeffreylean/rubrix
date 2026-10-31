@@ -210,10 +210,6 @@ fn controls() -> PageView {
     wrapping(buttons.boxed())
 }
 
-/// A label with Bevy's button behaviour, not a fynix `button`. Two
-/// more fynix buttons here added about 0.09 ms to the read-only
-/// `diff-stress.drive` scroll p95. This costs what a plain label
-/// does.
 fn source_link(
     text: &'static str,
     press: impl Fn(&mut World) + Send + Sync + 'static,
