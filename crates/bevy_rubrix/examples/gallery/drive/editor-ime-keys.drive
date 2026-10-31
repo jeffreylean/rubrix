@@ -1,0 +1,38 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -2023
+wait 10
+click 306.6 126
+log caret
+expect caret 1 primary 1 120:5..120:5 visible true
+ime preedit 你好 6 6
+wait 5
+log ime
+expect ime enabled true
+expect ime page preedit "你好" cursor 6..6
+log text 120
+expect text 120 "        .run();"
+log undo
+expect undo 0 redo 0
+type x
+key backspace
+wait 5
+log text 120
+expect text 120 "        .run();"
+log caret
+expect caret 1 primary 1 120:5..120:5 visible true
+log undo
+expect undo 0 redo 0
+ime preedit
+ime commit 你好
+ime preedit
+type y
+wait 5
+log text 120
+expect text 120 "    你好y    .run();"
+log caret
+expect caret 1 primary 1 120:8..120:8 visible true
+wait 30
+screenshot e3-keys.png
+exit

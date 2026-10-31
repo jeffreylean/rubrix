@@ -1,0 +1,132 @@
+page editor
+wait 120
+click 586 68
+wait 60
+move 740 400
+scroll 0 -849983
+wait 10
+click 1250 126
+log caret
+expect caret 1 primary 1 50000:29..50000:29 visible true
+frames start
+wait 60
+ime preedit 你 3 3
+ime preedit 你好 6 6
+ime preedit 你好世 9 9
+ime preedit 你好世界 12 12
+ime preedit 你好世界你 15 15
+ime preedit 你好世界你好 18 18
+ime preedit 你好世界你好世 21 21
+ime preedit 你好世界你好世界 24 24
+ime preedit 你好世界你好世界你 27 27
+ime preedit 你好世界你好世界你好 30 30
+ime preedit 你好世界你好世界你好世 33 33
+ime preedit 你好世界你好世界你好世界 36 36
+ime preedit 你好世界你好世界你好世界你 39 39
+ime preedit 你好世界你好世界你好世界你好 42 42
+ime preedit 你好世界你好世界你好世界你好世 45 45
+ime preedit 你好世界你好世界你好世界你好世界 48 48
+ime preedit 你好世界你好世界你好世界你好世界你 51 51
+ime preedit 你好世界你好世界你好世界你好世界你好 54 54
+ime preedit 你好世界你好世界你好世界你好世界你好世 57 57
+ime preedit 你好世界你好世界你好世界你好世界你好世界 60 60
+ime preedit
+ime preedit 你 3 3
+ime preedit 你好 6 6
+ime preedit 你好世 9 9
+ime preedit 你好世界 12 12
+ime preedit 你好世界你 15 15
+ime preedit 你好世界你好 18 18
+ime preedit 你好世界你好世 21 21
+ime preedit 你好世界你好世界 24 24
+ime preedit 你好世界你好世界你 27 27
+ime preedit 你好世界你好世界你好 30 30
+ime preedit 你好世界你好世界你好世 33 33
+ime preedit 你好世界你好世界你好世界 36 36
+ime preedit 你好世界你好世界你好世界你 39 39
+ime preedit 你好世界你好世界你好世界你好 42 42
+ime preedit 你好世界你好世界你好世界你好世 45 45
+ime preedit 你好世界你好世界你好世界你好世界 48 48
+ime preedit 你好世界你好世界你好世界你好世界你 51 51
+ime preedit 你好世界你好世界你好世界你好世界你好 54 54
+ime preedit 你好世界你好世界你好世界你好世界你好世 57 57
+ime preedit 你好世界你好世界你好世界你好世界你好世界 60 60
+ime preedit
+ime preedit 你 3 3
+ime preedit 你好 6 6
+ime preedit 你好世 9 9
+ime preedit 你好世界 12 12
+ime preedit 你好世界你 15 15
+ime preedit 你好世界你好 18 18
+ime preedit 你好世界你好世 21 21
+ime preedit 你好世界你好世界 24 24
+ime preedit 你好世界你好世界你 27 27
+ime preedit 你好世界你好世界你好 30 30
+ime preedit 你好世界你好世界你好世 33 33
+ime preedit 你好世界你好世界你好世界 36 36
+ime preedit 你好世界你好世界你好世界你 39 39
+ime preedit 你好世界你好世界你好世界你好 42 42
+ime preedit 你好世界你好世界你好世界你好世 45 45
+ime preedit 你好世界你好世界你好世界你好世界 48 48
+ime preedit 你好世界你好世界你好世界你好世界你 51 51
+ime preedit 你好世界你好世界你好世界你好世界你好 54 54
+ime preedit 你好世界你好世界你好世界你好世界你好世 57 57
+ime preedit 你好世界你好世界你好世界你好世界你好世界 60 60
+ime preedit
+ime preedit 你 3 3
+ime preedit 你好 6 6
+ime preedit 你好世 9 9
+ime preedit 你好世界 12 12
+ime preedit 你好世界你 15 15
+ime preedit 你好世界你好 18 18
+ime preedit 你好世界你好世 21 21
+ime preedit 你好世界你好世界 24 24
+ime preedit 你好世界你好世界你 27 27
+ime preedit 你好世界你好世界你好 30 30
+ime preedit 你好世界你好世界你好世 33 33
+ime preedit 你好世界你好世界你好世界 36 36
+ime preedit 你好世界你好世界你好世界你 39 39
+ime preedit 你好世界你好世界你好世界你好 42 42
+ime preedit 你好世界你好世界你好世界你好世 45 45
+ime preedit 你好世界你好世界你好世界你好世界 48 48
+ime preedit 你好世界你好世界你好世界你好世界你 51 51
+ime preedit 你好世界你好世界你好世界你好世界你好 54 54
+ime preedit 你好世界你好世界你好世界你好世界你好世 57 57
+ime preedit 你好世界你好世界你好世界你好世界你好世界 60 60
+ime preedit
+ime preedit 你 3 3
+ime preedit 你好 6 6
+ime preedit 你好世 9 9
+ime preedit 你好世界 12 12
+ime preedit 你好世界你 15 15
+ime preedit 你好世界你好 18 18
+ime preedit 你好世界你好世 21 21
+ime preedit 你好世界你好世界 24 24
+ime preedit 你好世界你好世界你 27 27
+ime preedit 你好世界你好世界你好 30 30
+ime preedit 你好世界你好世界你好世 33 33
+ime preedit 你好世界你好世界你好世界 36 36
+ime preedit 你好世界你好世界你好世界你 39 39
+ime preedit 你好世界你好世界你好世界你好 42 42
+ime preedit 你好世界你好世界你好世界你好世 45 45
+ime preedit 你好世界你好世界你好世界你好世界 48 48
+ime preedit 你好世界你好世界你好世界你好世界你 51 51
+ime preedit 你好世界你好世界你好世界你好世界你好 54 54
+ime preedit 你好世界你好世界你好世界你好世界你好世 57 57
+ime preedit 你好世界你好世界你好世界你好世界你好世界 60 60
+ime preedit
+frames stop editor-ime-100k.csv
+ime preedit 你好世界你好世界你好世界你好世界你好世界 60 60
+ime preedit
+ime commit 你好世界你好世界你好世界你好世界你好世界
+ime preedit
+wait 5
+log text 50000
+expect text 50000 "        let mut app = app();你好世界你好世界你好世界你好世界你好世界"
+log caret
+expect caret 1 primary 1 50000:49..50000:49 visible true
+log undo
+expect undo 1 redo 0
+wait 30
+screenshot e3-100k.png
+exit
