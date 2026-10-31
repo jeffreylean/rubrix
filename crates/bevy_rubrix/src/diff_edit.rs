@@ -15,7 +15,6 @@ use bevy::ecs::message::{MessageCursor, MessageWriter, Messages};
 use bevy::ecs::observer::On;
 use bevy::ecs::query::{With, Without};
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::schedule::common_conditions::any_with_component;
 use bevy::ecs::system::{Commands, Local, Query, Res};
 use bevy::ecs::world::{DeferredWorld, EntityWorldMut, World};
 use bevy::input::ButtonInput;
@@ -63,13 +62,16 @@ pub(crate) fn plugin(app: &mut App) {
                 .before(EditSystems::Apply),
             apply.after(EditSystems::Apply),
         )
-            .run_if(any_with_component::<DiffDoc>),
+            .run_if(editing),
     )
     .add_systems(
         PostUpdate,
-        draw.after(UiSystems::PostLayout)
-            .run_if(any_with_component::<DiffDoc>),
+        draw.after(UiSystems::PostLayout).run_if(editing),
     );
+}
+
+fn editing(docs: Query<&DiffDoc>) -> bool {
+    docs.iter().any(|doc| doc.edit.on)
 }
 
 #[derive(Default)]
@@ -233,6 +235,7 @@ pub(crate) fn restart(
     for doc in docs {
         world.despawn(doc);
     }
+    leave(world, root);
     if let Some(mut doc) = world.get_mut::<DiffDoc>(root) {
         doc.edit.damage.clear();
         doc.edit.in_sight = None;
@@ -298,8 +301,14 @@ fn leave(world: &mut World, root: Entity) {
     let Some(mut doc) = world.get_mut::<DiffDoc>(root) else {
         return;
     };
+    let bar = doc.edit.bar;
     if doc.edit.active.take().is_some() {
         world.entity_mut(root).insert(Selects);
+    }
+    if let Some(mut visibility) =
+        bar.and_then(|bar| world.get_mut::<Visibility>(bar))
+    {
+        visibility.set_if_neq(Visibility::Hidden);
     }
 }
 

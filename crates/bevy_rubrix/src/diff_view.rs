@@ -548,7 +548,6 @@ impl DiffDoc {
             .iter()
             .filter_map(|file| Some(file.live.as_ref()?.doc))
             .collect();
-        self.edit.active = None;
         self.files = source
             .0
             .iter()

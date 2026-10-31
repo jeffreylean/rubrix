@@ -20,7 +20,7 @@ use support::diff::{
     Plain, doc, line_text, settle, sides, slot, slots, texts,
 };
 use support::{
-    chord, keep_copies, key_with, lay_out, point_in, press_on,
+    chord, copy, keep_copies, key_with, lay_out, point_in, press_on,
     type_text,
 };
 
@@ -31,6 +31,9 @@ const NEW: &str =
 
 #[derive(Resource)]
 struct Shape(Layout);
+
+#[derive(Resource)]
+struct Source(DiffSource);
 
 fn editing(source: DiffSource, layout: Layout) -> App {
     let mut app = App::new();
@@ -43,15 +46,18 @@ fn editing(source: DiffSource, layout: Layout) -> App {
     .insert_resource(TimeUpdateStrategy::ManualDuration(
         Duration::from_millis(50),
     ))
-    .insert_resource(Shape(layout));
+    .insert_resource(Shape(layout))
+    .insert_resource(Source(source));
     lay_out(&mut app, 1.0);
     keep_copies(&mut app);
     mount::<Plain>(
         app.world_mut(),
-        column((diff_view(source)
-            .layout(resource::<Shape, _>(|shape| shape.0))
-            .overflow(Overflow::Scroll)
-            .edit(true),))
+        column((diff_view(resource::<Source, _>(|source| {
+            source.0.clone()
+        }))
+        .layout(resource::<Shape, _>(|shape| shape.0))
+        .overflow(Overflow::Scroll)
+        .edit(true),))
         .width(px(900.0))
         .height(px(600.0)),
     );
@@ -336,4 +342,19 @@ fn an_edit_redraws_the_word_marks_of_both_rows_of_a_pair() {
         Layout::Stacked,
     );
     assert_eq!(drawn(&mut app), drawn(&mut fresh));
+}
+
+#[test]
+fn a_new_source_gives_the_read_only_selection_its_keys_back() {
+    let mut app =
+        editing(DiffSource::texts("a.rs", OLD, NEW), Layout::Stacked);
+    let addition = row_where(&mut app, 0, |row| {
+        matches!(row, Row::Addition { .. })
+    });
+    click_stacked(&mut app, addition, 0);
+    app.world_mut().resource_mut::<Source>().0 =
+        DiffSource::texts("b.rs", OLD, NEW);
+    settle(&mut app);
+    chord(&mut app, &[KeyCode::ControlLeft], KeyCode::KeyA, "a");
+    assert!(copy(&mut app).contains("let keep = 1;"));
 }
