@@ -23,7 +23,6 @@ use bevy::ui::{
 use fynix::{Patch, element};
 use parley::{AlignmentOptions, Layout};
 
-use super::label::PatchWrap;
 use crate::patch::{Paint, PatchInk, PatchOpacity, PatchScale};
 use crate::prop::Prop;
 use crate::state::own_when;
@@ -67,8 +66,9 @@ pub struct Rich {
         blend = blend_color
     )]
     pub tone: Prop<Tone>,
-    /// Whether it breaks onto more lines. It does when unset.
-    #[elem(default = true, patch = PatchWrap)]
+    /// Whether it breaks onto more lines. It does when unset, at
+    /// word starts, and inside a word wider than the text.
+    #[elem(default = true, patch = PatchRichWrap)]
     pub wrap: Prop<bool>,
     /// How opaque every span is, 1.0 when unset.
     #[elem(default = 1.0, patch = PatchBodyOpacity, blend = blend_f32)]
@@ -561,6 +561,20 @@ fn rebody(
         font.font_size = FontSize::Px(body.size);
     }
     redraw(world, root);
+}
+
+pub struct PatchRichWrap;
+
+impl Patch<Bevy, bool> for PatchRichWrap {
+    fn patch(world: &mut World, node: Entity, wrap: &bool) {
+        if let Some(mut layout) = world.get_mut::<TextLayout>(node) {
+            layout.linebreak = if *wrap {
+                LineBreak::WordOrCharacter
+            } else {
+                LineBreak::NoWrap
+            };
+        }
+    }
 }
 
 pub struct PatchBodyInk;
