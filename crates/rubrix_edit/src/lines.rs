@@ -7,33 +7,28 @@ use alloc::vec::Vec;
 use core::ops::Range;
 
 use crate::buffer::Buffer;
-use crate::command::Plan;
-use crate::selection::Selections;
+use crate::command::{After, Plan};
+use crate::motion::{
+    indent as leading_blanks, next_grapheme, prev_grapheme,
+};
+use crate::selection::{Selection, Selections};
+
+/// The columns between indent stops, the tab width the code view
+/// draws.
+const TAB: usize = 4;
 
 /// The lines the selections cover, as sorted half-open line ranges,
 /// as Pierre's `getSelectedLineBlocks` finds them.
 ///
 /// A range that ends at column 0 of a later line leaves that line
 /// out. Blocks that overlap or touch merge into one.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the line commands use it")
-)]
 pub(crate) fn blocks(
     buffer: &Buffer,
     selections: &Selections,
 ) -> Vec<Range<u32>> {
     let mut blocks: Vec<Range<u32>> = Vec::new();
     for selection in selections.iter() {
-        let start = buffer.line_of(selection.start());
-        let mut end = buffer.line_of(selection.end());
-        if !selection.is_caret()
-            && end > start
-            && buffer.line_start(end) == selection.end()
-        {
-            end -= 1;
-        }
-        let block = start..end + 1;
+        let block = selected_lines(buffer, selection);
         match blocks.last_mut() {
             Some(last) if block.start <= last.end => {
                 last.end = last.end.max(block.end);
@@ -44,116 +39,499 @@ pub(crate) fn blocks(
     blocks
 }
 
+/// The lines one selection covers, under the rule in [`blocks`].
+fn selected_lines(
+    buffer: &Buffer,
+    selection: Selection,
+) -> Range<u32> {
+    let start = buffer.line_of(selection.start());
+    let mut end = buffer.line_of(selection.end());
+    if !selection.is_caret()
+        && end > start
+        && buffer.line_start(end) == selection.end()
+    {
+        end -= 1;
+    }
+    start..end + 1
+}
+
 /// Tab: indents every line of a selection that spans lines, and puts
 /// an indent at each caret or single-line range.
 pub(crate) fn indent(
-    _buffer: &Buffer,
-    _selections: &Selections,
+    buffer: &Buffer,
+    selections: &Selections,
 ) -> Option<Plan> {
-    None
+    let mut edits = Vec::new();
+    let mut done = None;
+    for selection in selections.iter() {
+        let start = buffer.spot(selection.start());
+        if start.line != buffer.line_of(selection.end()) {
+            line_indents(
+                buffer, selection, false, &mut done, &mut edits,
+            );
+            continue;
+        }
+        let text = if start.content.starts_with('\t') {
+            String::from("\t")
+        } else {
+            let column = start.content[..start.rel].chars().fold(
+                0,
+                |column, c| {
+                    if c == '\t' {
+                        column + TAB - column % TAB
+                    } else {
+                        column + 1
+                    }
+                },
+            );
+            " ".repeat(TAB - column % TAB)
+        };
+        edits.push((selection.range(), text));
+    }
+    edits.sort_by_key(|(range, _)| (range.start, range.end));
+    Some(Plan {
+        edits,
+        after: After::Map,
+    })
 }
 
 /// Shift+Tab: removes one indent from the start of every selected
 /// line.
 pub(crate) fn outdent(
-    _buffer: &Buffer,
-    _selections: &Selections,
+    buffer: &Buffer,
+    selections: &Selections,
 ) -> Option<Plan> {
-    None
+    each_line_indent(buffer, selections, true)
 }
 
 /// Adds one indent to the start of every selected line, a caret's
 /// line included.
 pub(crate) fn indent_lines(
-    _buffer: &Buffer,
-    _selections: &Selections,
+    buffer: &Buffer,
+    selections: &Selections,
 ) -> Option<Plan> {
-    None
+    each_line_indent(buffer, selections, false)
+}
+
+fn each_line_indent(
+    buffer: &Buffer,
+    selections: &Selections,
+    outdent: bool,
+) -> Option<Plan> {
+    let mut edits = Vec::new();
+    let mut done = None;
+    for selection in selections.iter() {
+        line_indents(
+            buffer, selection, outdent, &mut done, &mut edits,
+        );
+    }
+    Some(Plan {
+        edits,
+        after: After::Map,
+    })
+}
+
+/// Pushes the edits that add or remove one indent at the start of
+/// each line `selection` covers, as Pierre's `resolveIndentEdits`
+/// does: a tab when the line starts with one, else four spaces. A
+/// selection over several lines skips its blank lines. `done` is the
+/// last line an earlier selection edited, so a line shared by two
+/// selections changes once.
+fn line_indents(
+    buffer: &Buffer,
+    selection: Selection,
+    outdent: bool,
+    done: &mut Option<u32>,
+    edits: &mut Vec<(Range<usize>, String)>,
+) {
+    let several = buffer.line_of(selection.start())
+        != buffer.line_of(selection.end());
+    for line in selected_lines(buffer, selection) {
+        if done.is_some_and(|done| line <= done) {
+            continue;
+        }
+        *done = Some(line);
+        let content = buffer.content(line);
+        if several && content.trim().is_empty() {
+            continue;
+        }
+        let at = buffer.line_start(line);
+        let tab = content.starts_with('\t');
+        if !outdent {
+            let unit = if tab { "\t" } else { "    " };
+            edits.push((at..at, String::from(unit)));
+            continue;
+        }
+        let spaces =
+            content.len() - content.trim_start_matches(' ').len();
+        let removed = if tab { 1 } else { spaces.min(TAB) };
+        if removed > 0 {
+            edits.push((at..at + removed, String::new()));
+        }
+    }
 }
 
 /// Moves each block one line down, or up, past the line beside it.
 /// `None` when a block is already at that end of the text.
+///
+/// Each block stays where it is and the line beside it moves to its
+/// other side, so the edit is the size of one line however long the
+/// block is.
 pub(crate) fn move_lines(
-    _buffer: &Buffer,
-    _selections: &Selections,
-    _down: bool,
+    buffer: &Buffer,
+    selections: &Selections,
+    down: bool,
 ) -> Option<Plan> {
-    None
+    let blocks = blocks(buffer, selections);
+    let at_edge = if down {
+        blocks.last()?.end == buffer.line_count()
+    } else {
+        blocks.first()?.start == 0
+    };
+    if at_edge {
+        return None;
+    }
+    let mut edits = Vec::with_capacity(2 * blocks.len());
+    let mut shifts = Vec::with_capacity(blocks.len());
+    for block in &blocks {
+        let first = buffer.line_start(block.start);
+        let last = buffer.line_end(block.end - 1);
+        if down {
+            let next = block.end;
+            let moved = buffer.slice(last..buffer.line_end(next));
+            let text = rotate(&moved, buffer.line_start(next) - last);
+            shifts.push(text.len() as isize);
+            edits.push((first..first, text));
+            edits.push((last..buffer.line_end(next), String::new()));
+        } else {
+            let prev = block.start - 1;
+            let moved = buffer.slice(buffer.line_start(prev)..first);
+            let text = rotate(
+                &moved,
+                buffer.line_end(prev) - buffer.line_start(prev),
+            );
+            shifts.push(-(text.len() as isize));
+            edits.push((
+                buffer.line_start(prev)..first,
+                String::new(),
+            ));
+            edits.push((last..last, text));
+        }
+    }
+    let after =
+        shifted(buffer, selections, &blocks, &shifts, buffer.len());
+    Some(Plan {
+        edits,
+        after: After::Set(after),
+    })
+}
+
+/// `text` with its first `mid` bytes moved to its end.
+fn rotate(text: &str, mid: usize) -> String {
+    [&text[mid..], &text[..mid]].concat()
 }
 
 /// Copies each block below itself, or above, and selects the copy.
+///
+/// Both put the copy in above the block, so the text is the same.
+/// Down leaves the selections on the lower lines.
 pub(crate) fn copy_lines(
-    _buffer: &Buffer,
-    _selections: &Selections,
-    _down: bool,
+    buffer: &Buffer,
+    selections: &Selections,
+    down: bool,
 ) -> Option<Plan> {
-    None
+    let blocks = blocks(buffer, selections);
+    let eol = buffer.eol().as_str();
+    let mut edits = Vec::with_capacity(blocks.len());
+    let mut shifts = Vec::with_capacity(blocks.len());
+    let mut copied = 0;
+    for block in &blocks {
+        let first = buffer.line_start(block.start);
+        let lines =
+            buffer.slice(first..buffer.line_end(block.end - 1));
+        let text = [&*lines, eol].concat();
+        let own = if down { text.len() } else { 0 };
+        shifts.push((copied + own) as isize);
+        copied += text.len();
+        edits.push((first..first, text));
+    }
+    let after = shifted(
+        buffer,
+        selections,
+        &blocks,
+        &shifts,
+        buffer.len() + copied,
+    );
+    Some(Plan {
+        edits,
+        after: After::Set(after),
+    })
+}
+
+/// The selections, each moved by the shift of the block that holds
+/// it and clamped to `len`, the length of the text after the edit.
+fn shifted(
+    buffer: &Buffer,
+    selections: &Selections,
+    blocks: &[Range<u32>],
+    shifts: &[isize],
+    len: usize,
+) -> Selections {
+    let mut after = selections.clone();
+    let mut block = 0;
+    after.update(|selection, _| {
+        let line = buffer.line_of(selection.start());
+        while blocks[block].end <= line {
+            block += 1;
+        }
+        let shift = shifts[block];
+        let at = |offset: usize| {
+            offset.saturating_add_signed(shift).min(len)
+        };
+        Selection {
+            anchor: at(selection.anchor),
+            head: at(selection.head),
+        }
+    });
+    after
 }
 
 /// Opens a blank line below each caret's line, with the line's
 /// indent, and moves the caret to its end.
 pub(crate) fn blank_line_below(
-    _buffer: &Buffer,
-    _selections: &Selections,
+    buffer: &Buffer,
+    selections: &Selections,
 ) -> Option<Plan> {
-    None
+    let eol = buffer.eol().as_str();
+    let mut edits: Vec<(Range<usize>, String)> = Vec::new();
+    let mut opened: Option<(u32, usize)> = None;
+    let mut added = 0;
+    let mut after = selections.clone();
+    after.update(|selection, _| {
+        let line = buffer.line_of(selection.head);
+        if let Some((done, caret)) = opened
+            && done == line
+        {
+            return Selection::caret(caret);
+        }
+        let end = buffer.line_end(line);
+        let text =
+            [eol, leading_blanks(buffer.content(line))].concat();
+        added += text.len();
+        let caret = end + added;
+        edits.push((end..end, text));
+        opened = Some((line, caret));
+        Selection::caret(caret)
+    });
+    Some(Plan {
+        edits,
+        after: After::Set(after),
+    })
 }
 
-/// Swaps the grapheme clusters on either side of each caret.
+/// Swaps the grapheme clusters on either side of each caret, as
+/// Pierre's `applyTransposeToSelections` does. At a line's end it
+/// swaps the two before the caret, and at a line's start the last of
+/// the line above and the first of this one, across the break.
+/// Ranges stay as they are, and so does a caret whose swap would
+/// overlap the one before it.
 pub(crate) fn transpose(
-    _buffer: &Buffer,
-    _selections: &Selections,
+    buffer: &Buffer,
+    selections: &Selections,
 ) -> Option<Plan> {
-    None
+    let mut edits: Vec<(Range<usize>, String)> = Vec::new();
+    let mut after = selections.clone();
+    after.update(|selection, _| {
+        if !selection.is_caret() {
+            return selection;
+        }
+        let Some([start, left, right, end]) =
+            swapped(buffer, selection.head)
+        else {
+            return selection;
+        };
+        if edits.last().is_some_and(|(last, _)| start < last.end) {
+            return selection;
+        }
+        let text = [
+            buffer.slice(right..end),
+            buffer.slice(left..right),
+            buffer.slice(start..left),
+        ]
+        .concat();
+        edits.push((start..end, text));
+        Selection::caret(end)
+    });
+    Some(Plan {
+        edits,
+        after: After::Set(after),
+    })
+}
+
+/// The offsets `[start, left, right, end]` a transpose at `at`
+/// reverses: `start..left` and `right..end` trade places around
+/// `left..right`, which is the line break when the swap crosses one
+/// and empty otherwise. `None` when there is nothing to swap.
+fn swapped(buffer: &Buffer, at: usize) -> Option<[usize; 4]> {
+    let spot = buffer.spot(at);
+    let len = spot.content.len();
+    if spot.rel > 0 && spot.rel < len {
+        Some([
+            prev_grapheme(buffer, at),
+            at,
+            at,
+            next_grapheme(buffer, at),
+        ])
+    } else if spot.rel == len && spot.rel > 0 {
+        let mid = prev_grapheme(buffer, at);
+        (mid > spot.start)
+            .then(|| [prev_grapheme(buffer, mid), mid, mid, at])
+    } else if spot.line > 0 && len > 0 {
+        let above = spot.line - 1;
+        let left = buffer.line_end(above);
+        let start = if left > buffer.line_start(above) {
+            prev_grapheme(buffer, left)
+        } else {
+            left
+        };
+        Some([start, left, at, next_grapheme(buffer, at)])
+    } else {
+        None
+    }
 }
 
 /// Deletes from each caret to its line's end, or the line break when
 /// the caret is already there.
 pub(crate) fn delete_to_line_end(
-    _buffer: &Buffer,
-    _selections: &Selections,
+    buffer: &Buffer,
+    selections: &Selections,
 ) -> Option<Plan> {
-    None
+    let mut edits: Vec<(Range<usize>, String)> = Vec::new();
+    for selection in selections.iter() {
+        let range = if selection.is_caret() {
+            let spot = buffer.spot(selection.head);
+            let end = if spot.rel < spot.content.len() {
+                spot.start + spot.content.len()
+            } else if spot.line + 1 < buffer.line_count() {
+                buffer.line_start(spot.line + 1)
+            } else {
+                selection.head
+            };
+            selection.head..end
+        } else {
+            selection.range()
+        };
+        match edits.last_mut() {
+            Some((last, _)) if range.start < last.end => {
+                last.end = last.end.max(range.end);
+            }
+            _ => edits.push((range, String::new())),
+        }
+    }
+    Some(Plan {
+        edits,
+        after: After::Map,
+    })
 }
 
-/// A paste of whole lines: when the selections are bare carets and
-/// `text` is what [`line_copy`] copied, each copy goes in above its
-/// caret's line. `None` leaves the paste to the plain path.
+/// A paste of one line per selection: when there are several
+/// selections and `text`, less one trailing line break, has as many
+/// lines, line `i` replaces selection `i`. `None` leaves the paste to
+/// the plain path, which puts the whole text at every selection.
 pub(crate) fn paste_lines(
-    _buffer: &Buffer,
-    _selections: &Selections,
-    _text: &str,
+    buffer: &Buffer,
+    selections: &Selections,
+    text: &str,
 ) -> Option<Plan> {
-    None
+    if selections.len() < 2 {
+        return None;
+    }
+    let eol = buffer.eol().as_str();
+    let text = text.strip_suffix(eol).unwrap_or(text);
+    if text.split(eol).count() != selections.len() {
+        return None;
+    }
+    let edits = selections
+        .iter()
+        .zip(text.split(eol))
+        .map(|(selection, line)| {
+            (selection.range(), String::from(line))
+        })
+        .collect();
+    Some(Plan {
+        edits,
+        after: After::Map,
+    })
 }
 
 /// A cut of whole lines: when the selections are bare carets, the
-/// cut removes each caret's line. `None` leaves the cut to the plain
-/// path.
+/// cut removes each caret's line with its break. The last line takes
+/// the break before it, so no empty line is left. `None` leaves the
+/// cut to the plain path.
 pub(crate) fn cut_lines(
-    _buffer: &Buffer,
-    _selections: &Selections,
+    buffer: &Buffer,
+    selections: &Selections,
 ) -> Option<Plan> {
-    None
+    if !selections.iter().all(|selection| selection.is_caret()) {
+        return None;
+    }
+    let count = buffer.line_count();
+    let edits = blocks(buffer, selections)
+        .into_iter()
+        .map(|block| {
+            let range = if block.end < count {
+                buffer.line_start(block.start)
+                    ..buffer.line_start(block.end)
+            } else if block.start > 0 {
+                buffer.line_end(block.start - 1)..buffer.len()
+            } else {
+                0..buffer.len()
+            };
+            (range, String::new())
+        })
+        .collect();
+    Some(Plan {
+        edits,
+        after: After::Map,
+    })
 }
 
-/// What a copy at bare carets copies: each caret's line with its line
-/// break. `None` when some selection is a range.
+/// What a copy at bare carets copies: the lines that hold a caret,
+/// each once and with its line break, in buffer order. `None` when
+/// some selection is a range.
 pub(crate) fn line_copy(
-    _buffer: &Buffer,
-    _selections: &Selections,
+    buffer: &Buffer,
+    selections: &Selections,
 ) -> Option<String> {
-    None
+    if !selections.iter().all(|selection| selection.is_caret()) {
+        return None;
+    }
+    let count = buffer.line_count();
+    let mut text = String::new();
+    for block in blocks(buffer, selections) {
+        let end = if block.end < count {
+            buffer.line_start(block.end)
+        } else {
+            buffer.len()
+        };
+        text.push_str(
+            &buffer.slice(buffer.line_start(block.start)..end),
+        );
+    }
+    Some(text)
 }
 
-/// Where Backspace at `at` deletes back to when `at` sits in leading
-/// whitespace made of spaces: the previous indent stop. `None` leaves
-/// it to delete one grapheme cluster.
+/// Where Backspace at `at` deletes back to when only spaces, at
+/// least one, sit between the line's start and `at`: the indent stop
+/// before `at`. `None` leaves it to delete one grapheme cluster.
 pub(crate) fn soft_tab_start(
-    _buffer: &Buffer,
-    _at: usize,
+    buffer: &Buffer,
+    at: usize,
 ) -> Option<usize> {
-    None
+    let spot = buffer.spot(at);
+    let before = &spot.content[..spot.rel];
+    (!before.is_empty() && before.bytes().all(|b| b == b' '))
+        .then(|| spot.start + (before.len() - 1) / TAB * TAB)
 }
 
 #[cfg(test)]

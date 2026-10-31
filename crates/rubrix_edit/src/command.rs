@@ -104,7 +104,6 @@ pub(crate) enum After {
     Map,
     /// To these selections, in the offsets of the text after the
     /// change. The planner keeps their ages.
-    #[allow(dead_code, reason = "the line commands set selections")]
     Set(Selections),
 }
 
@@ -168,8 +167,8 @@ impl Editor {
     }
 
     /// The text of the selections in buffer order, joined by the
-    /// buffer's line ending. A caret adds nothing, so bare carets
-    /// copy nothing.
+    /// buffer's line ending. Bare carets copy the lines that hold
+    /// them, each once and with its line break.
     pub fn copy_text(&self) -> String {
         if let Some(text) =
             lines::line_copy(&self.buffer, &self.selections)
