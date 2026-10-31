@@ -171,8 +171,6 @@ fn a_newline_inside_a_character_class_stays_in_the_class() {
     assert_eq!(found(crlf, &regex_query(r"\[\nc")), vec![5..9]);
 }
 
-/// Types `typed` at `at` with the search open, and checks the search
-/// that followed the edit against a fresh one.
 fn follows_an_edit(
     text: &str,
     query: &Query,

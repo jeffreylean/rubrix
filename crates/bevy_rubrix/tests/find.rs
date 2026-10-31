@@ -257,8 +257,12 @@ fn no_key_in_a_field_leaves_the_focus_on_nothing() {
     }
 }
 
-/// The node and the drawn width of the label that reads `text`.
-fn drawn(app: &mut App, text: &str) -> (Rect, f32) {
+struct Drawn {
+    node: Rect,
+    width: f32,
+}
+
+fn drawn(app: &mut App, text: &str) -> Drawn {
     let world = app.world_mut();
     let mut labels = world.query::<(
         &Text,
@@ -270,10 +274,10 @@ fn drawn(app: &mut App, text: &str) -> (Rect, f32) {
         .iter(world)
         .find(|(label, ..)| label.0 == text)
         .unwrap_or_else(|| panic!("a label reading {text:?}"));
-    (
-        Rect::from_center_size(at.translation, node.size()),
-        info.size.x,
-    )
+    Drawn {
+        node: Rect::from_center_size(at.translation, node.size()),
+        width: info.size.x,
+    }
 }
 
 fn press(app: &mut App, button_text: &str) {
@@ -305,7 +309,7 @@ fn a_regex_error_reads_whole_in_the_bar() {
         counts_until_final(&mut app);
         let error = "Invalid regex: unclosed group";
         assert_eq!(bar(&mut app).label(), error);
-        let (node, width) = drawn(&mut app, error);
+        let Drawn { node, width } = drawn(&mut app, error);
         assert!(
             width <= node.width() + 0.5,
             "at scale {scale}, the error draws {width} px in a {} \
@@ -313,7 +317,7 @@ fn a_regex_error_reads_whole_in_the_bar() {
             node.width()
         );
         for button in ["Aa", "W", ".*", "Prev", "Next", "Close"] {
-            let (other, _) = drawn(&mut app, button);
+            let other = drawn(&mut app, button).node;
             assert!(
                 node.intersect(other).is_empty(),
                 "at scale {scale}, the error {node:?} runs under \

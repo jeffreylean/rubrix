@@ -2332,15 +2332,14 @@ steps += [doc.text(LINE), caret((LINE, start[1] + 200))]
 steps += [remote("remote 50: ", *(f"u{i + 1} {LINE}:{column + 200} " for i, column in enumerate(carets)))]
 collab("100k", steps, "log typing", "log rows", "wait 30", "screenshot e6-100k.png")
 
-# m2fa: the milestone 2 review's find findings, L2-F1 and L4-F1 to L4-F5.
 doc = Doc(LARGE_RS_LINES)
 TONE = (23, 13)
 steps = []
 presses = [("mod+f", key) for key in ["mod+enter", "alt+enter", "mod+shift+enter", "shift+alt+enter", "shift+escape"]]
 presses += [("mod+alt+f", key) for key in ["mod+enter", "shift+escape"]]
 for i, (opener, key) in enumerate(presses):
-    # Each click lands one column on from the last, so no two make a double click.
-    steps += [f"click {doc.at(TONE[0], TONE[1] + i % 4)}", f"key {opener}", "wait 10", f"key {key}", "wait 5", "key escape", "wait 5"]
+    no_double_click_column = TONE[1] + i % 4
+    steps += [f"click {doc.at(TONE[0], no_double_click_column)}", f"key {opener}", "wait 10", f"key {key}", "wait 5", "key escape", "wait 5"]
     steps += ["log find", "expect find closed"]
 doc.lines[TONE[0] - 1] = doc.line(TONE[0]).replace("Tone", "q", 1)
 steps += ["type q", "wait 5", doc.text(TONE[0])]
@@ -2378,16 +2377,13 @@ steps += ["key mod+a", f"type {FAMILY}", "wait 10", "log find", f'expect find op
 steps += [REPLACE_FIELD, "type Y", "key enter", "wait 10", "log text 1", 'expect text 1 "family Y end"']
 find_script("m2-cluster", steps)
 
-# The L4-F3 restart rule on the 100k input: a regex with no line bound
-# restarts at the match before the edit, so each key below line 3
-# rescans the whole buffer while the frames are timed.
-EDIT_QUERY, EDIT_LINE, EDIT_TYPED = r"\s+theme", 3, "abcdefghij"
+UNBOUNDED_QUERY, EDIT_LINE, EDIT_TYPED = r"\s+theme", 3, "abcdefghij"
 doc = Doc(STRESS_LINES, text_x=TEXT_X_100K)
-hits = len(find_all(STRESS_TEXT, EDIT_QUERY, regex=True))
+hits = len(find_all(STRESS_TEXT, UNBOUNDED_QUERY, regex=True))
 doc.insert((EDIT_LINE, 1), EDIT_TYPED)
-assert len(find_all("\n".join(doc.lines), EDIT_QUERY, regex=True)) == hits
+assert len(find_all("\n".join(doc.lines), UNBOUNDED_QUERY, regex=True)) == hits
 steps = [STRESS, "wait 60", f"click {doc.at(1, 1)}", "key mod+f", "wait 5", REGEX, "wait 5", FIND_FIELD, "key mod+a"]
-steps += [f"type {EDIT_QUERY}", "wait 120", f"# python re.findall(r'{EDIT_QUERY}', 100k, re.I) -> {hits}", counted(EDIT_QUERY, hits)]
+steps += [f"type {UNBOUNDED_QUERY}", "wait 120", f"# python re.findall(r'{UNBOUNDED_QUERY}', 100k, re.I) -> {hits}", counted(UNBOUNDED_QUERY, hits)]
 steps += [f"click {doc.at(EDIT_LINE, 1)}", "frames start", "wait 60", [[f"type {c}", "wait 9"] for c in EDIT_TYPED], "wait 20"]
-steps += ["frames stop editor-find-m2-edit-100k.csv", "wait 120", doc.text(EDIT_LINE), counted(EDIT_QUERY, hits)]
+steps += ["frames stop editor-find-m2-edit-100k.csv", "wait 120", doc.text(EDIT_LINE), counted(UNBOUNDED_QUERY, hits)]
 find_script("m2-edit-100k", steps, "wait 30", "screenshot m2fa-edit-100k.png")

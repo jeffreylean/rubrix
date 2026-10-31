@@ -136,7 +136,7 @@ impl FindBar {
     }
 
     /// What the bar's count reads, or why its regex does not
-    /// compile, which the bar shows on a row of its own.
+    /// compile.
     pub fn label(&self) -> &str {
         &self.label
     }

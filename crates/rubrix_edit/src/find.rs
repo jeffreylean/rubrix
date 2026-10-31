@@ -48,11 +48,9 @@ pub struct Query {
 enum Pattern {
     Empty,
     Invalid(String),
-    /// `breaks` is the most line breaks one match can hold, or `None`
-    /// when nothing bounds it.
     Regex {
         regex: Regex,
-        breaks: Option<u32>,
+        most_breaks: Option<u32>,
     },
 }
 
@@ -100,13 +98,9 @@ impl Search {
     }
 
     /// Follows a change made to `buffer`, which holds the text after
-    /// it, and scans again from the first place a match that reaches
-    /// the first edited line could start. When a match holds at most
-    /// n line breaks, that is the start of the line n lines above the
-    /// edited one. When nothing bounds them, it is the start of the
-    /// last match that ends before the edited line, or the top of the
-    /// buffer. That misses only a pattern with a longer branch that
-    /// can start before an earlier match, such as `x|a[\s\S]*z`.
+    /// it. A pattern with no bound on its line breaks scans again
+    /// from the last match before the edited line, so it misses a
+    /// branch that starts before that match, such as `x|a[\s\S]*z`.
     pub fn edited(&mut self, buffer: &Buffer, change: &Change) {
         let Some(first) = change.replacements().next() else {
             return;
@@ -117,10 +111,10 @@ impl Search {
                 .truncate(buffer.line_start(line).saturating_sub(1));
             self.copied = line;
         }
-        let Pattern::Regex { breaks, .. } = self.pattern else {
+        let Pattern::Regex { most_breaks, .. } = self.pattern else {
             return;
         };
-        let from = match breaks {
+        let from = match most_breaks {
             Some(breaks) => {
                 buffer.line_start(line.saturating_sub(breaks))
             }
@@ -206,7 +200,7 @@ impl Search {
             if !range.is_empty()
                 && (!self.whole_word
                     || whole_word(&self.text, &range))
-                && on_clusters(buffer, &range)
+                && on_cluster_boundaries(buffer, &range)
             {
                 at = range.end;
                 self.matches.push(range);
@@ -352,27 +346,22 @@ fn compile(query: &Query) -> Pattern {
     } else {
         Cow::Owned(regex::escape(&query.text))
     };
-    match build(&source, !query.match_case) {
-        Ok((regex, breaks)) => Pattern::Regex { regex, breaks },
-        Err(error) => Pattern::Invalid(
+    build(&source, !query.match_case).unwrap_or_else(|error| {
+        Pattern::Invalid(
             error
                 .lines()
                 .last()
                 .unwrap_or_default()
                 .trim_start_matches("error: ")
                 .to_string(),
-        ),
-    }
+        )
+    })
 }
 
-/// The regex for `source`, with each line feed outside a character
-/// class taking an optional `\r` before it, so a query written with
-/// a newline matches across the lines of a CRLF buffer too, and the
-/// most line breaks one of its matches can hold.
 fn build(
     source: &str,
     case_insensitive: bool,
-) -> Result<(Regex, Option<u32>), String> {
+) -> Result<Pattern, String> {
     let mut ast = Parser::new()
         .parse(source)
         .map_err(|error| error.to_string())?;
@@ -394,7 +383,10 @@ fn build(
         .crlf(true)
         .build()
         .map_err(|error| error.to_string())?;
-    Ok((regex, most_breaks(&hir)))
+    Ok(Pattern::Regex {
+        regex,
+        most_breaks: most_breaks(&hir),
+    })
 }
 
 fn crlf_newlines(ast: &mut Ast) {
@@ -418,8 +410,6 @@ fn crlf_newlines(ast: &mut Ast) {
     }
 }
 
-/// The most line feeds one match of `hir` can hold, or `None` when
-/// nothing bounds them.
 fn most_breaks(hir: &Hir) -> Option<u32> {
     match hir.kind() {
         HirKind::Empty | HirKind::Look(_) => Some(0),
@@ -459,9 +449,10 @@ fn most_breaks(hir: &Hir) -> Option<u32> {
     }
 }
 
-/// Whether both ends of `range` are grapheme cluster boundaries,
-/// where [`Editor::set_selections`] leaves a selection as it is.
-fn on_clusters(buffer: &Buffer, range: &Range<usize>) -> bool {
+fn on_cluster_boundaries(
+    buffer: &Buffer,
+    range: &Range<usize>,
+) -> bool {
     snap(buffer, range.start) == range.start
         && snap(buffer, range.end) == range.end
 }
