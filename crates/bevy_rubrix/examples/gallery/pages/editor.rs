@@ -12,12 +12,16 @@ use bevy::ecs::schedule::common_conditions::resource_exists;
 use bevy::ecs::world::{FromWorld, World};
 use bevy::text::{TextLayoutInfo, TextSpan};
 use bevy::ui::widget::Text;
-use bevy::ui::{ComputedNode, UiGlobalTransform, percent, px};
+use bevy::ui::{
+    AlignItems, ComputedNode, JustifyContent, UiGlobalTransform,
+    UiRect, percent, px,
+};
 use bevy_fynix::tokens::Tone;
 use bevy_fynix::views::{
-    FrameProps, VirtualList, column, label, row,
+    FrameProps, VirtualList, column, label, overlay, row,
 };
 use bevy_fynix::{AnyView, Signal, ViewExt, derived, resource};
+use bevy_rubrix::find::{FindBar, find_bar};
 use bevy_rubrix::{
     EditDoc, EditLine, EditSystems, EditView, Lang, LineNumber,
     Overflow, code_editor,
@@ -79,6 +83,7 @@ pub fn build() -> PageView {
                 .overflow(
                     resource::<EditorFile, _>(|file| file.overflow),
                 ),
+                find_overlay(),
             ))
             .height(percent(100.0))
             .min_height(px(0.0))
@@ -459,4 +464,42 @@ fn visual_lines(world: &World, text: Entity) -> Option<f32> {
     };
     let one = height(gutter_of(world, text)?)?;
     (one > 0.0).then_some((height(text)? / one).round())
+}
+
+fn find_overlay() -> PageView {
+    overlay((find_bar(resource::<EditorFile, _>(|file| file.doc)),))
+        .justify(JustifyContent::FlexEnd)
+        .align(AlignItems::FlexStart)
+        .padding(UiRect::new(px(0.0), px(24.0), px(112.0), px(0.0)))
+        .boxed()
+}
+
+pub fn find(world: &mut World) -> String {
+    let Some(doc) =
+        world.get_resource::<EditorFile>().map(|file| file.doc)
+    else {
+        return "find none".into();
+    };
+    let Some(bar) = world
+        .query::<&FindBar>()
+        .iter(world)
+        .find(|bar| bar.doc() == doc)
+    else {
+        return "find none".into();
+    };
+    let settled = bar.settled().map_or_else(
+        || "pending".into(),
+        |time| format!("{:.1}", time.as_secs_f64() * 1000.0),
+    );
+    format!(
+        "find {} query {:?} {} of {}{} marked {} final {settled} \
+         label {:?}",
+        if bar.is_open() { "open" } else { "closed" },
+        bar.query().text,
+        bar.current().map_or(0, |current| current + 1),
+        bar.count(),
+        if bar.is_capped() { " capped" } else { "" },
+        bar.marked(),
+        bar.label(),
+    )
 }

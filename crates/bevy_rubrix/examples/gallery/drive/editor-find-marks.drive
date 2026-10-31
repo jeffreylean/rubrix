@@ -1,0 +1,28 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -67014
+wait 10
+click 273.0 143
+key mod+f
+wait 5
+type self
+wait 10
+# grep -oi self large.rs.txt | wc -l -> 452
+move 740 400
+scroll 0 -4000
+wait 20
+log rows
+expect rows first_visible 4177 spawned
+log find
+expect find open query "self" 50 of 452 marked 25
+move 740 400
+scroll 0 4000
+wait 20
+log rows
+expect rows first_visible 3942 spawned
+log find
+expect find open query "self" 50 of 452 marked 4
+wait 30
+screenshot e5-marks.png
+exit

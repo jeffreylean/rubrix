@@ -1,0 +1,51 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -4709
+wait 10
+click 483.0 228
+key mod+alt+f
+wait 10
+type palette
+wait 5
+key enter
+wait 10
+# grep -oi theme large.rs.txt | wc -l -> 132
+log find
+expect find open query "theme"
+expect find of 131 marked
+log text 284
+expect text 284 "        let panel = cx.palette().panel();"
+log undo
+expect undo 1 redo 0
+click 273.0 500
+key mod+z
+wait 10
+log find
+expect find open query "theme"
+expect find of 132 marked
+log text 284
+expect text 284 "        let panel = cx.theme().panel();"
+log undo
+expect undo 0 redo 1
+click 986 179
+wait 10
+log find
+expect find open query "theme"
+expect find of 0 marked
+expect find label "No results"
+log undo
+expect undo 1 redo 0
+click 273.0 500
+key mod+z
+wait 10
+log find
+expect find open query "theme"
+expect find of 132 marked
+log text 284
+expect text 284 "        let panel = cx.theme().panel();"
+log undo
+expect undo 0 redo 1
+wait 30
+screenshot e5-replace.png
+exit
