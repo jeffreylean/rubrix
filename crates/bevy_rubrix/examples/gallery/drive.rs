@@ -3010,7 +3010,7 @@ exit
         assert_eq!(logged(&app, "text 4 "), ["\"let x = 1;\""]);
         assert_eq!(
             logged(&app, "caret "),
-            ["1 primary 1 4:11..4:11 visible true"]
+            ["1 primary 1 4:11..4:11 visible true bracket none"]
         );
         assert_eq!(logged(&app, "undo "), ["1 redo 0"]);
         assert_eq!(
