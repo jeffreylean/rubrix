@@ -2125,10 +2125,10 @@ current = index_at(SELFS, sum(len(l) + 1 for l in LARGE_RS_LINES[:MARKS_TOP]))
 assert find_place(LARGE_RS_TEXT, SELFS[current][0])[0] < MARKS_TOP + 38
 SPAWNED_ROWS = SPAWNED_ABOVE + SPAWNED_BELOW + 1
 for dy, first_visible in [(-SCROLLED, far), (SCROLLED, near)]:
-    window = f"{first_visible - SPAWNED_ABOVE}..={first_visible + SPAWNED_BELOW} rows {SPAWNED_ROWS} total"
+    spawned_window = f"{first_visible - SPAWNED_ABOVE}..={first_visible + SPAWNED_BELOW} rows {SPAWNED_ROWS} total"
     rows_marked = marked(LARGE_RS_TEXT, SELFS, first_visible)
     assert 0 < rows_marked <= SPAWNED_ROWS
-    steps += [CENTER, f"scroll 0 {dy}", "wait 20", "log rows", f"expect rows first_visible {first_visible} spawned {window}"]
+    steps += [CENTER, f"scroll 0 {dy}", "wait 20", "log rows", f"expect rows first_visible {first_visible} spawned {spawned_window}"]
     steps += [find_log("self", current + 1, len(SELFS), marked=rows_marked), f"expect find marked {rows_marked} final"]
 find_script("marks", steps, "wait 30", "screenshot e5-marks.png")
 
@@ -2185,3 +2185,166 @@ steps += [find_log("e", 1, MAX_MATCHES, capped=True), f'expect find label "1 of 
 steps += ["key escape", "wait 10", "log find", 'expect find closed', "expect find marked 0", "type x", "wait 5"]
 steps += [f"log text {line}", f"expect text {line} {rust_debug(typed)}"]
 find_script("close", steps, "wait 30", "screenshot e5-close.png")
+
+TOGGLE_100K, MARKERS, ANNOTATE, FIFTY_CARETS, RESPAWN = BUTTONS
+THOUSAND_MARKERS = "click 1041 68"
+
+
+def collab(name, *steps):
+    write(f"collab-{name}", "page collab", SETTLE, *steps, "exit")
+
+
+def remote(*expected):
+    return ["log remote", [f"expect remote {text}" for text in expected]]
+
+
+def place(at):
+    return f"{at[0]}:{at[1]}"
+
+
+def trimmed(doc, n):
+    line = doc.line(n)
+    return (n, len(line) - len(line.lstrip(" ")) + 1), (n, len(line) + 1)
+
+
+doc = Doc(LARGE_RS_LINES)
+ada, bo = (120, 5), ((123, 3), (123, 12))
+tinted = ((120, 5), (120, 12))
+collab(
+    "caret",
+    doc.scroll_to(115),
+    f"remote Ada {place(ada)}",
+    f"remote Bo {place(bo[0])} {place(bo[1])}",
+    "wait 5",
+    remote(f"Ada {place(ada)} shown", f"Bo {place(bo[0])}..{place(bo[1])} shown"),
+    "screenshot e6-caret.png",
+    f"remote Ada {place(tinted[0])} {place(tinted[1])}",
+    "wait 5",
+    remote(f"Ada {place(tinted[0])}..{place(tinted[1])} shown"),
+    "screenshot e6-tint.png",
+    f"click {doc.at(120, 1)}",
+    "type ab",
+    "wait 5",
+    remote(f"Ada 120:7..120:14 shown"),
+    "screenshot e6-tint-pushed.png",
+)
+
+doc = Doc(LARGE_RS_LINES)
+remap = [doc.scroll_to(95), "remote Ada 120:5", "wait 5", remote("Ada 120:5 shown")]
+remap += [f"click {doc.at(120, 1)}", "type xy", "wait 5", remote("Ada 120:7 shown")]
+remap += [f"click {doc.at(120, 7)}", "type z", "wait 5", remote("Ada 120:8 shown")]
+remap += [f"click {doc.at(100, 1)}", "key enter", "wait 5", remote("Ada 121:8 shown"), undo(3, 0)]
+remap += ["key mod+z", "key mod+z", "key mod+z", "wait 5", remote("Ada 120:5 shown"), undo(0, 3)]
+collab("remap", remap, "screenshot e6-remap.png")
+
+doc = Doc(LARGE_RS_LINES)
+collab(
+    "edge",
+    "remote Ada 9000:1",
+    "wait 5",
+    remote("Ada edge bottom at 9000:1"),
+    "screenshot e6-edge-bottom.png",
+    doc.scroll_to(8990),
+    "wait 5",
+    remote("Ada 9000:1 shown"),
+    doc.scroll_to(9020),
+    "wait 5",
+    remote("Ada edge top at 9000:1"),
+    "screenshot e6-edge.png",
+)
+
+doc = Doc(LARGE_RS_LINES)
+changed = [f"click {doc.end(10)}", "type a", "type b", "type c", "key enter", "key mod+z", "wait 5"]
+collab(
+    "changed",
+    changed,
+    "log changed",
+    "expect changed changed 5 rising true",
+    undo(1, 1),
+    "screenshot e6-changed.png",
+)
+
+
+def marker(severity, span):
+    return f"{severity} {place(span[0])}..{place(span[1])}"
+
+
+doc = Doc(LARGE_RS_LINES)
+first, second, third = (trimmed(doc, n) for n in (130, 131, 132))
+moved = ((130, first[0][1] + 2), (130, first[1][1] + 2))
+collab(
+    "markers",
+    doc.scroll_to(120),
+    MARKERS,
+    "wait 5",
+    "log markers",
+    f"expect markers markers 3: {marker('error', first)}, {marker('warning', second)}, {marker('info', third)}",
+    f"click {doc.at(130, 1)}",
+    "type ab",
+    f"click {doc.at(*second[0])}",
+    "key shift+end",
+    "key backspace",
+    "wait 5",
+    "log markers",
+    f"expect markers markers 2: {marker('error', moved)}, {marker('info', third)}",
+    "screenshot e6-markers.png",
+)
+
+doc = Doc(LARGE_RS_LINES)
+collab(
+    "annotations",
+    ANNOTATE,
+    "wait 5",
+    "log annotations",
+    "expect annotations annotations 1: 200 review",
+    doc.scroll_to(140),
+    f"click {doc.end(150)}",
+    "key enter",
+    "wait 5",
+    "log annotations",
+    "expect annotations annotations 1: 201 review",
+    "key mod+z",
+    "wait 5",
+    "log annotations",
+    "expect annotations annotations 1: 200 review",
+    doc.scroll_to(185),
+    "screenshot e6-annotations.png",
+)
+
+doc = Doc(LARGE_RS_LINES)
+original = [doc.text(120), doc.text(121)]
+steps = [doc.scroll_to(110), f"click {doc.end(120)}"]
+at = doc.insert((120, len(doc.line(120)) + 1), "abc")
+at = doc.enter(at)
+steps += ["type abc", "key enter", "wait 5", doc.text(120), doc.text(121), undo(2, 0)]
+steps += [RESPAWN, "wait 30", doc.text(120), doc.text(121), undo(2, 0)]
+doc.top, doc.scrolled = 1, False
+steps += [f"click {doc.at(5, 1)}", "key mod+z", "key mod+z", "wait 5", original, undo(0, 2)]
+collab("respawn", steps, "screenshot e6-respawn.png")
+
+doc = Doc(LARGE_RS_LINES)
+copied = doc.line(120)
+steps = [doc.scroll_to(115), f"click {doc.at(120, 1)}", "key shift+end", "key mod+c", "clipboard"]
+steps += ["log copied", f"expect copied {rust_debug(copied)}"]
+steps += ["log paste", f"expect paste {rust_debug('collab: ' + copied)}"]
+steps += [f"click {doc.end(125)}"]
+doc.insert((125, len(doc.line(125)) + 1), "one\ntwo")
+steps += ["paste one\\ntwo", "wait 5", doc.text(125), doc.text(126)]
+steps += ["log paste", f"expect paste {rust_debug('collab: one' + chr(10) + 'two')}"]
+collab("clipboard", steps, "screenshot e6-clipboard.png")
+
+doc = Doc(STRESS_LINES, text_x=TEXT_X_100K)
+LINE = 50_000
+start = (LINE, 9)
+line_end = len(doc.line(LINE)) + 1
+carets = [start[1] + (line_end - start[1]) * i // 49 for i in range(50)]
+steps = [TOGGLE_100K, "wait 60", doc.scroll_to(LINE), rows_total(doc)]
+steps += [f"click {doc.at(*start)}", caret(start), FIFTY_CARETS, THOUSAND_MARKERS, "wait 5"]
+steps += [f"click {doc.at(LINE + 1, 1)}", f"click {doc.at(*start)}", caret(start)]
+steps += [remote("remote 50: ", *(f"u{i + 1} {LINE}:{column} shown" for i, column in enumerate(carets)))]
+steps += ["log markers", "expect markers markers 1000: "]
+steps += [window("collab-100k-type.csv", ["type x"] * 200)]
+doc.insert(start, "x" * 200)
+steps += [doc.text(LINE), caret((LINE, start[1] + 200))]
+steps += [remote("remote 50: ", *(f"u{i + 1} {LINE}:{column + 200} " for i, column in enumerate(carets)))]
+collab("100k", steps, "log typing", "log rows", "wait 30", "screenshot e6-100k.png")

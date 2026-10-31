@@ -312,6 +312,9 @@ impl Request {
 #[derive(Message, Clone, Debug)]
 pub struct EditorChanged {
     pub doc: Entity,
+    /// The view the change came through: the one that took the key,
+    /// press or paste, or the [`EditRequest`]'s `view`.
+    pub view: Option<Entity>,
     pub change: Change,
     /// [`EditDoc::seq`] after the change.
     pub seq: u64,

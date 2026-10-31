@@ -1,0 +1,15 @@
+page collab
+wait 120
+click 1250 279
+type a
+type b
+type c
+key enter
+key mod+z
+wait 5
+log changed
+expect changed changed 5 rising true
+log undo
+expect undo 1 redo 1
+screenshot e6-changed.png
+exit
