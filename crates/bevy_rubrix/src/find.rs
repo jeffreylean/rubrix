@@ -90,6 +90,7 @@ pub struct FindBar {
 struct Parts {
     find: Entity,
     replace: Entity,
+    error: Entity,
     replace_row: Entity,
 }
 
@@ -134,9 +135,14 @@ impl FindBar {
         self.settled.filter(|_| self.pending_since.is_none())
     }
 
-    /// What the bar's count reads.
+    /// What the bar's count reads, or why its regex does not
+    /// compile, which the bar shows on a row of its own.
     pub fn label(&self) -> &str {
         &self.label
+    }
+
+    fn has_error(&self) -> bool {
+        self.search.as_ref().and_then(Search::error).is_some()
     }
 
     /// The matches found so far, in buffer order.
@@ -247,10 +253,14 @@ where
         let template = component::<FindBar, String>(root, |bar| {
             bar.map(|bar| bar.template.clone()).unwrap_or_default()
         });
-        let count = component::<FindBar, String>(root, |bar| {
-            bar.map(|bar| bar.label.clone()).unwrap_or_default()
-        });
-        let (find_row, replace_row) = cx.under(root, |cx| {
+        let status = |error: bool| {
+            component::<FindBar, String>(root, move |bar| {
+                bar.filter(|bar| bar.has_error() == error)
+                    .map(|bar| bar.label.clone())
+                    .unwrap_or_default()
+            })
+        };
+        let (find_row, error, replace_row) = cx.under(root, |cx| {
             let find_row = cx.build(
                 row((
                     text_field(query_text, |_, _| {})
@@ -266,8 +276,10 @@ where
                         on(|q| q.whole_word),
                     ),
                     toggle(".*", |q| &mut q.regex, on(|q| q.regex)),
-                    row((label(count).tone(Tone::Dim).wrap(false),))
-                        .width(px(120.0)),
+                    row((label(status(false))
+                        .tone(Tone::Dim)
+                        .wrap(false),))
+                    .width(px(120.0)),
                     run("Prev", previous),
                     run("Next", next),
                     run("Close", close),
@@ -275,6 +287,8 @@ where
                 .gap(4.0)
                 .align(AlignItems::Center),
             );
+            let error =
+                cx.build(label(status(true)).tone(Tone::Critical));
             let replace_row = cx.build(
                 row((
                     text_field(template, |_, _| {}).width(px(220.0)),
@@ -284,7 +298,7 @@ where
                 .gap(4.0)
                 .align(AlignItems::Center),
             );
-            (find_row, replace_row)
+            (find_row, error, replace_row)
         });
         let input = |world: &World, field_row: Entity| {
             let field =
@@ -295,6 +309,7 @@ where
             find: input(cx.world, find_row).expect("the find field"),
             replace: input(cx.world, replace_row)
                 .expect("the replace field"),
+            error,
             replace_row,
         };
         cx.world
@@ -719,7 +734,7 @@ fn keys(world: &mut World, bar: Entity) {
     let parts = state.parts;
     let platform =
         Mods::primary(world.resource::<Keymap>().platform());
-    let runs: Vec<(Entity, Run)> = world
+    let runs: Vec<(Entity, Option<Run>)> = world
         .resource::<Keys>()
         .presses()
         .iter()
@@ -728,28 +743,28 @@ fn keys(world: &mut World, bar: Entity) {
             let field = press
                 .focus
                 .filter(|&f| f == parts.find || f == parts.replace)?;
+            let key = &press.input.logical_key;
+            let drops_focus = matches!(key, Key::Enter | Key::Escape);
             let composing = world
                 .get::<EditableText>(field)
                 .is_some_and(EditableText::is_composing);
-            if composing
-                && matches!(
-                    press.input.logical_key,
-                    Key::Enter | Key::Escape
-                )
-            {
+            if composing && drops_focus {
                 return None;
             }
             let run = field_key(
-                &press.input.logical_key,
+                key,
                 press.mods,
                 platform,
                 field == parts.replace,
-            )?;
-            Some((field, run))
+            );
+            (run.is_some() || drops_focus).then_some((field, run))
         })
         .collect();
     for (field, run) in runs {
-        request(world, bar, field, run);
+        match run {
+            Some(run) => request(world, bar, field, run),
+            None => focus(world, field),
+        }
     }
 }
 
@@ -791,10 +806,11 @@ fn show(world: &mut World, bar: Entity) {
     let Some(state) = world.get::<FindBar>(bar) else {
         return;
     };
-    let (open, replacing, row) = (
+    let (open, replacing, error, parts) = (
         state.search.is_some(),
         state.replacing,
-        state.parts.replace_row,
+        state.has_error(),
+        state.parts,
     );
     let set = |world: &mut World, entity, on: bool| {
         let display = if on { Display::Flex } else { Display::None };
@@ -805,7 +821,8 @@ fn show(world: &mut World, bar: Entity) {
         }
     };
     set(world, bar, open);
-    set(world, row, replacing);
+    set(world, parts.error, error);
+    set(world, parts.replace_row, replacing);
 }
 
 fn tint(

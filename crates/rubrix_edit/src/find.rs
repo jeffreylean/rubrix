@@ -5,8 +5,9 @@
 //! slices: [`Search::step`] does as much as a time budget allows and
 //! picks up where it stopped on the next call, so a view can spread a
 //! search of a large buffer over frames. [`Search::edited`] follows
-//! an edit, keeping the matches before the edited line and scanning
-//! again from there.
+//! an edit, keeping the matches that end before the first line a
+//! match reaching the edit could start on, and scanning again from
+//! there.
 
 use std::borrow::Cow;
 use std::ops::Range;
@@ -15,10 +16,15 @@ use std::time::{Duration, Instant};
 use std::vec::Vec;
 
 use regex::{Captures, Regex, RegexBuilder};
+use regex_syntax::ParserBuilder;
+use regex_syntax::ast::Ast;
+use regex_syntax::ast::parse::Parser;
+use regex_syntax::ast::print::Printer;
+use regex_syntax::hir::{Class, Hir, HirKind};
 use rubrix_highlight::Lines;
 
 use crate::history::Kind;
-use crate::motion::{is_word, word_at};
+use crate::motion::{is_word, snap, word_at};
 use crate::{Buffer, Change, Editor, Selection, Selections};
 
 /// A search stops after this many matches, as Pierre's does.
@@ -42,10 +48,18 @@ pub struct Query {
 enum Pattern {
     Empty,
     Invalid(String),
-    Regex(Regex),
+    /// `breaks` is the most line breaks one match can hold, or `None`
+    /// when nothing bounds it.
+    Regex {
+        regex: Regex,
+        breaks: Option<u32>,
+    },
 }
 
 /// The matches of one [`Query`] in a buffer, found a slice at a time.
+///
+/// A match counts only when both its ends are grapheme cluster
+/// boundaries, so the editor can select it as it stands.
 ///
 /// A search keeps its own copy of the text, so it must see every
 /// change made to the buffer it scans, through [`Search::edited`].
@@ -81,14 +95,18 @@ impl Search {
         self.whole_word = query.whole_word;
         self.expand = query.regex;
         self.matches.clear();
-        self.at =
-            matches!(self.pattern, Pattern::Regex(_)).then_some(0);
+        self.at = matches!(self.pattern, Pattern::Regex { .. })
+            .then_some(0);
     }
 
     /// Follows a change made to `buffer`, which holds the text after
-    /// it. Keeps the matches that end before the line above the first
-    /// edited line, so a match that ran from that line into the edit
-    /// is found again, and scans on from there.
+    /// it, and scans again from the first place a match that reaches
+    /// the first edited line could start. When a match holds at most
+    /// n line breaks, that is the start of the line n lines above the
+    /// edited one. When nothing bounds them, it is the start of the
+    /// last match that ends before the edited line, or the top of the
+    /// buffer. That misses only a pattern with a longer branch that
+    /// can start before an earlier match, such as `x|a[\s\S]*z`.
     pub fn edited(&mut self, buffer: &Buffer, change: &Change) {
         let Some(first) = change.replacements().next() else {
             return;
@@ -99,17 +117,30 @@ impl Search {
                 .truncate(buffer.line_start(line).saturating_sub(1));
             self.copied = line;
         }
-        let from = buffer.line_start(line.saturating_sub(1));
+        let Pattern::Regex { breaks, .. } = self.pattern else {
+            return;
+        };
+        let from = match breaks {
+            Some(breaks) => {
+                buffer.line_start(line.saturating_sub(breaks))
+            }
+            None => {
+                let line_start = buffer.line_start(line);
+                let before = self
+                    .matches
+                    .partition_point(|m| m.end <= line_start);
+                before
+                    .checked_sub(1)
+                    .map_or(0, |last| self.matches[last].start)
+            }
+        };
         let kept = self.matches.partition_point(|m| m.end <= from);
         let restart = self
             .matches
             .get(kept)
             .map_or(from, |m| m.start.min(from));
         self.matches.truncate(kept);
-        if let Pattern::Regex(_) = self.pattern {
-            self.at =
-                Some(self.at.map_or(restart, |at| at.min(restart)));
-        }
+        self.at = Some(self.at.map_or(restart, |at| at.min(restart)));
     }
 
     /// Scans for about `budget`, and returns whether the search has
@@ -162,7 +193,7 @@ impl Search {
         if !self.copy(buffer, deadline) {
             return false;
         }
-        let Pattern::Regex(regex) = &self.pattern else {
+        let Pattern::Regex { regex, .. } = &self.pattern else {
             self.at = None;
             return true;
         };
@@ -175,6 +206,7 @@ impl Search {
             if !range.is_empty()
                 && (!self.whole_word
                     || whole_word(&self.text, &range))
+                && on_clusters(buffer, &range)
             {
                 at = range.end;
                 self.matches.push(range);
@@ -233,7 +265,7 @@ impl Search {
     ) -> Cow<'t, str> {
         let range = &self.matches[index];
         let captures = match &self.pattern {
-            Pattern::Regex(regex) if self.expand => {
+            Pattern::Regex { regex, .. } if self.expand => {
                 regex.captures_at(&self.text, range.start)
             }
             _ => None,
@@ -320,16 +352,10 @@ fn compile(query: &Query) -> Pattern {
     } else {
         Cow::Owned(regex::escape(&query.text))
     };
-    let built = RegexBuilder::new(&crlf_newlines(&source))
-        .case_insensitive(!query.match_case)
-        .multi_line(true)
-        .crlf(true)
-        .build();
-    match built {
-        Ok(regex) => Pattern::Regex(regex),
+    match build(&source, !query.match_case) {
+        Ok((regex, breaks)) => Pattern::Regex { regex, breaks },
         Err(error) => Pattern::Invalid(
             error
-                .to_string()
                 .lines()
                 .last()
                 .unwrap_or_default()
@@ -339,36 +365,105 @@ fn compile(query: &Query) -> Pattern {
     }
 }
 
-/// `source` with each newline outside a character class, typed or as
-/// `\n`, matching an optional `\r` before it, so a query written with
-/// `\n` matches across the lines of a CRLF buffer too.
-fn crlf_newlines(source: &str) -> String {
-    let mut out = String::with_capacity(source.len());
-    let mut chars = source.chars();
-    let mut class = false;
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' => match chars.next() {
-                Some('n') if !class => out.push_str(r"(?:\r?\n)"),
-                Some(next) => {
-                    out.push('\\');
-                    out.push(next);
-                }
-                None => out.push('\\'),
-            },
-            '\n' if !class => out.push_str(r"(?:\r?\n)"),
-            '[' => {
-                class = true;
-                out.push(c);
+/// The regex for `source`, with each line feed outside a character
+/// class taking an optional `\r` before it, so a query written with
+/// a newline matches across the lines of a CRLF buffer too, and the
+/// most line breaks one of its matches can hold.
+fn build(
+    source: &str,
+    case_insensitive: bool,
+) -> Result<(Regex, Option<u32>), String> {
+    let mut ast = Parser::new()
+        .parse(source)
+        .map_err(|error| error.to_string())?;
+    crlf_newlines(&mut ast);
+    let mut pattern = String::with_capacity(source.len());
+    Printer::new()
+        .print(&ast, &mut pattern)
+        .expect("a String takes every write");
+    let hir = ParserBuilder::new()
+        .case_insensitive(case_insensitive)
+        .multi_line(true)
+        .crlf(true)
+        .build()
+        .parse(&pattern)
+        .map_err(|error| error.to_string())?;
+    let regex = RegexBuilder::new(&pattern)
+        .case_insensitive(case_insensitive)
+        .multi_line(true)
+        .crlf(true)
+        .build()
+        .map_err(|error| error.to_string())?;
+    Ok((regex, most_breaks(&hir)))
+}
+
+fn crlf_newlines(ast: &mut Ast) {
+    match ast {
+        Ast::Literal(literal) if literal.c == '\n' => {
+            *ast = Parser::new()
+                .parse(r"(?:\r?\n)")
+                .expect("a valid pattern");
+        }
+        Ast::Repetition(repetition) => {
+            crlf_newlines(&mut repetition.ast)
+        }
+        Ast::Group(group) => crlf_newlines(&mut group.ast),
+        Ast::Alternation(alternation) => {
+            alternation.asts.iter_mut().for_each(crlf_newlines);
+        }
+        Ast::Concat(concat) => {
+            concat.asts.iter_mut().for_each(crlf_newlines);
+        }
+        _ => {}
+    }
+}
+
+/// The most line feeds one match of `hir` can hold, or `None` when
+/// nothing bounds them.
+fn most_breaks(hir: &Hir) -> Option<u32> {
+    match hir.kind() {
+        HirKind::Empty | HirKind::Look(_) => Some(0),
+        HirKind::Literal(literal) => u32::try_from(
+            literal.0.iter().filter(|&&b| b == b'\n').count(),
+        )
+        .ok(),
+        HirKind::Class(Class::Unicode(class)) => Some(u32::from(
+            class
+                .ranges()
+                .iter()
+                .any(|r| r.start() <= '\n' && '\n' <= r.end()),
+        )),
+        HirKind::Class(Class::Bytes(class)) => Some(u32::from(
+            class
+                .ranges()
+                .iter()
+                .any(|r| r.start() <= b'\n' && b'\n' <= r.end()),
+        )),
+        HirKind::Repetition(repetition) => {
+            match most_breaks(&repetition.sub)? {
+                0 => Some(0),
+                breaks => breaks.checked_mul(repetition.max?),
             }
-            ']' => {
-                class = false;
-                out.push(c);
-            }
-            _ => out.push(c),
+        }
+        HirKind::Capture(capture) => most_breaks(&capture.sub),
+        HirKind::Concat(subs) => {
+            subs.iter().try_fold(0_u32, |sum, sub| {
+                sum.checked_add(most_breaks(sub)?)
+            })
+        }
+        HirKind::Alternation(subs) => {
+            subs.iter().try_fold(0_u32, |most, sub| {
+                Some(most.max(most_breaks(sub)?))
+            })
         }
     }
-    out
+}
+
+/// Whether both ends of `range` are grapheme cluster boundaries,
+/// where [`Editor::set_selections`] leaves a selection as it is.
+fn on_clusters(buffer: &Buffer, range: &Range<usize>) -> bool {
+    snap(buffer, range.start) == range.start
+        && snap(buffer, range.end) == range.end
 }
 
 fn whole_word(text: &str, range: &Range<usize>) -> bool {
