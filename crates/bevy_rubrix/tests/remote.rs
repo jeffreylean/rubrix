@@ -10,7 +10,7 @@ use bevy_rubrix::{
     Edge, EditDoc, EditRequest, Lang, Placed, RemoteCaret,
     RemoteCarets, RemoteView, Request, Selection, Selections,
 };
-use support::{laid_out, mount_editor, type_text};
+use support::{Editing, laid_out, mount_editor, type_text};
 
 fn settle(app: &mut App) {
     for _ in 0..4 {
@@ -136,4 +136,62 @@ fn removing_the_last_remote_carets_hides_their_bars() {
     app.world_mut().entity_mut(doc).remove::<RemoteCarets>();
     settle(&mut app);
     assert_eq!(shown(&mut app, "Ada"), 0);
+}
+
+fn far_caret(app: &App, doc: Entity) -> RemoteCaret {
+    let far = app
+        .world()
+        .get::<EditDoc>(doc)
+        .expect("a doc")
+        .editor()
+        .buffer()
+        .line_start(1_500);
+    ada(far)
+}
+
+#[test]
+fn a_view_shown_another_doc_drops_the_old_docs_edge_markers() {
+    let mut app = laid_out();
+    let text = numbered(2_000);
+    let (_, doc) =
+        mount_editor(&mut app, Lang::Rust, &text, 600.0, 400.0);
+    let caret = far_caret(&app, doc);
+    app.world_mut()
+        .entity_mut(doc)
+        .insert(RemoteCarets(vec![caret]));
+    settle(&mut app);
+    assert_eq!(shown(&mut app, "↓ Ada"), 1);
+    let other =
+        app.world_mut().spawn(EditDoc::new(Lang::Rust, &text)).id();
+    app.world_mut().resource_mut::<Editing>().0 = other;
+    settle(&mut app);
+    assert_eq!(
+        shown(&mut app, "↓ Ada"),
+        0,
+        "the new doc has no carets"
+    );
+}
+
+#[test]
+fn a_respawned_doc_with_its_carets_shows_one_edge_marker() {
+    let mut app = laid_out();
+    let text = numbered(2_000);
+    let (_, doc) =
+        mount_editor(&mut app, Lang::Rust, &text, 600.0, 400.0);
+    let caret = far_caret(&app, doc);
+    app.world_mut()
+        .entity_mut(doc)
+        .insert(RemoteCarets(vec![caret.clone()]));
+    settle(&mut app);
+    let respawned = app
+        .world_mut()
+        .spawn((
+            EditDoc::new(Lang::Rust, &text),
+            RemoteCarets(vec![caret]),
+        ))
+        .id();
+    app.world_mut().despawn(doc);
+    app.world_mut().resource_mut::<Editing>().0 = respawned;
+    settle(&mut app);
+    assert_eq!(shown(&mut app, "↓ Ada"), 1);
 }

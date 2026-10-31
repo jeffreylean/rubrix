@@ -62,14 +62,16 @@ fn caret_at(app: &mut App, doc: Entity, view: Entity, at: usize) {
 }
 
 #[derive(Resource, Default)]
-struct Seen(Vec<(Entity, u64)>);
+struct Seen(Vec<(Entity, Option<Entity>, u64)>);
 
 fn record(
     mut changed: MessageReader<EditorChanged>,
     mut seen: ResMut<Seen>,
 ) {
     seen.0.extend(
-        changed.read().map(|changed| (changed.doc, changed.seq)),
+        changed
+            .read()
+            .map(|changed| (changed.doc, changed.view, changed.seq)),
     );
 }
 
@@ -94,12 +96,45 @@ fn editor_changed_arrives_once_per_change_with_a_rising_revision() {
     settle(&mut app);
     let seen = &app.world().resource::<Seen>().0;
     assert_eq!(seen.len(), 5, "three keys, an Enter and an undo");
-    assert!(seen.iter().all(|&(at, _)| at == doc));
-    let first = seen[0].1;
+    assert!(seen.iter().all(|&(at, ..)| at == doc));
+    let first = seen[0].2;
     let revisions: Vec<u64> =
-        seen.iter().map(|&(_, seq)| seq).collect();
+        seen.iter().map(|&(.., seq)| seq).collect();
     assert_eq!(revisions, (first..first + 5).collect::<Vec<_>>());
     assert_eq!(text(&app, doc), "fn a() {}xyz\n");
+}
+
+#[test]
+fn editor_changed_names_the_view_a_key_edited_through() {
+    let mut app = laid_out();
+    app.init_resource::<Seen>().add_systems(Update, record);
+    let (view, doc) = mount_editor(
+        &mut app,
+        Lang::Rust,
+        "fn a() {}\n",
+        600.0,
+        400.0,
+    );
+    settle(&mut app);
+    caret_at(&mut app, doc, view, 9);
+    type_text(&mut app, "x");
+    app.world_mut().write_message(EditRequest::new(
+        doc,
+        Request::command(Command::Undo),
+    ));
+    settle(&mut app);
+    let views: Vec<Option<Entity>> = app
+        .world()
+        .resource::<Seen>()
+        .0
+        .iter()
+        .map(|&(_, at, _)| at)
+        .collect();
+    assert_eq!(
+        views,
+        [Some(view), None],
+        "the key's view, then a request with none"
+    );
 }
 
 #[derive(Resource)]

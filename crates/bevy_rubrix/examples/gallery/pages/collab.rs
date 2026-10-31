@@ -31,6 +31,7 @@ use bevy_rubrix::{
 };
 
 use super::code::{LARGE_RS, stress};
+use super::editor::{answer_doc, place};
 use super::{Ask, control, wrapping};
 use crate::{Build, PageView, Paste};
 
@@ -288,13 +289,6 @@ fn offset_of_place(
     Ok(start + byte)
 }
 
-fn place(buffer: &Buffer, at: usize) -> String {
-    let line = buffer.line_of(at);
-    let column =
-        buffer.slice(buffer.line_start(line)..at).chars().count();
-    format!("{}:{}", line + 1, column + 1)
-}
-
 pub fn remote(
     world: &mut World,
     name: &str,
@@ -495,45 +489,7 @@ fn badges(
 
 pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
     let doc = world.get_resource::<CollabFile>()?.doc;
-    let shown = world
-        .query::<&EditView>()
-        .iter(world)
-        .find(|view| view.doc() == doc)
-        .is_some_and(EditView::caret_shown);
-    let edit = world.get::<EditDoc>(doc)?;
-    let editor = edit.editor();
-    let buffer = editor.buffer();
-    Some(match ask {
-        Ask::Caret => {
-            let selections = editor.selections();
-            let each: Vec<String> = selections
-                .iter()
-                .map(|s| {
-                    format!(
-                        "{}..{}",
-                        place(buffer, s.start()),
-                        place(buffer, s.end())
-                    )
-                })
-                .collect();
-            format!(
-                "{} primary {} {} visible {shown}",
-                selections.len(),
-                selections.primary_index() + 1,
-                each.join(" "),
-            )
-        }
-        Ask::Text(line) => match edit.line(line.get() - 1) {
-            Some(text) => format!("{text:?}"),
-            None => "none".into(),
-        },
-        Ask::Undo => format!(
-            "{} redo {}",
-            editor.history().undo_depth(),
-            editor.history().redo_depth()
-        ),
-        Ask::Ime => return None,
-    })
+    answer_doc(world, doc, ask)
 }
 
 #[derive(Component)]

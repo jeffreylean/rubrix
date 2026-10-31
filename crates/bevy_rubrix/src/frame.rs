@@ -197,6 +197,7 @@ impl<'w> Tx<'w> {
             }
             self.world.write_message(EditorChanged {
                 doc,
+                view: self.view,
                 change: applied.change,
                 seq: applied.seq,
             });

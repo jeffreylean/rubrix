@@ -172,13 +172,21 @@ pub(crate) fn draw(
             continue;
         };
         let carets = carets.map_or(&[][..], |carets| &carets.0[..]);
-        let Some(mut remote) =
-            remote.filter(|remote| remote.list == list)
-        else {
-            if !carets.is_empty() {
-                attach(&mut commands, view, list);
+        let mut remote = match remote {
+            Some(remote) if remote.list == list => remote,
+            stale => {
+                if let Some(stale) = stale {
+                    commands.entity(stale.layer).try_despawn();
+                    commands.entity(stale.edges).try_despawn();
+                    if carets.is_empty() {
+                        commands.entity(view).remove::<RemoteView>();
+                    }
+                }
+                if !carets.is_empty() {
+                    attach(&mut commands, view, list);
+                }
+                continue;
             }
-            continue;
         };
         let Ok((state, area, area_at)) = lists.get(list) else {
             continue;
@@ -319,6 +327,15 @@ pub(crate) fn draw(
                 );
             }
         }
+        drop_hidden(&mut scene.rects, |over, under| {
+            over.0 == under.0 && over.1.alpha() >= 1.0
+        });
+        drop_hidden(&mut scene.tags, |over, under| {
+            over.0 == under.0
+                && over.3 == under.3
+                && over.1.chars().count() >= under.1.chars().count()
+                && over.2.alpha() >= 1.0
+        });
         let remote = &mut *remote;
         remote.placed = placed;
         paint(remote, &scene, &mut rects, &mut tags, &mut commands);
@@ -478,6 +495,22 @@ fn tint(
             ),
         );
     }
+}
+
+/// Drops each item that a later one, drawn over it, hides whole, as
+/// when carets share a byte, so the view keeps one node per spot.
+fn drop_hidden<T>(
+    items: &mut Vec<T>,
+    hides: impl Fn(&T, &T) -> bool,
+) {
+    let mut kept: Vec<T> = Vec::with_capacity(items.len());
+    for item in items.drain(..).rev() {
+        if !kept.iter().any(|over| hides(over, &item)) {
+            kept.push(item);
+        }
+    }
+    kept.reverse();
+    *items = kept;
 }
 
 fn label_height() -> f32 {
