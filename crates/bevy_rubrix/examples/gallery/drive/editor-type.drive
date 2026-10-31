@@ -13,7 +13,12 @@ wait 5
 log text 120
 expect text 120 "    let x = 1;    .run();"
 log runs 120
-expect runs 120 4..7 keyword
+log kind 120 4
+expect kind 120 4 keyword
+log kind 120 5
+expect kind 120 5 keyword
+log kind 120 6
+expect kind 120 6 keyword
 log caret
 expect caret 1 primary 1 120:15..120:15 visible true
 wait 30

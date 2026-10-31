@@ -1357,10 +1357,13 @@ def window(csv, keys):
 
 doc = Doc(LARGE_RS_LINES)
 TYPED = "let x = 1;"
-steps = [doc.scroll_to(120), "log rows", "expect rows first_visible 119 spawned"]
-steps += [f"click {doc.at(120, 5)}", caret((120, 5))]
-after = doc.insert((120, 5), TYPED)
-steps += [f"type {TYPED}", "wait 5", doc.text(120), "log runs 120", "expect runs 120 4..7 keyword"]
+LINE, COLUMN = 120, 5
+steps = [doc.scroll_to(LINE), "log rows", f"expect rows first_visible {LINE - 1} spawned"]
+steps += [f"click {doc.at(LINE, COLUMN)}", caret((LINE, COLUMN))]
+after = doc.insert((LINE, COLUMN), TYPED)
+steps += [f"type {TYPED}", "wait 5", doc.text(LINE), f"log runs {LINE}"]
+let = COLUMN - 1 + TYPED.index("let")
+steps += [[f"log kind {LINE} {byte}", f"expect kind {LINE} {byte} keyword"] for byte in range(let, let + 3)]
 editor("type", steps, caret(after), "wait 30", "screenshot e2-type.png")
 
 doc = Doc(LARGE_RS_LINES)
