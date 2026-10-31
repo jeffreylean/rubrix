@@ -2331,3 +2331,97 @@ doc.insert(start, "x" * 200)
 steps += [doc.text(LINE), caret((LINE, start[1] + 200))]
 steps += [remote("remote 50: ", *(f"u{i + 1} {LINE}:{column + 200} " for i, column in enumerate(carets)))]
 collab("100k", steps, "log typing", "log rows", "wait 30", "screenshot e6-100k.png")
+
+
+# m2fb: the milestone 2 fixes to E4's gestures and commands.
+
+
+def wrap_starts(line):
+    """The 1-based column where each visual row of `line` starts, as the
+    view wraps it at word boundaries in `WRAP_COLUMNS` columns."""
+    starts = [1]
+    for word in re.finditer(r"\S+", line):
+        if word.start() + 1 > starts[-1] and word.end() + 1 - starts[-1] > WRAP_COLUMNS:
+            starts.append(word.start() + 1)
+    return starts
+
+
+def bracket_caret(n, column, bracket):
+    return ["log caret", f"expect caret 1 primary 1 {n}:{column}..{n}:{column} visible true bracket {bracket}"]
+
+
+doc = Doc(LARGE_RS_LINES)
+LINE, CARET = TONE_LINES[0], TONE_LINES[2]
+word = word_around(doc.line(LINE), doc.line(LINE).index("Body") + 2)
+body, caret_at = ((LINE, word[0]), (LINE, word[1])), (CARET, TONE_COLUMN)
+steps = [f"click {doc.at(LINE, word[0] + 1)} double", f"click {doc.at(*caret_at)} mod", selections([body, (caret_at, caret_at)])]
+copied = doc.between(*body) + "\n" + doc.line(CARET) + "\n"
+steps += ["key mod+c", "clipboard", "log copied", f"expect copied {rust_debug(copied)}"]
+doc.lines[LINE - 1] = doc.line(LINE)[: word[0] - 1] + doc.line(LINE)[word[1] - 1 :]
+del doc.lines[CARET - 1]
+steps += ["key mod+x", "wait 5", texts(doc, [LINE, CARET]), rows_total(doc), carets_at([body[0], (CARET, 1)])]
+steps += ["log copied", f"expect copied {rust_debug(copied)}", undo(1, 0)]
+editor("m2-copy-mixed", steps, "wait 30", "screenshot m2-copy-mixed.png")
+
+doc = Doc(LARGE_RS_LINES)
+LINE = TONE_LINES[0]
+WORDS = " ".join(["abcd"] * 24)
+doc.insert((LINE, len(doc.line(LINE)) + 1), " " + WORDS)
+second = wrap_starts(doc.line(LINE))[1]
+assert len(wrap_starts(doc.line(LINE))) == 2 and all(len(doc.line(n)) < WRAP_COLUMNS for n in TONE_LINES[1:3])
+steps = [WRAP, "wait 60", f"click {doc.end(LINE)}", "key space", f"type {WORDS}", "wait 10", doc.text(LINE)]
+steps += [f"log row {LINE}", f"expect row {LINE} top {(LINE - 1) * ROW} height {2 * ROW} lines 2"]
+left, right = TONE_COLUMN, TONE_COLUMN + len("Tone::")
+row_two, last = doc.y(LINE) + ROW, doc.y(TONE_LINES[2]) + ROW
+steps += [f"drag {column_x(left)} {row_two} {column_x(right)} {last} alt", "wait 5"]
+across = [((LINE, second + left - 1), (LINE, second + right - 1))]
+across += [((n, left), (n, right)) for n in TONE_LINES[1:3]]
+steps += [selections(across)]
+after = replace(doc, across, ["x"] * len(across))
+steps += ["type x", "wait 5", texts(doc, TONE_LINES[:3]), carets_at(after)]
+editor("m2-column-wrap", steps, "wait 30", "screenshot m2-column-wrap.png")
+
+doc = Doc(LARGE_RS_LINES)
+OPEN = 4124
+CLOSE = next(n for n in range(OPEN + 1, doc.rows()) if doc.line(n) == "}")
+assert doc.line(OPEN) == "impl DockTree {" and "*/" not in "\n".join(doc.lines[OPEN:])
+brace = len(doc.line(OPEN)) + 1
+steps = [doc.scroll_to(OPEN - 1), f"click {doc.end(OPEN)}", bracket_caret(OPEN, brace, f"{CLOSE}:1")]
+steps += [f"log kind {CLOSE} 0", f"expect kind {CLOSE} 0 punctuation.bracket"]
+doc.insert((OPEN + 1, 1), "/*")
+steps += [f"click {doc.at(OPEN + 1, 1)}", "type /*", "wait 5", doc.text(OPEN + 1)]
+steps += [f"click {doc.end(OPEN)}", bracket_caret(OPEN, brace, "none")]
+steps += [f"log kind {CLOSE} 0", f"expect kind {CLOSE} 0 comment"]
+doc.insert((OPEN + 1, 3), "*/")
+steps += [f"click {doc.at(OPEN + 1, 3)}", "type */", "wait 5", doc.text(OPEN + 1)]
+steps += [f"click {doc.end(OPEN)}", bracket_caret(OPEN, brace, f"{CLOSE}:1")]
+steps += [f"log kind {CLOSE} 0", f"expect kind {CLOSE} 0 punctuation.bracket"]
+editor("m2-brackets-stale", steps, "wait 30", "screenshot m2-brackets-stale.png")
+
+doc = Doc(LARGE_RS_LINES)
+points = [(n, TONE_COLUMN) for n in TONE_LINES[::2]]
+steps = [f"click {doc.at(*points[0])}", [f"click {doc.at(*p)} mod" for p in points[1:]], carets_at(points)]
+tone = tuple((points[-1][0], c) for c in word_around(doc.line(points[-1][0]), TONE_COLUMN))
+sels = [(p, p) for p in points[:-1]] + [tone]
+steps += [f"click {doc.at(*points[-1])} mod", selections(sels)]
+after = replace(doc, sels, ["x"] * len(sels))
+steps += ["type x", "wait 5", texts(doc, [n for n, _ in points]), carets_at(after), undo(1, 0)]
+editor("m2-mod-reclick", steps, "wait 30", "screenshot m2-mod-reclick.png")
+
+doc = Doc(LARGE_RS_LINES)
+first, line, word_line = (TONE_LINES[0], TONE_COLUMN), TONE_LINES[3], TONE_LINES[1]
+dim = word_around(doc.line(word_line), doc.line(word_line).index("Dim") + 2)
+words = ((word_line, dim[0]), (word_line, dim[1]))
+lines = ((line, 1), (line + 1, 1))
+steps = [f"click {doc.at(*first)}", f"click {doc.at(word_line, dim[0] + 1)} double mod", selections([(first, first), words])]
+steps += [f"click {doc.at(line, TONE_COLUMN)} triple mod", selections([(first, first), words, lines])]
+editor("m2-mod-words", steps, "wait 30", "screenshot m2-mod-words.png")
+
+doc = Doc(LARGE_RS_LINES)
+left, right = TONE_COLUMN, TONE_COLUMN + len("Tone::")
+across = [((n, left), (n, right)) for n in TONE_LINES]
+drag = f"drag {doc.at(TONE_LINES[0], left)} {doc.at(TONE_LINES[-1], right)} alt"
+steps = [drag, "wait 5", selections(across), drag, "wait 5", selections(across)]
+after = replace(doc, across, ["x"] * len(across))
+steps += ["type x", "wait 5", texts(doc, TONE_LINES), carets_at(after), undo(1, 0)]
+editor("m2-column-again", steps, "wait 30", "screenshot m2-column-again.png")

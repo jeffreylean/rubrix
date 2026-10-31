@@ -1,0 +1,25 @@
+page editor
+wait 120
+click 373.8 500
+click 373.8 534 mod
+click 373.8 568 mod
+log caret
+expect caret 3 primary 3 23:13..23:13 25:13..25:13 27:13..27:13
+click 373.8 568 mod
+log caret
+expect caret 3 primary 3 23:13..23:13 25:13..25:13 27:13..27:17
+type x
+wait 5
+log text 23
+expect text 23 "            xTone::Body => hex(0xFCFCFA),"
+log text 25
+expect text 25 "            xTone::Faint => hex(0x727072),"
+log text 27
+expect text 27 "            x::OnAccent => hex(0x2D2A2E),"
+log caret
+expect caret 3 primary 3 23:14..23:14 25:14..25:14 27:14..27:14
+log undo
+expect undo 1 redo 0
+wait 30
+screenshot m2-mod-reclick.png
+exit

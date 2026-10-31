@@ -166,25 +166,12 @@ impl Editor {
         &self.history
     }
 
-    /// The text of the selections in buffer order, joined by the
-    /// buffer's line ending. Bare carets copy the lines that hold
-    /// them, each once and with its line break.
+    /// The text of the selections in buffer order: each range's text
+    /// and each bare caret's line with its line break, the text two
+    /// selections share once. The buffer's line ending joins two
+    /// pieces that do not touch, unless the first ends in one.
     pub fn copy_text(&self) -> String {
-        if let Some(text) =
-            lines::line_copy(&self.buffer, &self.selections)
-        {
-            return text;
-        }
-        let eol = self.buffer.eol().as_str();
-        let mut text = String::new();
-        let ranges = self.selections.iter().filter(|s| !s.is_caret());
-        for (i, selection) in ranges.enumerate() {
-            if i > 0 {
-                text.push_str(eol);
-            }
-            text.push_str(&self.buffer.slice(selection.range()));
-        }
-        text
+        lines::copy(&self.buffer, &self.selections)
     }
 
     /// Replaces the selections. Clamps each end to the text and moves
@@ -258,13 +245,10 @@ impl Editor {
                     None => self.replace_each(Kind::Boundary, &text),
                 }
             }
-            Command::Cut => {
-                match lines::cut_lines(&self.buffer, &self.selections)
-                {
-                    Some(plan) => self.commit(Kind::Boundary, plan),
-                    None => self.replace_each(Kind::Boundary, ""),
-                }
-            }
+            Command::Cut => self.commit(
+                Kind::Boundary,
+                lines::cut(&self.buffer, &self.selections),
+            ),
             Command::Enter => {
                 let eol = self.buffer.eol().as_str();
                 self.edit(Kind::Other, |buffer, selection| {

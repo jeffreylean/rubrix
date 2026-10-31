@@ -514,10 +514,9 @@ fn replay(
             Step::Column(from, to) => {
                 let point = |pos: Pos| {
                     let at = at(pos, &editor)?;
-                    let buffer = editor.buffer();
                     Ok::<_, String>((
-                        buffer.line_of(at),
-                        layout.x(buffer, at),
+                        at,
+                        layout.x(editor.buffer(), at),
                     ))
                 };
                 let selections = column(

@@ -464,61 +464,96 @@ pub(crate) fn paste_lines(
     })
 }
 
-/// A cut of whole lines: when the selections are bare carets, the
-/// cut removes each caret's line with its break. The last line takes
-/// the break before it, so no empty line is left. `None` leaves the
-/// cut to the plain path.
-pub(crate) fn cut_lines(
-    buffer: &Buffer,
-    selections: &Selections,
-) -> Option<Plan> {
-    if !selections.iter().all(|selection| selection.is_caret()) {
-        return None;
-    }
+/// Pierre's `resolveSelectionCut`: each range cuts its text, and each
+/// bare caret its line with the break after it. The last line takes
+/// the break before it, so no empty line is left. Cuts that overlap
+/// or touch join.
+pub(crate) fn cut(buffer: &Buffer, selections: &Selections) -> Plan {
     let count = buffer.line_count();
-    let edits = blocks(buffer, selections)
-        .into_iter()
-        .map(|block| {
-            let range = if block.end < count {
-                buffer.line_start(block.start)
-                    ..buffer.line_start(block.end)
-            } else if block.start > 0 {
-                buffer.line_end(block.start - 1)..buffer.len()
-            } else {
-                0..buffer.len()
-            };
-            (range, String::new())
-        })
-        .collect();
-    Some(Plan {
+    let line = |line: u32| {
+        if line + 1 < count {
+            buffer.line_start(line)..buffer.line_start(line + 1)
+        } else if line > 0 {
+            buffer.line_end(line - 1)..buffer.len()
+        } else {
+            0..buffer.len()
+        }
+    };
+    let mut edits: Vec<(Range<usize>, String)> = Vec::new();
+    for region in regions(buffer, selections, line) {
+        match edits.last_mut() {
+            _ if region.is_empty() => {}
+            Some((last, _)) if region.start <= last.end => {
+                last.end = last.end.max(region.end);
+            }
+            _ => edits.push((region, String::new())),
+        }
+    }
+    Plan {
         edits,
         after: After::Map,
-    })
+    }
 }
 
-/// What a copy at bare carets copies: the lines that hold a caret,
-/// each once and with its line break, in buffer order. `None` when
-/// some selection is a range.
-pub(crate) fn line_copy(
+/// Pierre's `getSelectionText`: each range's text and each bare
+/// caret's line with its break, in buffer order, the text two
+/// selections share once. A line break joins two pieces that do not
+/// touch, unless the first already ends in one.
+pub(crate) fn copy(
     buffer: &Buffer,
     selections: &Selections,
-) -> Option<String> {
-    if !selections.iter().all(|selection| selection.is_caret()) {
-        return None;
-    }
+) -> String {
     let count = buffer.line_count();
-    let mut text = String::new();
-    for block in blocks(buffer, selections) {
-        let end = if block.end < count {
-            buffer.line_start(block.end)
+    let line = |line: u32| {
+        let end = if line + 1 < count {
+            buffer.line_start(line + 1)
         } else {
             buffer.len()
         };
-        text.push_str(
-            &buffer.slice(buffer.line_start(block.start)..end),
-        );
+        buffer.line_start(line)..end
+    };
+    let mut text = String::new();
+    let mut copied: Option<usize> = None;
+    for region in regions(buffer, selections, line) {
+        match copied {
+            _ if region.is_empty() => {}
+            Some(end) if region.start <= end => {
+                if region.end > end {
+                    text.push_str(&buffer.slice(end..region.end));
+                    copied = Some(region.end);
+                }
+            }
+            _ => {
+                if !text.is_empty() && !text.ends_with('\n') {
+                    text.push_str(buffer.eol().as_str());
+                }
+                text.push_str(&buffer.slice(region.clone()));
+                copied = Some(region.end);
+            }
+        }
     }
-    Some(text)
+    text
+}
+
+/// The bytes each selection gives a copy or a cut, sorted: a range
+/// its own, a bare caret what `line` gives for its line.
+fn regions(
+    buffer: &Buffer,
+    selections: &Selections,
+    line: impl Fn(u32) -> Range<usize>,
+) -> Vec<Range<usize>> {
+    let mut regions: Vec<Range<usize>> = selections
+        .iter()
+        .map(|selection| {
+            if selection.is_caret() {
+                line(buffer.line_of(selection.head))
+            } else {
+                selection.range()
+            }
+        })
+        .collect();
+    regions.sort_unstable_by_key(|region| (region.start, region.end));
+    regions
 }
 
 /// Where Backspace at `at` deletes back to when only spaces, at

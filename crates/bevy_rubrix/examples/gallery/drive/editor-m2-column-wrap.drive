@@ -1,0 +1,29 @@
+page editor
+wait 120
+click 734 68
+wait 60
+click 1250 500
+key space
+type abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd
+wait 10
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA), abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd"
+log row 23
+expect row 23 top 374 height 34 lines 2
+drag 373.8 517 424.2 551 alt
+wait 5
+log caret
+expect caret 3 primary 3 23:124..23:130 24:13..24:19 25:13..25:19
+type x
+wait 5
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA), abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abxd abcd abcd abcd abcd abcd abcd"
+log text 24
+expect text 24 "            xDim => hex(0x939293),"
+log text 25
+expect text 25 "            xFaint => hex(0x727072),"
+log caret
+expect caret 3 primary 3 23:125..23:125 24:14..24:14 25:14..25:14
+wait 30
+screenshot m2-column-wrap.png
+exit
