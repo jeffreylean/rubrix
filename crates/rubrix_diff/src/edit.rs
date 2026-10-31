@@ -28,7 +28,11 @@ impl FileDiff {
     /// may lack `\n` only when `lines.end` is the side's line count),
     /// re-diffs only the hunks within reach, realigns the hunks it
     /// re-diffed (as [`realign`](crate::realign()) would), and remaps
-    /// `expansion` so every line shown before stays shown.
+    /// `expansion`. A line that showed in a gap still shows, a line
+    /// that leaves a hunk for a gap shows unless the hunk took it
+    /// from a hidden gap, and the last line `text` wrote, where a
+    /// caret that typed it lands, always shows. An undo that writes
+    /// back lines a gap hid before the edit hides them again.
     ///
     /// The re-diff covers the edit widened by `2 * context + 1` lines
     /// each way and every hunk that touches it, and grows while a
@@ -73,16 +77,15 @@ impl FileDiff {
             context.min(self.old_lines().len().max(self.new.len()));
         let (touched, groups) =
             self.rediff_window(&lines, len_before, delta, context);
-        let region = {
+        let (region, region_new) = {
             let all = &self.hunks;
-            let start = touched
-                .start
-                .checked_sub(1)
-                .map_or(0, |h| all[h].old_end());
+            let above = touched.start.checked_sub(1).map(|h| &all[h]);
+            let (start, new_start) =
+                above.map_or((0, 0), |h| (h.old_end(), h.new_end()));
             let end = all
                 .get(touched.end)
                 .map_or(self.old_lines().len(), Hunk::old_offset);
-            start..end
+            (start..end, new_start)
         };
         let new: Vec<Hunk> = groups
             .iter()
@@ -106,8 +109,11 @@ impl FileDiff {
         expansion.remap(
             first as u32,
             region,
+            region_new,
             &replaced,
             &self.hunks[first..first + count],
+            (lines.start + inserted).saturating_sub(1)
+                ..lines.start + inserted,
         );
         debug_assert_eq!(self.check(), Ok(()));
         Rediff {
