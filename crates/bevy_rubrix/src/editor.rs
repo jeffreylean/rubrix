@@ -45,6 +45,7 @@ use crate::rows::{
     ADVANCE, LINE_HEIGHT, RowFeed, RowStyle, Shown, code_row,
     filling, inserts, marked, shown_spans,
 };
+use crate::select;
 use crate::tokens::{Styles, SyntaxTokens};
 
 /// The most lines a catch-up lexes in one frame.
@@ -381,7 +382,8 @@ where
                 Marks::default(),
             ))
             .observe(press)
-            .observe(keep_keys);
+            .observe(keep_keys)
+            .observe(select::hold_focus);
         cx.effect(root, self.doc, |world, root, &doc| {
             if let Some(mut view) = world.get_mut::<EditView>(root) {
                 view.doc = doc;

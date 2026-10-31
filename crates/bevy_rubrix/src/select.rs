@@ -15,7 +15,7 @@ use bevy::ecs::system::{
 use bevy::ecs::world::{EntityWorldMut, World};
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
-use bevy::input_focus::{FocusCause, InputFocus};
+use bevy::input_focus::{AcquireFocus, FocusCause, InputFocus};
 use bevy::math::Vec2;
 use bevy::picking::Pickable;
 use bevy::picking::events::PointerPress;
@@ -205,7 +205,23 @@ pub(crate) fn selected_colour(theme: &impl TextTokens) -> Color {
 
 pub(crate) fn attach<D: Selectable>(view: &mut EntityWorldMut) {
     view.insert((CodeSelection::<D::At>::default(), Selects))
-        .observe(press::<D>);
+        .observe(press::<D>)
+        .observe(hold_focus);
+}
+
+/// Keeps the focus a press gave a view. Bevy's pointer focus turns
+/// the press into an `AcquireFocus` that climbs from the pressed row
+/// to the window, where it clears the focus unless a `TabIndex` on
+/// the way claims it. A view takes it here and stops it.
+pub(crate) fn hold_focus(
+    mut acquire: On<AcquireFocus>,
+    mut focus: ResMut<InputFocus>,
+) {
+    acquire.propagate(false);
+    let view = acquire.focused_entity;
+    if focus.get() != Some(view) {
+        focus.set(view, FocusCause::Pressed);
+    }
 }
 
 pub(crate) fn selectable<T, L>(
