@@ -27,6 +27,7 @@ use crate::{Build, Copied, PageView, Palette};
 mod about;
 mod code;
 mod diff;
+mod editor;
 pub mod hamlet_code;
 pub mod hamlet_diff;
 pub mod hamlet_rich;
@@ -133,6 +134,12 @@ pub const PAGES: &[Page] = &[
         build: stress::build,
         open: None,
         answer: None,
+    },
+    Page {
+        name: "editor",
+        build: editor::build,
+        open: Some(editor::open),
+        answer: Some(editor::answer),
     },
 ];
 
