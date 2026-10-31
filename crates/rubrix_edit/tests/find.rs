@@ -345,6 +345,96 @@ fn slices_find_what_one_pass_finds() {
 }
 
 #[test]
+fn a_scan_with_no_match_ahead_stops_at_the_deadline() {
+    let text =
+        "let theme = self.theme();\nfn other() {}\n".repeat(50_000);
+    let patterns = [r"\s+zzqx", r"(?s)\{.*zzqx", r"(?s)\{.*theme"];
+    for pattern in patterns {
+        let regex = regex_query(pattern);
+        let mut editor = editor(&text);
+        let mut search = Search::new(&query("zzqx"));
+        search.run(editor.buffer());
+        search.set_query(&regex);
+        assert!(
+            !search.step(editor.buffer(), Duration::ZERO),
+            "{pattern}: a new query scanned 100k lines in one step"
+        );
+        search.run(editor.buffer());
+        assert_eq!(
+            search.matches(),
+            found(&text, &regex),
+            "{pattern}"
+        );
+
+        let line = editor.buffer().line_count() - 2;
+        let at = editor.buffer().line_start(line);
+        editor.set_selections(Selections::new(Selection::caret(at)));
+        let change = editor
+            .apply(Command::Type("x"), &Monospace::default())
+            .expect("a change");
+        search.edited(editor.buffer(), &change);
+        assert!(
+            !search.step(editor.buffer(), Duration::ZERO),
+            "{pattern}: an edit scanned 100k lines in one step"
+        );
+        search.run(editor.buffer());
+        let after = editor.buffer().to_string();
+        assert_eq!(
+            search.matches(),
+            found(&after, &regex),
+            "{pattern}"
+        );
+    }
+}
+
+#[test]
+fn a_scan_stopped_at_every_deadline_finds_what_the_regex_crate_does()
+{
+    let mut rng = Rng(rng_seed());
+    let gap = " \n".repeat(1_000);
+    let alphabet =
+        ["a", "b", "\n", " ", "{", "é", "Theme", "ab\n", &gap];
+    let patterns = [
+        r"a\s+b",
+        r"(?s)\{.*b",
+        r"\{[^{]*\n",
+        r"b\n+a",
+        r"\ba",
+        r"theme|a b",
+        r"^b",
+        r"a$",
+        r"é+",
+        r"x?",
+    ];
+    for round in 0..40 {
+        let text: String = (0..3_000)
+            .map(|_| {
+                alphabet[rng.below(alphabet.len() as u32) as usize]
+            })
+            .collect();
+        let pattern = patterns[round % patterns.len()];
+        let reference: Vec<_> = regex::RegexBuilder::new(pattern)
+            .case_insensitive(true)
+            .multi_line(true)
+            .crlf(true)
+            .build()
+            .expect("a valid pattern")
+            .find_iter(&text)
+            .map(|found| found.range())
+            .filter(|range| !range.is_empty())
+            .collect();
+        let buffer = Buffer::new(&text);
+        let mut search = Search::new(&regex_query(pattern));
+        while !search.step(&buffer, Duration::ZERO) {}
+        assert_eq!(
+            search.matches(),
+            reference,
+            "round {round}: {pattern}"
+        );
+    }
+}
+
+#[test]
 fn an_edit_scans_again_from_the_edited_line() {
     let text = "theme\ntheme\nab\ncd\ntheme\n";
     let mut editor = editor(text);

@@ -4,18 +4,28 @@
 //! it with a regex, so a match can run across lines. It works in
 //! slices: [`Search::step`] does as much as a time budget allows and
 //! picks up where it stopped on the next call, so a view can spread a
-//! search of a large buffer over frames. [`Search::edited`] follows
-//! an edit, keeping the matches that end before the first line a
-//! match reaching the edit could start on, and scanning again from
-//! there.
+//! search of a large buffer over frames. It steps the regex's lazy
+//! DFAs by hand, so it can stop inside the scan for one match, which
+//! a `Regex` call cannot. [`Search::edited`] follows an edit, keeping
+//! the matches that end before the first line a match reaching the
+//! edit could start on, and scanning again from there.
 
 use std::borrow::Cow;
+use std::boxed::Box;
 use std::ops::Range;
 use std::string::{String, ToString};
 use std::time::{Duration, Instant};
 use std::vec::Vec;
 
 use regex::{Captures, Regex, RegexBuilder};
+use regex_automata::hybrid::LazyStateID;
+use regex_automata::hybrid::dfa::Config as DfaConfig;
+use regex_automata::hybrid::regex::{
+    Builder as LazyBuilder, Cache, Regex as LazyRegex,
+};
+use regex_automata::util::prefilter::Prefilter;
+use regex_automata::util::syntax::Config as SyntaxConfig;
+use regex_automata::{Anchored, Input, MatchError, MatchKind, Span};
 use regex_syntax::ParserBuilder;
 use regex_syntax::ast::Ast;
 use regex_syntax::ast::parse::Parser;
@@ -29,6 +39,12 @@ use crate::{Buffer, Change, Editor, Selection, Selections};
 
 /// A search stops after this many matches, as Pierre's does.
 pub const MAX_MATCHES: usize = 100_000;
+
+/// The bytes a lazy DFA steps between two looks at the clock.
+const STRIDE: usize = 1 << 14;
+
+/// The most bytes one prefilter call reads.
+const WINDOW: usize = 1 << 16;
 
 /// What to look for.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -50,8 +66,43 @@ enum Pattern {
     Invalid(String),
     Regex {
         regex: Regex,
+        lazy: Option<Box<Lazy>>,
         most_breaks: Option<u32>,
     },
+}
+
+/// The forward and reverse lazy DFAs of a pattern, which find the
+/// same leftmost-first matches as its [`Regex`].
+#[derive(Debug)]
+struct Lazy {
+    regex: LazyRegex,
+    cache: Cache,
+    universal_start: bool,
+}
+
+/// Where a deadline stopped the scan for one match.
+#[derive(Clone, Copy, Debug)]
+enum Leg {
+    /// Looking for the end of the leftmost-first match: the next byte
+    /// to read, the DFA's state, and the furthest end seen so far.
+    Forward {
+        at: usize,
+        sid: LazyStateID,
+        end: Option<usize>,
+    },
+    /// Reading back from the match's `end` for where it starts.
+    Reverse {
+        at: usize,
+        sid: LazyStateID,
+        end: usize,
+        start: Option<usize>,
+    },
+}
+
+enum Next {
+    Found(Range<usize>),
+    Nothing,
+    Paused,
 }
 
 /// The matches of one [`Query`] in a buffer, found a slice at a time.
@@ -69,6 +120,7 @@ pub struct Search {
     text: String,
     copied: u32,
     at: Option<usize>,
+    leg: Option<Leg>,
     matches: Vec<Range<usize>>,
 }
 
@@ -81,6 +133,7 @@ impl Search {
             text: String::new(),
             copied: 0,
             at: None,
+            leg: None,
             matches: Vec::new(),
         };
         search.set_query(query);
@@ -93,6 +146,7 @@ impl Search {
         self.whole_word = query.whole_word;
         self.expand = query.regex;
         self.matches.clear();
+        self.leg = None;
         self.at = matches!(self.pattern, Pattern::Regex { .. })
             .then_some(0);
     }
@@ -134,12 +188,14 @@ impl Search {
             .get(kept)
             .map_or(from, |m| m.start.min(from));
         self.matches.truncate(kept);
+        self.leg = None;
         self.at = Some(self.at.map_or(restart, |at| at.min(restart)));
     }
 
     /// Scans for about `budget`, and returns whether the search has
-    /// ended. A single regex step can run past the budget when the
-    /// regex has no literal to look for and no match is near.
+    /// ended. It can run past the budget when the lazy DFA cannot
+    /// scan the pattern, as with a Unicode `\b` next to non-ASCII
+    /// text, and the scan falls back to one `Regex` call.
     pub fn step(
         &mut self,
         buffer: &Buffer,
@@ -187,16 +243,30 @@ impl Search {
         if !self.copy(buffer, deadline) {
             return false;
         }
-        let Pattern::Regex { regex, .. } = &self.pattern else {
+        let Pattern::Regex { regex, lazy, .. } = &mut self.pattern
+        else {
             self.at = None;
             return true;
         };
         let mut steps = 0_u32;
         while self.matches.len() < MAX_MATCHES {
-            let Some(found) = regex.find_at(&self.text, at) else {
+            let next = lazy.as_mut().map(|lazy| {
+                lazy.find(&self.text, at, &mut self.leg, deadline)
+            });
+            let found = match next {
+                Some(Ok(Next::Paused)) => {
+                    self.at = Some(at);
+                    return false;
+                }
+                Some(Ok(Next::Found(range))) => Some(range),
+                Some(Ok(Next::Nothing)) => None,
+                Some(Err(_)) | None => {
+                    regex.find_at(&self.text, at).map(|m| m.range())
+                }
+            };
+            let Some(range) = found else {
                 break;
             };
-            let range = found.range();
             if !range.is_empty()
                 && (!self.whole_word
                     || whole_word(&self.text, &range))
@@ -204,12 +274,10 @@ impl Search {
             {
                 at = range.end;
                 self.matches.push(range);
+            } else if range.start < self.text.len() {
+                at = self.text.ceil_char_boundary(range.start + 1);
             } else {
-                let Some(c) = self.text[range.start..].chars().next()
-                else {
-                    break;
-                };
-                at = range.start + c.len_utf8();
+                break;
             }
             steps += 1;
             if steps.is_multiple_of(32)
@@ -385,8 +453,239 @@ fn build(
         .map_err(|error| error.to_string())?;
     Ok(Pattern::Regex {
         regex,
+        lazy: Lazy::new(&pattern, &hir, case_insensitive),
         most_breaks: most_breaks(&hir),
     })
+}
+
+impl Lazy {
+    /// `None` when the lazy DFAs cannot be built for `pattern`.
+    fn new(
+        pattern: &str,
+        hir: &Hir,
+        case_insensitive: bool,
+    ) -> Option<Box<Lazy>> {
+        let prefilter =
+            Prefilter::from_hir_prefix(MatchKind::LeftmostFirst, hir);
+        let regex = LazyBuilder::new()
+            .syntax(
+                SyntaxConfig::new()
+                    .case_insensitive(case_insensitive)
+                    .multi_line(true)
+                    .crlf(true),
+            )
+            .dfa(
+                DfaConfig::new()
+                    .specialize_start_states(prefilter.is_some())
+                    .prefilter(prefilter)
+                    .unicode_word_boundary(true)
+                    .minimum_cache_clear_count(None),
+            )
+            .build(pattern)
+            .ok()?;
+        let universal_start = regex
+            .forward()
+            .get_nfa()
+            .look_set_prefix_any()
+            .is_empty();
+        Some(Box::new(Lazy {
+            cache: regex.create_cache(),
+            regex,
+            universal_start,
+        }))
+    }
+
+    /// The leftmost-first match at or after `from`, as
+    /// [`Regex::find_at`] finds it, or [`Next::Paused`] once
+    /// `deadline` passes, with `leg` holding where the scan stopped.
+    /// `leg` must be `None` when `text` or `from` change.
+    fn find(
+        &mut self,
+        text: &str,
+        from: usize,
+        leg: &mut Option<Leg>,
+        deadline: Option<Instant>,
+    ) -> Result<Next, MatchError> {
+        let hay = text.as_bytes();
+        let mut current = match leg.take() {
+            Some(leg) => leg,
+            None => Leg::Forward {
+                at: from,
+                sid: self.regex.forward().start_state_forward(
+                    self.cache.forward_mut(),
+                    &Input::new(hay).span(from..hay.len()),
+                )?,
+                end: None,
+            },
+        };
+        loop {
+            match &mut current {
+                Leg::Forward { at, sid, end } => {
+                    match self.forward(hay, at, sid, end)? {
+                        None => {}
+                        Some(None) => return Ok(Next::Nothing),
+                        Some(Some(end)) if end == from => {
+                            return Ok(Next::Found(from..from));
+                        }
+                        Some(Some(end)) => {
+                            let input = Input::new(hay)
+                                .span(from..end)
+                                .anchored(Anchored::Yes);
+                            let sid = self
+                                .regex
+                                .reverse()
+                                .start_state_reverse(
+                                    self.cache.reverse_mut(),
+                                    &input,
+                                )?;
+                            current = Leg::Reverse {
+                                at: end,
+                                sid,
+                                end,
+                                start: None,
+                            };
+                            continue;
+                        }
+                    }
+                }
+                Leg::Reverse {
+                    at,
+                    sid,
+                    end,
+                    start,
+                } => {
+                    if let Some(start) =
+                        self.reverse(hay, from, at, sid, start)?
+                    {
+                        return Ok(Next::Found(start..*end));
+                    }
+                }
+            }
+            if deadline.is_some_and(|end| Instant::now() >= end) {
+                *leg = Some(current);
+                return Ok(Next::Paused);
+            }
+        }
+    }
+
+    /// Reads up to [`STRIDE`] bytes forward, as regex-automata's own
+    /// forward search does. `Some` holds the end of the
+    /// leftmost-first match once it is known, or `None` for no match.
+    fn forward(
+        &mut self,
+        hay: &[u8],
+        at: &mut usize,
+        sid: &mut LazyStateID,
+        end: &mut Option<usize>,
+    ) -> Result<Option<Option<usize>>, MatchError> {
+        let dfa = self.regex.forward();
+        let cache = self.cache.forward_mut();
+        let stop = at.saturating_add(STRIDE).min(hay.len());
+        while *at < stop {
+            if sid.is_start()
+                && end.is_none()
+                && let Some(pre) = dfa.get_config().get_prefilter()
+            {
+                let needle = pre.max_needle_len();
+                let window = at
+                    .saturating_add(WINDOW.max(2 * needle))
+                    .min(hay.len());
+                let next =
+                    match pre.find(hay, Span::from(*at..window)) {
+                        Some(span) => span.start,
+                        None if window == hay.len() => {
+                            return Ok(Some(None));
+                        }
+                        None => window + 1 - needle,
+                    };
+                if next > *at {
+                    *at = next;
+                    if !self.universal_start {
+                        *sid = dfa.start_state_forward(
+                            cache,
+                            &Input::new(hay).span(next..hay.len()),
+                        )?;
+                    }
+                    continue;
+                }
+            }
+            *sid = dfa
+                .next_state(cache, *sid, hay[*at])
+                .map_err(|_| MatchError::gave_up(*at))?;
+            if sid.is_match() {
+                *end = Some(*at);
+            } else if sid.is_dead() {
+                return Ok(Some(*end));
+            } else if sid.is_quit() {
+                return Err(MatchError::quit(hay[*at], *at));
+            }
+            *at += 1;
+        }
+        if *at < hay.len() {
+            return Ok(None);
+        }
+        *sid = dfa
+            .next_eoi_state(cache, *sid)
+            .map_err(|_| MatchError::gave_up(*at))?;
+        if sid.is_match() {
+            *end = Some(*at);
+        }
+        Ok(Some(*end))
+    }
+
+    /// Reads up to [`STRIDE`] bytes back toward `from`, anchored at
+    /// the match's end. `Some` holds where the match starts.
+    fn reverse(
+        &mut self,
+        hay: &[u8],
+        from: usize,
+        at: &mut usize,
+        sid: &mut LazyStateID,
+        start: &mut Option<usize>,
+    ) -> Result<Option<usize>, MatchError> {
+        let dfa = self.regex.reverse();
+        let cache = self.cache.reverse_mut();
+        let stop = at.saturating_sub(STRIDE).max(from);
+        let found = |start: Option<usize>| {
+            start.expect("a reverse scan finds the forward match")
+        };
+        while *at > stop {
+            let byte = hay[*at - 1];
+            *sid = dfa
+                .next_state(cache, *sid, byte)
+                .map_err(|_| MatchError::gave_up(*at - 1))?;
+            if sid.is_match() {
+                *start = Some(*at);
+            } else if sid.is_dead() {
+                return Ok(Some(found(*start)));
+            } else if sid.is_quit() {
+                return Err(MatchError::quit(byte, *at - 1));
+            }
+            *at -= 1;
+        }
+        if *at > from {
+            return Ok(None);
+        }
+        match from.checked_sub(1).map(|before| hay[before]) {
+            Some(byte) => {
+                *sid = dfa
+                    .next_state(cache, *sid, byte)
+                    .map_err(|_| MatchError::gave_up(from))?;
+                if sid.is_quit() {
+                    return Err(MatchError::quit(byte, from - 1));
+                }
+            }
+            None => {
+                *sid = dfa
+                    .next_eoi_state(cache, *sid)
+                    .map_err(|_| MatchError::gave_up(from))?;
+            }
+        }
+        if sid.is_match() {
+            *start = Some(from);
+        }
+        Ok(Some(found(*start)))
+    }
 }
 
 fn crlf_newlines(ast: &mut Ast) {
