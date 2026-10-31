@@ -490,6 +490,34 @@ const SHARED: &[Entry] = &[
     ("mod+x", Action::Cut),
     ("mod+v", Action::Paste),
     ("escape", Action::Command(Command::CollapseToPrimary)),
+    ("tab", Action::Command(Command::Indent)),
+    ("shift+tab", Action::Command(Command::Outdent)),
+    ("mod+]", Action::Command(Command::IndentLines)),
+    ("mod+[", Action::Command(Command::Outdent)),
+    (
+        "alt+up",
+        Action::Command(Command::MoveLines { down: false }),
+    ),
+    (
+        "alt+down",
+        Action::Command(Command::MoveLines { down: true }),
+    ),
+    (
+        "shift+alt+up",
+        Action::Command(Command::CopyLines { down: false }),
+    ),
+    (
+        "shift+alt+down",
+        Action::Command(Command::CopyLines { down: true }),
+    ),
+    ("mod+enter", Action::Command(Command::BlankLineBelow)),
+    ("ctrl+t", Action::Command(Command::Transpose)),
+    ("mod+d", Action::Command(Command::AddNextOccurrence)),
+    ("mod+/", Action::Run(crate::commands::toggle_line_comment)),
+    (
+        "shift+alt+a",
+        Action::Run(crate::commands::toggle_block_comment),
+    ),
 ];
 
 /// Linux and Windows conventions.
@@ -526,6 +554,13 @@ const MACOS: &[Entry] = &[
     ("super+end", go(Motion::DocEnd)),
     ("super+shift+end", reach_to(Motion::DocEnd)),
     ("alt+delete", Action::Command(Command::DeleteWordForward)),
+    ("ctrl+k", Action::Command(Command::DeleteToLineEnd)),
+    ("ctrl+a", go(Motion::Home)),
+    ("ctrl+e", go(Motion::End)),
+    ("ctrl+p", go(Motion::Up)),
+    ("ctrl+n", go(Motion::Down)),
+    ("ctrl+f", go(Motion::Right)),
+    ("ctrl+b", go(Motion::Left)),
 ];
 
 /// (modifiers, clicks, gesture). `""` is no modifier.
@@ -536,6 +571,8 @@ const GESTURES: &[(&str, u8, Gesture)] = &[
     ("shift", 3, EXTEND),
     ("", 2, WORDS),
     ("", 3, LINES),
+    ("mod", 1, crate::commands::ADD_CARET),
+    ("alt", 1, crate::commands::COLUMN),
 ];
 
 impl Keymap {
@@ -854,8 +891,8 @@ mod tests {
         let tab =
             press(KeyCode::Tab, Key::Tab, Some("\t"), Mods::NONE);
         assert!(
-            keymap.resolve(&tab).is_none(),
-            "Tab binds nothing in E2"
+            is(keymap.resolve(&tab), Command::Indent),
+            "Tab indents rather than types"
         );
     }
 
