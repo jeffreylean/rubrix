@@ -3,7 +3,6 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::buffer::Buffer;
 use crate::command::{After, Plan};
 use crate::selection::Selections;
 
@@ -22,7 +21,6 @@ const PAIRS: [(&str, &str); 6] = [
 /// is a range, wraps each range in the pair and keeps it selected
 /// inside it. `None` leaves `text` to be typed.
 pub(crate) fn wrap(
-    _buffer: &Buffer,
     selections: &Selections,
     text: &str,
 ) -> Option<Plan> {

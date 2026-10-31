@@ -8,6 +8,7 @@ use rubrix_highlight::Lang;
 
 use crate::buffer::Buffer;
 use crate::command::{After, Plan};
+use crate::lines::selected_lines;
 use crate::motion::{indent, snap};
 use crate::selection::{Selection, Selections};
 
@@ -67,18 +68,6 @@ pub(crate) fn toggle(
     }
 }
 
-/// The first and last line of `selection`, leaving out a last line
-/// that the selection only reaches at column 0.
-fn line_span(buffer: &Buffer, selection: Selection) -> (u32, u32) {
-    let first = buffer.line_of(selection.start());
-    let last = buffer.line_of(selection.end());
-    if last > first && buffer.line_start(last) == selection.end() {
-        (first, last - 1)
-    } else {
-        (first, last)
-    }
-}
-
 struct Line {
     line: u32,
     /// Where a marker goes: the least indent of the selection's
@@ -104,9 +93,8 @@ fn line_comments(
 ) -> Option<Plan> {
     let mut lines: Vec<Line> = Vec::new();
     for selection in selections.iter() {
-        let (first, last) = line_span(buffer, selection);
         let from = lines.len();
-        for line in first..=last {
+        for line in selected_lines(buffer, selection) {
             if lines.last().is_some_and(|seen| seen.line >= line) {
                 continue;
             }
@@ -280,7 +268,8 @@ fn block_comments(
             ranges.push(selection.range());
             continue;
         }
-        let (first, last) = line_span(buffer, selection);
+        let lines = selected_lines(buffer, selection);
+        let (first, last) = (lines.start, lines.end - 1);
         let start = buffer.line_start(first)
             + indent(buffer.content(first)).len();
         let range = start..buffer.line_end(last);

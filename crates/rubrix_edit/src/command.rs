@@ -234,11 +234,9 @@ impl Editor {
         }
         match command {
             Command::Type(text) => {
-                if let Some(plan) = surround::wrap(
-                    &self.buffer,
-                    &self.selections,
-                    text,
-                ) {
+                if let Some(plan) =
+                    surround::wrap(&self.selections, text)
+                {
                     return self.commit(Kind::Other, plan);
                 }
                 let text = self.buffer.eol().normalize(text);

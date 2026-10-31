@@ -312,21 +312,6 @@ fn select_all_and_collapse_to_the_primary() {
     assert_eq!(selection(&editor), Selection { anchor: 0, head: 4 });
 }
 
-#[test]
-fn collapse_keeps_the_primary_range_and_then_makes_it_a_caret() {
-    let mut selections = Selections::new(Selection::caret(0));
-    selections.add(Selection { anchor: 3, head: 1 });
-    let mut editor = Editor::from_parts(
-        Buffer::new("abcd"),
-        selections,
-        History::new(),
-    );
-    apply(&mut editor, Command::CollapseToPrimary);
-    assert_eq!(selection(&editor), Selection { anchor: 3, head: 1 });
-    apply(&mut editor, Command::CollapseToPrimary);
-    assert_eq!(selection(&editor), Selection::caret(1));
-}
-
 fn on_a_boundary(text: &str, at: usize) -> bool {
     text.is_char_boundary(at)
         && !(text[..at].ends_with('\r')

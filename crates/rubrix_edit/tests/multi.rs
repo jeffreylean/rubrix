@@ -189,3 +189,34 @@ fn next_occurrence_does_nothing_when_the_texts_differ() {
         selections
     );
 }
+
+fn escape(selections: Selections) -> Vec<Selection> {
+    let mut editor = Editor::from_parts(
+        Buffer::new("abcd efgh"),
+        selections,
+        History::new(),
+    );
+    let _ = editor
+        .apply(Command::CollapseToPrimary, &Monospace::default());
+    listed(editor.selections())
+}
+
+#[test]
+fn escape_keeps_only_the_primary_of_several_carets() {
+    assert_eq!(escape(carets(&[1, 7, 3])), [Selection::caret(3)]);
+}
+
+#[test]
+fn escape_keeps_the_primary_range_of_several_selections() {
+    let mut selections = Selections::new(Selection::caret(0));
+    selections.add(range(8, 5));
+    assert_eq!(escape(selections), [range(8, 5)]);
+}
+
+#[test]
+fn escape_turns_one_range_into_a_caret_at_its_head() {
+    assert_eq!(
+        escape(Selections::new(range(8, 5))),
+        [Selection::caret(5)]
+    );
+}

@@ -40,7 +40,7 @@ pub(crate) fn blocks(
 }
 
 /// The lines one selection covers, under the rule in [`blocks`].
-fn selected_lines(
+pub(crate) fn selected_lines(
     buffer: &Buffer,
     selection: Selection,
 ) -> Range<u32> {
