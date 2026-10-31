@@ -17,7 +17,7 @@ use bevy_rubrix::{
     Row, RubrixPlugin, diff_view,
 };
 use support::diff::{
-    Plain, doc, line_text, settle, sides, slots, texts,
+    Plain, doc, line_text, settle, sides, slot, slots, texts,
 };
 use support::{
     chord, keep_copies, key_with, lay_out, point_in, press_on,
@@ -311,6 +311,9 @@ fn rows_shown_after_a_revert_match_their_rows() {
     );
     assert_eq!(doc(&mut app).diff(0).hunks().len(), 1);
     assert_slots_show_their_rows(&mut app);
+    let header = slot(&mut app, 0);
+    let header = texts(&app, header);
+    assert_eq!(header, ["▾ a.rs  +1 -1"]);
 }
 
 #[test]

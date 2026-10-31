@@ -157,7 +157,12 @@ pub(crate) fn fires(
         return true;
     }
     let Some((file, editor, row)) = found else {
-        return false;
+        let Some(DiffRow::Header { file }) = doc.row(index) else {
+            return false;
+        };
+        return session.redrawn.iter().any(|redraw| {
+            redraw.reads > read.reads && redraw.file == file
+        });
     };
     let at = (index - doc.body_start(file)) as u32;
     let redrawn = session.redrawn.iter().any(|redraw| {
