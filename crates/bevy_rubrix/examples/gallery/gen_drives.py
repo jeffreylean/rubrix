@@ -1203,16 +1203,18 @@ write(
 
 # The editor page lays out as the code page does, so its rows sit
 # where the code page's do: LINE_1, TEXT_X and GUTTER_X carry over.
-# CALIBRATE marks a value no live run has measured yet.
 ADVANCE = 8.4
 # A click this far right of a column's left edge lands before that
 # column at scale 1 and at scale 2.
 CLICK_INSET = 2
 # A 100,001-row doc has a six-digit gutter, one advance wider.
 TEXT_X_100K = TEXT_X + ADVANCE
-PAGE_ROWS = 38  # CALIBRATE: the rows a Page Down moves
-WRAP_COLUMNS = 116  # CALIBRATE: the chars of one visual line under wrap on
-TRIPLE_TAKES_BREAK = True  # CALIBRATE: a triple click selects the line break too
+# Measured live at 1280 by 800: a Page Down moves the 38 rows that
+# show whole, a visual line under wrap on holds 113 chars, and a
+# triple click takes the line break.
+PAGE_ROWS = 38
+WRAP_COLUMNS = 113
+TRIPLE_TAKES_BREAK = True
 TOP = "scroll 0 100000000"
 LEFT = "scroll 100000000 0"
 STRESS_LINES = [LARGE_RS_LINES[i % len(LARGE_RS_LINES)] for i in range(100_000)]
