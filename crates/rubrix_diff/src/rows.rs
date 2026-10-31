@@ -1,9 +1,10 @@
 use alloc::vec::Vec;
-use core::fmt;
 use core::num::NonZeroU32;
 use core::ops::{Bound, Range, RangeBounds};
+use core::{fmt, iter};
 
-use crate::expand::{Expansion, Shown};
+use crate::edit::Rediff;
+use crate::expand::Expansion;
 use crate::model::{Block, FileDiff, Hunk};
 use crate::words::{WordRanges, word_changes};
 
@@ -219,8 +220,9 @@ pub enum Anchor {
 /// Built by [`rows()`]. Holds no borrow of the diff it came from;
 /// read line text with each row's [`LineRef::index`] from that
 /// diff's [`Lines`](crate::Lines). Rebuild it whenever the diff, the
-/// layout or the expansion changes: rows from an older diff name
-/// lines that the new one may not have, and reading them panics.
+/// layout or the expansion changes, or move it through an edit with
+/// [`Rows::patch`]: rows from an older diff name lines that the new
+/// one may not have, and reading them panics.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rows {
     layout: Layout,
@@ -263,39 +265,25 @@ pub fn rows(
     layout: Layout,
     expansion: &Expansion,
 ) -> Rows {
-    let hunks = diff.hunks();
-    let mut builder = Builder {
-        layout,
-        expansion,
-        hunk_count: hunks.len() as u32,
-        segments: Vec::new(),
-        next_row: 0,
-    };
-    let (mut old_end, mut new_end) = (0, 0);
-    for (h, hunk) in (0..).zip(hunks) {
-        if diff.is_partial() {
-            builder.partial_gap(h, hunk, hunk.new_offset() - new_end);
-        } else {
-            builder.gap(
-                h,
-                hunk.old_offset() - old_end,
-                old_end,
-                new_end,
-            );
-        }
-        builder.blocks(h, hunk);
-        old_end = hunk.old_offset() + hunk.old_len();
-        new_end = hunk.new_offset() + hunk.new_len();
-    }
-    if !hunks.is_empty() && !diff.is_partial() {
-        let size = diff.old_lines().len() - old_end;
-        builder.gap(builder.hunk_count, size, old_end, new_end);
-    }
+    let mut builder = Builder::new(diff, layout, expansion, 0);
+    let count = diff.hunks().len() as u32;
+    builder.region(diff, 0..count);
     Rows {
         layout,
         segments: builder.segments,
         len: builder.next_row,
     }
+}
+
+/// Rows `at..at + removed` became rows `at..at + inserted`. Rows
+/// before `at` stay as they were, and rows after the splice are the
+/// old rows after it, their new lines and gap keys shifted by the
+/// edit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RowSplice {
+    pub at: u32,
+    pub removed: u32,
+    pub inserted: u32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -333,7 +321,56 @@ struct Builder<'a> {
     next_row: u32,
 }
 
-impl Builder<'_> {
+impl<'a> Builder<'a> {
+    fn new(
+        diff: &FileDiff,
+        layout: Layout,
+        expansion: &'a Expansion,
+        next_row: u32,
+    ) -> Builder<'a> {
+        Builder {
+            layout,
+            expansion,
+            hunk_count: diff.hunks().len() as u32,
+            segments: Vec::new(),
+            next_row,
+        }
+    }
+
+    /// Pushes hunks `hunks` with the gap above each and, in a full
+    /// diff with hunks, the gap below the last of them.
+    fn region(&mut self, diff: &FileDiff, hunks: Range<u32>) {
+        let all = diff.hunks();
+        let above =
+            hunks.start.checked_sub(1).map(|h| &all[h as usize]);
+        let (mut old_end, mut new_end) = above
+            .map_or((0, 0), |above| {
+                (above.old_end(), above.new_end())
+            });
+        for h in hunks.clone() {
+            let hunk = &all[h as usize];
+            if diff.is_partial() {
+                self.partial_gap(
+                    h,
+                    hunk,
+                    hunk.new_offset() - new_end,
+                );
+            } else {
+                let size = hunk.old_offset() - old_end;
+                self.gap(h, size, old_end, new_end);
+            }
+            self.blocks(h, hunk);
+            (old_end, new_end) = (hunk.old_end(), hunk.new_end());
+        }
+        if all.is_empty() || diff.is_partial() {
+            return;
+        }
+        let below = all.get(hunks.end as usize);
+        let next =
+            below.map_or(diff.old_lines().len(), Hunk::old_offset);
+        self.gap(hunks.end, next - old_end, old_end, new_end);
+    }
+
     fn push(
         &mut self,
         hunk: u32,
@@ -366,30 +403,51 @@ impl Builder<'_> {
     }
 
     fn gap(&mut self, hunk: u32, size: u32, old: u32, new: u32) {
-        if size == 0 {
-            return;
-        }
-        let (top, bottom) = match self.expansion.shown(hunk, size) {
-            Shown::Whole => {
-                let whole = Piece::Expanded { len: size };
-                return self.push_file(hunk, old, new, whole);
+        let first = self.segments.len();
+        let mut hidden_from = 0;
+        let mut shown_from = None;
+        let shown = self.expansion.shown(hunk, size);
+        for run in shown.chain(iter::once(size..size)) {
+            if run.start > hidden_from {
+                if let Some(from) = shown_from.take() {
+                    let expanded = Piece::Expanded {
+                        len: hidden_from - from,
+                    };
+                    self.push_file(
+                        hunk,
+                        old + from,
+                        new + from,
+                        expanded,
+                    );
+                }
+                let gap = Piece::Gap {
+                    hidden: run.start - hidden_from,
+                    up: false,
+                    down: false,
+                };
+                let at = hidden_from;
+                self.push_file(hunk, old + at, new + at, gap);
             }
-            Shown::Ends { top, bottom } => (top, bottom),
-        };
-        if top > 0 {
-            let expanded = Piece::Expanded { len: top };
-            self.push_file(hunk, old, new, expanded);
+            if !run.is_empty() {
+                shown_from.get_or_insert(run.start);
+            }
+            hidden_from = run.end;
         }
-        let gap = Piece::Gap {
-            hidden: size - top - bottom,
-            up: hunk < self.hunk_count,
-            down: hunk > 0,
-        };
-        self.push_file(hunk, old + top, new + top, gap);
-        if bottom > 0 {
-            let at = size - bottom;
-            let expanded = Piece::Expanded { len: bottom };
-            self.push_file(hunk, old + at, new + at, expanded);
+        if let Some(from) = shown_from {
+            let expanded = Piece::Expanded { len: size - from };
+            self.push_file(hunk, old + from, new + from, expanded);
+        }
+        let (up, down) = (hunk < self.hunk_count, hunk > 0);
+        let mut gaps =
+            self.segments[first..].iter_mut().filter_map(|segment| {
+                match &mut segment.piece {
+                    Piece::Gap { up, down, .. } => Some((up, down)),
+                    _ => None,
+                }
+            });
+        if let Some(top) = gaps.next() {
+            *top.1 = down;
+            *gaps.last().unwrap_or(top).0 = up;
         }
     }
 
@@ -551,6 +609,73 @@ impl Rows {
         (at < lines).then_some(segment.row + row)
     }
 
+    /// Moves the rows through `rediff`, which
+    /// [`FileDiff::edit_new`] returned: re-derives the rows of the
+    /// hunks it replaced and of the gaps around them, shifts the rows
+    /// below, and returns the smallest splice. The splice leaves out
+    /// the rows the edit kept at either end, comparing a row below
+    /// the edit by what it becomes after the shift. `diff` and
+    /// `expansion` are the ones after `edit_new`, and the rows must
+    /// be the ones from before it. O(segments).
+    ///
+    /// A row names lines, not their text, so a kept row may show a
+    /// line whose text the edit changed: new lines
+    /// `rediff.lines.start..rediff.lines.start + rediff.inserted`.
+    pub fn patch(
+        &mut self,
+        diff: &FileDiff,
+        expansion: &Expansion,
+        rediff: &Rediff,
+    ) -> RowSplice {
+        let (a, b) = (rediff.hunks.start, rediff.hunks.end);
+        let first = self.segments.partition_point(|s| s.hunk < a);
+        let last = self.segments.partition_point(|s| {
+            (s.hunk, s.piece.is_block()) < (b, true)
+        });
+        let row = |k: usize| {
+            self.segments.get(k).map_or(self.len, |s| s.row)
+        };
+        let (top, bottom) = (row(first), row(last));
+        let mut builder =
+            Builder::new(diff, self.layout, expansion, top);
+        builder.region(diff, a..a + rediff.new_hunks);
+        let (removed, inserted) =
+            (bottom - top, builder.next_row - top);
+        let added = builder.segments.len();
+        let old: Vec<Segment> = self
+            .segments
+            .splice(first..last, builder.segments)
+            .collect();
+        let lines =
+            i64::from(rediff.inserted) - rediff.lines.len() as i64;
+        let hunks =
+            i64::from(rediff.new_hunks) - rediff.hunks.len() as i64;
+        let rows = i64::from(inserted) - i64::from(removed);
+        let moved = |at: u32, by: i64| (i64::from(at) + by) as u32;
+        for segment in &mut self.segments[first + added..] {
+            segment.row = moved(segment.row, rows);
+            segment.hunk = moved(segment.hunk, hunks);
+            segment.new.index = moved(segment.new.index, lines);
+            segment.new.offset = moved(segment.new.offset, lines);
+        }
+        self.len = moved(self.len, rows);
+        let new = &self.segments[first..first + added];
+        let (old, new) =
+            (runs(&old, self.layout), runs(new, self.layout));
+        let (both, layout) = ((&old[..], &new[..]), self.layout);
+        let limit = removed.min(inserted);
+        let lead = common(both, layout, false, limit, |a, b| a == b);
+        let trail =
+            common(both, layout, true, limit - lead, |a, b| {
+                shifted(a, lines, hunks) == Some(b)
+            });
+        RowSplice {
+            at: top + lead,
+            removed: removed - lead - trail,
+            inserted: inserted - lead - trail,
+        }
+    }
+
     /// The rows of hunk `hunk`'s blocks, without the gap above it.
     /// Empty past the last hunk.
     pub fn hunk_rows(&self, hunk: u32) -> Range<u32> {
@@ -605,6 +730,133 @@ fn row_at(segment: &Segment, at: u32, layout: Layout) -> Row {
             Layout::Split => Row::Addition { new: line(new, at) },
         },
     }
+}
+
+/// Rows `at..at + len` of a segment, which step one line a row on
+/// every side they show.
+#[derive(Clone, Copy)]
+struct Run<'a> {
+    segment: &'a Segment,
+    at: u32,
+    len: u32,
+}
+
+impl Run<'_> {
+    /// The run's `k`th row, from its last row when `back`.
+    fn row(self, k: u32, back: bool, layout: Layout) -> Row {
+        let at = if back { self.len - 1 - k } else { k };
+        row_at(self.segment, self.at + at, layout)
+    }
+}
+
+fn runs(segments: &[Segment], layout: Layout) -> Vec<Run<'_>> {
+    let mut runs = Vec::with_capacity(segments.len());
+    for segment in segments {
+        let mut push = |at: u32, len: u32| {
+            if len > 0 {
+                runs.push(Run { segment, at, len });
+            }
+        };
+        match (segment.piece, layout) {
+            (Piece::Change { old_len, new_len }, Layout::Stacked) => {
+                push(0, old_len);
+                push(old_len, new_len);
+            }
+            (Piece::Change { old_len, new_len }, Layout::Split) => {
+                let pairs = old_len.min(new_len);
+                push(0, pairs);
+                push(pairs, old_len.max(new_len) - pairs);
+            }
+            (piece, _) => push(0, piece.rows(layout)),
+        }
+    }
+    runs
+}
+
+/// How many rows, at most `limit`, `old` and `new` share by `same`
+/// from their starts, or from their ends when `back`. Two runs whose
+/// first rows are the same share rows for as long as both last.
+fn common(
+    (old, new): (&[Run<'_>], &[Run<'_>]),
+    layout: Layout,
+    back: bool,
+    limit: u32,
+    same: impl Fn(Row, Row) -> bool,
+) -> u32 {
+    let nth = |runs: &[Run<'_>], i: usize| {
+        let i = if back {
+            runs.len().checked_sub(i + 1)?
+        } else {
+            i
+        };
+        (i < runs.len()).then_some(i)
+    };
+    let (mut i, mut j, mut in_old, mut in_new) = (0, 0, 0, 0);
+    let mut shared = 0;
+    while let (Some(a), Some(b)) = (nth(old, i), nth(new, j)) {
+        let (a, b) = (old[a], new[b]);
+        let rows = (
+            a.row(in_old, back, layout),
+            b.row(in_new, back, layout),
+        );
+        if shared == limit || !same(rows.0, rows.1) {
+            break;
+        }
+        let step =
+            (a.len - in_old).min(b.len - in_new).min(limit - shared);
+        shared += step;
+        in_old += step;
+        in_new += step;
+        if in_old == a.len {
+            (i, in_old) = (i + 1, 0);
+        }
+        if in_new == b.len {
+            (j, in_new) = (j + 1, 0);
+        }
+    }
+    shared
+}
+
+/// `row` with its new line and gap key moved by an edit, or `None`
+/// when they would leave the file.
+fn shifted(row: Row, lines: i64, hunks: i64) -> Option<Row> {
+    let by = |at: u32, d: i64| u32::try_from(i64::from(at) + d).ok();
+    let line = |line: LineRef| {
+        Some(LineRef {
+            index: by(line.index, lines)?,
+            number: LineNo(NonZeroU32::new(by(
+                line.number.get(),
+                lines,
+            )?)?),
+        })
+    };
+    Some(match row {
+        Row::Context { old, new } => Row::Context {
+            old,
+            new: line(new)?,
+        },
+        Row::Expanded { old, new } => Row::Expanded {
+            old,
+            new: line(new)?,
+        },
+        Row::Paired { old, new } => Row::Paired {
+            old,
+            new: line(new)?,
+        },
+        Row::Addition { new } => Row::Addition { new: line(new)? },
+        Row::Deletion { .. } => row,
+        Row::Gap {
+            hunk,
+            hidden,
+            up,
+            down,
+        } => Row::Gap {
+            hunk: by(hunk, hunks)?,
+            hidden,
+            up,
+            down,
+        },
+    })
 }
 
 struct Window<'a> {
