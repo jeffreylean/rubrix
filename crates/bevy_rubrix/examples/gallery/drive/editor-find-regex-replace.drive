@@ -1,0 +1,34 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -4913
+wait 10
+click 273.0 126
+key mod+alt+f
+wait 5
+click 930 151
+wait 5
+click 745 151
+key mod+a
+type (\w+)_(\w+)
+wait 10
+click 745 179
+type $2_$1
+key enter
+wait 10
+click 745 151
+key mod+a
+type fn
+wait 10
+click 745 179
+key mod+a
+type $&$&
+click 894 179
+wait 10
+log text 305
+expect text 305 "                section(\"A keyed list\", list_keyed()),"
+log text 320
+expect text 320 "fnfn section("
+wait 30
+screenshot e5-regex-replace.png
+exit

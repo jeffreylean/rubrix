@@ -223,6 +223,16 @@ pub(super) mod fixtures {
 
     /// Presses and releases `key` for the focused entity.
     pub fn press_key(app: &mut App, key: Key, code: KeyCode) {
+        send_key(app, key, code, None);
+        app.update();
+    }
+
+    pub fn send_key(
+        app: &mut App,
+        key: Key,
+        code: KeyCode,
+        text: Option<&str>,
+    ) {
         let window = app
             .world_mut()
             .query_filtered::<Entity, bevy::ecs::query::With<PrimaryWindow>>()
@@ -232,11 +242,10 @@ pub(super) mod fixtures {
             key_code: code,
             logical_key: key,
             state: ButtonState::Pressed,
-            text: None,
+            text: text.map(Into::into),
             repeat: false,
             window,
         });
-        app.update();
         app.update();
     }
 
@@ -324,6 +333,8 @@ mod tests {
     use bevy::app::App;
     use bevy::color::Color;
     use bevy::ecs::resource::Resource;
+    use bevy::input::keyboard::{Key, KeyCode};
+    use bevy::text::TextEdit;
 
     use super::fixtures::*;
     use super::*;
@@ -379,6 +390,33 @@ mod tests {
 
         escape(&mut app);
         assert_eq!(shown(&app, input), "bob", "the world's value");
+    }
+
+    #[test]
+    fn a_typed_key_reaches_the_text_through_bevys_text_input() {
+        let mut app = app();
+        app.add_plugins(bevy::ui_widgets::TextInputPlugin)
+            .add_message::<bevy::window::Ime>()
+            .add_message::<bevy::picking::events::PointerRelease>()
+            .init_resource::<bevy::ui::UiScale>()
+            .init_resource::<bevy::picking::events::PointerState>();
+        let root = field(&mut app);
+        let input = input_of(&app, root);
+        focus(app.world_mut(), input);
+        app.update();
+
+        send_key(
+            &mut app,
+            Key::Character("x".into()),
+            KeyCode::KeyX,
+            Some("x"),
+        );
+
+        let text = app.world().get::<EditableText>(input).unwrap();
+        let typed = text.pending_edits.iter().any(|edit| {
+            matches!(edit, TextEdit::Insert(typed) if typed == "x")
+        });
+        assert!(typed, "{:?}", text.pending_edits);
     }
 
     #[test]

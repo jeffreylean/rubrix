@@ -1,0 +1,38 @@
+page editor
+wait 120
+click 586 68
+wait 60
+click 281.4 126
+key mod+f
+wait 10
+frames start
+wait 60
+type c
+wait 9
+type x
+wait 9
+type .
+wait 9
+type t
+wait 9
+type h
+wait 9
+type e
+wait 9
+type m
+wait 9
+type e
+wait 9
+type (
+wait 9
+type )
+wait 9
+wait 20
+frames stop editor-find-100k.csv
+wait 30
+# grep -oiF 'cx.theme()' 100k | wc -l -> 150
+log find
+expect find open query "cx.theme()" 1 of 150
+wait 30
+screenshot e5-100k.png
+exit
