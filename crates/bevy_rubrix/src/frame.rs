@@ -45,6 +45,7 @@ pub struct Tx<'w> {
     parts: &'w mut SystemState<Parts<'static, 'static>>,
     doc: Entity,
     view: Option<Entity>,
+    layout: Option<Box<dyn Layout>>,
     acted: bool,
 }
 
@@ -60,6 +61,7 @@ impl<'w> Tx<'w> {
             parts,
             doc,
             view,
+            layout: None,
             acted: false,
         }
     }
@@ -123,9 +125,16 @@ impl<'w> Tx<'w> {
         );
     }
 
+    /// Makes `layout` the row geometry of this transaction's later
+    /// commands, in place of the view's, for a target that is not an
+    /// [`EditView`].
+    pub(crate) fn lay_out(&mut self, layout: impl Layout + 'static) {
+        self.layout = Some(Box::new(layout));
+    }
+
     /// Runs `gesture` from `from` to `to`, and sets its selections
     /// when they moved.
-    fn stroke(
+    pub(crate) fn stroke(
         &mut self,
         gesture: Gesture,
         from: Hit,
@@ -169,7 +178,7 @@ impl<'w> Tx<'w> {
         };
         let before = held.editor().selections().clone();
         let rows_before = held.rows();
-        let applied = EditView::with_layout(scene, view, |layout| {
+        let mut run = |layout: &dyn Layout| {
             held.bypass_change_detection().run(
                 |editor| edit(editor, layout),
                 |edits, editor| {
@@ -190,7 +199,11 @@ impl<'w> Tx<'w> {
                         })
                 },
             )
-        });
+        };
+        let applied = match self.layout.as_deref() {
+            Some(layout) => run(layout),
+            None => EditView::with_layout(scene, view, run),
+        };
         let acted = applied.is_some()
             || *held.editor().selections() != before;
         let rows = held.rows();
@@ -573,8 +586,10 @@ pub(crate) fn apply(world: &mut World, mut frame: Local<Frame>) {
             let caret = editor
                 .buffer()
                 .line_of(editor.selections().primary().head);
-            let first = (list.first_visible() as u32).max(caret);
-            Some((edit.doc(), first.saturating_add(2 * BUILT_MAX)))
+            Some((
+                edit.doc(),
+                catch_up_window(list.first_visible() as u32, caret),
+            ))
         })
         .collect();
     for (doc, window) in windows {
@@ -582,6 +597,13 @@ pub(crate) fn apply(world: &mut World, mut frame: Local<Frame>) {
             held.bypass_change_detection().catch_up(window);
         }
     }
+}
+
+/// The last line to lex this frame for a view whose rows show from
+/// line `first`, with its primary caret on line `caret`: as far past
+/// both as the list can build rows.
+pub(crate) fn catch_up_window(first: u32, caret: u32) -> u32 {
+    first.max(caret).saturating_add(2 * BUILT_MAX)
 }
 
 /// Presses, then drags, per view: a press runs the gesture its

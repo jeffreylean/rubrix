@@ -47,7 +47,7 @@ use crate::rows::Shown;
 /// by its estimated height until it is built.
 const MAX_STEP: f32 = OVERSCAN - 20.0;
 
-const SELECTED_ALPHA: f32 = 0.15;
+pub(crate) const SELECTED_ALPHA: f32 = 0.15;
 
 /// What is selected in a code view, on the view's root entity: byte
 /// offsets into [`CodeDoc::text`](crate::CodeDoc::text). A new source
@@ -271,6 +271,11 @@ pub(crate) struct SelectionRects {
 }
 
 impl SelectionRects {
+    /// Rects of `color`, with no layer until the first paint.
+    pub(crate) fn new(color: Color) -> SelectionRects {
+        SelectionRects { color, layer: None }
+    }
+
     pub(crate) fn color(&self) -> Color {
         self.color
     }
@@ -310,9 +315,11 @@ pub(crate) struct Hits<'w, 's, D: Selectable> {
 
 /// Where a pointer is against a list: the row under it, its point
 /// clamped inside the list, and how far past an edge it is.
+#[derive(Clone, Copy)]
 pub(crate) struct Over {
     pub(crate) row: usize,
-    across: f32,
+    /// The pointer's x as a share of the list's width.
+    pub(crate) across: f32,
     /// Logical window px, clamped one physical px inside the list.
     pub(crate) inside: Vec2,
     /// Logical px past the top (negative) or bottom edge.
@@ -365,19 +372,6 @@ pub(crate) fn over(
     })
 }
 
-/// The drawn byte nearest `at`, logical window px, in a rich text
-/// laid out as `layout` on `node`.
-pub(crate) fn text_point(
-    layout: &Layout<bevy::text::TextBrush>,
-    node: &ComputedNode,
-    transform: &UiGlobalTransform,
-    camera: &Camera,
-    at: Vec2,
-) -> Option<usize> {
-    let point = rich_point(node, transform, camera, at)?;
-    Some(Cursor::from_point(layout, point.x, point.y).index())
-}
-
 pub(crate) type Pointers<'w, 's> = Query<
     'w,
     's,
@@ -403,7 +397,11 @@ pub(crate) fn held(
 }
 
 impl<D: Selectable> Hits<'_, '_, D> {
-    fn over(&self, list: Entity, at: Vec2) -> Option<Over> {
+    pub(crate) fn over(
+        &self,
+        list: Entity,
+        at: Vec2,
+    ) -> Option<Over> {
         let camera = self.cameras.iter().next()?;
         let (state, node, transform, scroll) =
             self.lists.get(list).ok()?;
@@ -418,21 +416,35 @@ impl<D: Selectable> Hits<'_, '_, D> {
         row: usize,
         at: Vec2,
     ) -> usize {
-        let Some(text) = doc.text(column, row) else {
-            return 0;
-        };
-        let Some(camera) = self.cameras.iter().next() else {
-            return 0;
-        };
-        let shown = self.lines.iter().find(|(line, ..)| {
-            D::line_of(line) == (view, row, column)
-        });
-        let Some((_, node, transform, block, layout)) = shown else {
-            return 0;
-        };
-        let layout = drawn_layout(block, layout, node);
-        text_point(&layout, node, transform, camera, at)
-            .map_or(0, |drawn| text.source(drawn))
+        self.point(view, doc, column, row, at)
+            .map_or(0, |(byte, _)| byte)
+    }
+
+    /// The source byte of row `row`'s text in `column` nearest `at`,
+    /// and `at`'s x in logical px from the text's left. `None` while
+    /// the row has no text there or is not built.
+    pub(crate) fn point(
+        &self,
+        view: Entity,
+        doc: &D,
+        column: Column,
+        row: usize,
+        at: Vec2,
+    ) -> Option<(usize, f32)> {
+        let text = doc.text(column, row)?;
+        let camera = self.cameras.iter().next()?;
+        let (_, node, transform, block, layout) =
+            self.lines.iter().find(|(line, ..)| {
+                D::line_of(line) == (view, row, column)
+            })?;
+        let laid = drawn_layout(block, layout, node);
+        let local = rich_point(node, transform, camera, at)?;
+        let drawn =
+            Cursor::from_point(&laid, local.x, local.y).index();
+        Some((
+            text.source(drawn),
+            local.x * node.inverse_scale_factor(),
+        ))
     }
 }
 
