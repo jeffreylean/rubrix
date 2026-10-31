@@ -1,7 +1,9 @@
+use std::collections::HashMap;
 use std::mem;
 use std::path::PathBuf;
 
 use bevy::app::{App, PostUpdate};
+use bevy::camera::visibility::InheritedVisibility;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::resource::Resource;
@@ -17,8 +19,8 @@ use bevy_fynix::views::{
 };
 use bevy_fynix::{AnyView, Signal, ViewExt, derived, resource};
 use bevy_rubrix::{
-    EditDoc, EditLine, EditSystems, EditView, Lang, Overflow,
-    code_editor,
+    EditDoc, EditLine, EditSystems, EditView, Lang, LineNumber,
+    Overflow, code_editor,
 };
 
 use super::code::{
@@ -253,7 +255,8 @@ struct Shown {
     top: f32,
     bottom: f32,
     text: String,
-    number: Option<String>,
+    /// The line's number and its top.
+    number: Option<(String, f32)>,
 }
 
 fn first_view(world: &mut World) -> Option<(Entity, Entity)> {
@@ -284,6 +287,24 @@ fn shown_rows(world: &mut World, view: Entity) -> Option<Vec<Shown>> {
             bottom > view_top + 0.5 && top < view_bottom - 0.5
         })
         .collect::<Vec<_>>();
+    let numbers = world
+        .query::<(
+            Entity,
+            &LineNumber,
+            &InheritedVisibility,
+            &ComputedNode,
+            &UiGlobalTransform,
+        )>()
+        .iter(world)
+        .filter(|(_, number, shown, _, _)| {
+            number.view == view && shown.get()
+        })
+        .map(|(node, number, _, size, at)| {
+            let top =
+                (at.translation.y - size.size().y / 2.0) * scale;
+            (number.line, (node, top))
+        })
+        .collect::<HashMap<_, _>>();
     let mut shown = rows
         .into_iter()
         .map(|(node, line, top, bottom)| Shown {
@@ -291,7 +312,9 @@ fn shown_rows(world: &mut World, view: Entity) -> Option<Vec<Shown>> {
             top,
             bottom,
             text: text_of(world, node),
-            number: gutter_of(world, node).map(|n| text_of(world, n)),
+            number: numbers
+                .get(&line)
+                .map(|&(number, at)| (text_of(world, number), at)),
         })
         .collect::<Vec<_>>();
     shown.sort_by_key(|row| row.line);
@@ -310,9 +333,9 @@ fn text_of(world: &World, node: Entity) -> String {
     text
 }
 
-/// The line number beside the row text `node`: the first text under
-/// a sibling of `node` or of its nearest ancestors, which is the
-/// gutter's. A selection layer beside the text holds no text.
+/// The gutter text beside the row text `node`, one line high: the
+/// first text under a sibling of `node` or of its nearest ancestors.
+/// A selection layer beside the text holds no text.
 fn gutter_of(world: &World, node: Entity) -> Option<Entity> {
     let mut inner = node;
     for _ in 0..4 {
@@ -350,7 +373,7 @@ fn expand_tabs(line: &str) -> String {
 
 /// Checks the rows of the first editable view that show: no gap or
 /// overlap between neighbours, no line skipped, each row's text its
-/// line's, and each gutter number its line's.
+/// line's, and each line number its line's, at its row's top.
 pub fn seams(world: &mut World) -> String {
     let Some((view, doc)) = first_view(world) else {
         return "seams none".into();
@@ -383,8 +406,10 @@ pub fn seams(world: &mut World) -> String {
     let numbers = rows
         .iter()
         .find(|row| {
-            row.number.as_deref().map(str::trim)
-                != Some((row.line + 1).to_string().as_str())
+            row.number.as_ref().is_none_or(|(number, top)| {
+                number.trim() != (row.line + 1).to_string()
+                    || (top - row.top).abs() > 0.5
+            })
         })
         .map_or_else(
             || "ok".into(),

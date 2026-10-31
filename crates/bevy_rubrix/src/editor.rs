@@ -45,8 +45,8 @@ use crate::rows::{
     ADVANCE, LINE_HEIGHT, RowFeed, RowStyle, Shown, code_row,
     filling, inserts, marked, shown_spans,
 };
-use crate::select;
 use crate::tokens::{Styles, SyntaxTokens};
+use crate::{numbers, select};
 
 /// The most lines a catch-up lexes in one frame.
 const CATCH_UP: u32 = 20_000;
@@ -448,6 +448,7 @@ where
             view.is_none_or(|view| view.overflow == Overflow::Scroll)
         });
         let feed = EditFeed { view, doc };
+        let looks = style.clone();
         let list = cx.build(
             virtual_list(count, estimate, move |slot| {
                 code_row(feed, slot, &style)
@@ -455,6 +456,7 @@ where
             .overscan(OVERSCAN)
             .sideways(sideways),
         );
+        numbers::spawn(cx.world, list, view, doc, &looks);
         if let Some(mut edit) = cx.world.get_mut::<EditView>(view) {
             edit.list = Some(list);
         }
@@ -584,6 +586,10 @@ impl RowFeed for EditFeed {
             view: self.view,
             line: row as u32,
         }
+    }
+
+    fn numbers(self) -> Option<Entity> {
+        Some(self.view)
     }
 
     fn rows(self, world: &World) -> usize {

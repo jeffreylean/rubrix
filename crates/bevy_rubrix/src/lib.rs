@@ -9,6 +9,7 @@ mod editor;
 mod frame;
 mod keymap;
 mod marks;
+mod numbers;
 mod rows;
 mod select;
 mod tokens;
@@ -46,6 +47,7 @@ pub use keymap::{
     Action, ChordError, Gesture, Keymap, Mods, Platform, Stroke,
 };
 pub use marks::{Mark, MarkKind, MarkLayer, Marks};
+pub use numbers::LineNumber;
 pub use rubrix_diff::{Layout, Row, Side};
 pub use rubrix_edit::{
     Buffer, Command, Editor, History, Motion, Selection, Selections,
@@ -115,6 +117,12 @@ impl Plugin for RubrixPlugin {
             .add_systems(
                 Update,
                 (select::keys::<CodeDoc>, select::keys::<DiffDoc>),
+            )
+            .add_systems(
+                PostUpdate,
+                numbers::place
+                    .before(UiSystems::Prepare)
+                    .run_if(any_with_component::<EditView>),
             )
             .add_systems(
                 PostUpdate,

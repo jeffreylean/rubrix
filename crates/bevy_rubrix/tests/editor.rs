@@ -2,21 +2,24 @@ mod support;
 
 use std::time::Instant;
 
-use bevy::app::{App, PostUpdate};
+use bevy::app::{App, Last, PostUpdate};
 use bevy::camera::visibility::Visibility;
 use bevy::clipboard::{ClipboardError, ClipboardRead};
 use bevy::color::Color;
+use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::Children;
 use bevy::ecs::message::Messages;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Query, ResMut};
-use bevy::ecs::world::World;
+use bevy::ecs::world::{Ref, World};
 use bevy::input::keyboard::{Key, KeyCode};
 use bevy::input_focus::pointer_focus::PointerFocusPlugin;
 use bevy::input_focus::{FocusCause, InputFocus, InputFocusPlugin};
 use bevy::math::Vec2;
+use bevy::text::TextLayoutInfo;
+use bevy::ui::widget::Text;
 use bevy::ui::{
     ComputedNode, ScrollPosition, UiGlobalTransform, ZIndex, px,
 };
@@ -29,8 +32,8 @@ use bevy_fynix::{ViewExt, keyed, mount, resource};
 use bevy_rubrix::{
     Action, CaretBlink, ClipboardProvider, Command, EditClipboard,
     EditDoc, EditRequest, EditSystems, EditView, EditorChanged,
-    Keymap, Lang, Mark, MarkKind, MarkLayer, Marks, Motion, Request,
-    Selection, Selections, code_editor,
+    Keymap, Lang, LineNumber, Mark, MarkKind, MarkLayer, Marks,
+    Motion, Request, Selection, Selections, code_editor,
 };
 use rubrix_highlight::{Run, highlight, spans};
 use support::{
@@ -132,6 +135,10 @@ fn typing_colours_each_keystroke() {
     }
 }
 
+/// Enter replaces every selection (E1's `Command::Enter`), so a range
+/// held below the Enter becomes a caret before the text that followed
+/// it. The view keeps both selections through the change and draws
+/// the lower one, the primary, on the row its text moved to.
 #[test]
 fn splice_selection_below_an_edit_keeps_its_text() {
     let mut app = laid_out();
@@ -144,29 +151,141 @@ fn splice_selection_below_an_edit_keeps_its_text() {
     );
     settle(&mut app);
     let buffer = doc(&app, entity).editor().buffer();
-    let below = buffer.line_start(10) + 2..buffer.line_start(10) + 6;
     let above = buffer.line_start(2);
-    let kept = buffer.slice(below.clone()).into_owned();
+    let below = buffer.line_start(10)..buffer.line_start(10) + 4;
+    assert_eq!(buffer.slice(below.clone()), "line");
+    let mut held = Selections::new(Selection::caret(above));
+    held.add(Selection {
+        anchor: below.start,
+        head: below.end,
+    });
+    request(&mut app, entity, Some(view), Request::select(held));
+    focus(&mut app, view);
     app.world_mut()
         .resource_mut::<Messages<EditorChanged>>()
         .clear();
-    let enter = Request::new(move |tx| {
-        tx.select(Selections::new(Selection::caret(above)));
-        tx.apply(Command::Enter);
-    });
-    request(&mut app, entity, Some(view), enter);
+    key_with(&mut app, &[], KeyCode::Enter, Key::Enter);
     let changes = app
         .world_mut()
         .resource_mut::<Messages<EditorChanged>>()
         .drain()
         .collect::<Vec<_>>();
     assert_eq!(changes.len(), 1, "one change, one message");
-    let change = &changes[0].change;
-    let moved = change.map(below.start, Default::default())
-        ..change.map(below.end, Default::default());
-    let buffer = doc(&app, entity).editor().buffer();
-    assert_eq!(buffer.slice(moved), kept);
     assert_eq!(changes[0].seq, doc(&app, entity).seq());
+    settle(&mut app);
+    let editor = doc(&app, entity).editor();
+    let buffer = editor.buffer();
+    let kept = editor.selections().iter().collect::<Vec<_>>();
+    assert_eq!(kept.len(), 2, "both selections outlive the Enter");
+    assert_eq!(editor.selections().primary_index(), 1);
+    let [upper, lower] = [kept[0], kept[1]];
+    assert!(upper.is_caret() && lower.is_caret());
+    assert_eq!(
+        buffer.line_of(upper.head),
+        3,
+        "line 3 moved down one"
+    );
+    assert_eq!(upper.head, buffer.line_start(3));
+    assert_eq!(
+        buffer.line_of(lower.head),
+        12,
+        "the range's line moved down one and split"
+    );
+    assert_eq!(lower.head, buffer.line_start(12));
+    let rest = buffer.line_start(12)..buffer.line_start(13) - 1;
+    assert_eq!(buffer.slice(rest), " 11", "the text after the range");
+    assert_eq!(text(&app, entity).lines().nth(11), Some(""));
+    let row = edit_line(&mut app, view, 12);
+    let drawn = app.world().get::<EditView>(view).expect("a view");
+    let rect = drawn.caret_rect().expect("the lower caret is drawn");
+    let origin = point_at(&app, row, 0);
+    assert!(
+        (rect.center() - origin).abs().max_element() < 1.0,
+        "the caret sits at line 12's start: {rect:?} and {origin}"
+    );
+}
+
+/// A count of texts Bevy laid out again, kept by `count_layouts`.
+#[derive(Resource, Default)]
+struct Relaid(usize);
+
+fn count_layouts(
+    texts: Query<Ref<TextLayoutInfo>>,
+    mut relaid: ResMut<Relaid>,
+) {
+    relaid.0 += texts.iter().filter(|text| text.is_changed()).count();
+}
+
+/// Each row below an Enter moves to the next line. Its text is the
+/// same, and so is the number at each line, so the Enter lays out
+/// again only the two lines it touched and at most a number for a
+/// line built new. Every row still shows its own number, at its top.
+#[test]
+fn splice_enter_lays_out_no_moved_row_again() {
+    let mut app = laid_out();
+    app.init_resource::<Relaid>()
+        .add_systems(Last, count_layouts);
+    let (view, entity) = mount_editor(
+        &mut app,
+        Lang::Plain,
+        &numbered(10_000),
+        600.0,
+        400.0,
+    );
+    settle(&mut app);
+    let area = list(&mut app);
+    app.world_mut()
+        .get_mut::<VirtualList>(area)
+        .expect("a list")
+        .scroll_to(4_995);
+    settle(&mut app);
+    let at = doc(&app, entity).editor().buffer().line_start(5_000);
+    caret_at(&mut app, entity, view, at);
+    focus(&mut app, view);
+    settle(&mut app);
+    let moved = edit_lines(&mut app, view)
+        .iter()
+        .filter(|&&(line, _)| line > 5_000)
+        .count();
+    assert!(moved > 20, "{moved} built rows below the Enter");
+    app.world_mut().resource_mut::<Relaid>().0 = 0;
+    key_with(&mut app, &[], KeyCode::Enter, Key::Enter);
+    assert_eq!(doc(&app, entity).rows(), 10_002);
+    let relaid = app.world().resource::<Relaid>().0;
+    assert!(relaid <= 3, "{relaid} texts laid out again");
+    settle(&mut app);
+    let numbers = app
+        .world_mut()
+        .query::<(Entity, &LineNumber, &Visibility)>()
+        .iter(app.world())
+        .filter(|(_, number, shown)| {
+            number.view == view && **shown != Visibility::Hidden
+        })
+        .map(|(node, number, _)| (number.line, node))
+        .collect::<std::collections::HashMap<_, _>>();
+    for (line, row) in edit_lines(&mut app, view) {
+        let number = numbers[&line];
+        let shown =
+            &app.world().get::<Text>(number).expect("a text").0;
+        assert_eq!(
+            shown.trim(),
+            (line + 1).to_string(),
+            "line {line}'s number"
+        );
+        let top = |node| {
+            let world = app.world();
+            let size =
+                world.get::<ComputedNode>(node).expect("a node");
+            let at =
+                world.get::<UiGlobalTransform>(node).expect("placed");
+            (at.translation.y - size.size().y / 2.0)
+                * size.inverse_scale_factor()
+        };
+        assert!(
+            (top(number) - top(row)).abs() < 0.5,
+            "line {line}'s number sits at its row's top"
+        );
+    }
 }
 
 #[test]

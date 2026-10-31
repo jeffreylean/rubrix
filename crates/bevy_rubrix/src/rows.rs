@@ -4,6 +4,7 @@ use core::ops::Range;
 use std::borrow::Cow;
 use std::mem;
 
+use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
@@ -15,7 +16,7 @@ use bevy_fynix::views::{
     FrameProps, LineColor, RowSlot, Span, Stack, column, rich, row,
 };
 use bevy_fynix::{
-    AnyView, Bevy, Signal, ViewExt, component, derived,
+    AnyView, Bevy, Cx, Signal, ViewExt, component, derived,
 };
 use rubrix_highlight::{Run, spans};
 
@@ -42,6 +43,7 @@ pub(crate) struct RowStyle {
     pub(crate) gap: f32,
     pub(crate) selected: Color,
     pub(crate) caret: Color,
+    pub(crate) faint: Color,
     /// Room right of each row's text, logical px.
     pub(crate) pad: f32,
 }
@@ -58,6 +60,7 @@ impl RowStyle {
             gap: theme.gap(),
             selected: select::selected_colour(theme),
             caret: theme.tone(Tone::Accent),
+            faint: theme.tone(Tone::Faint),
             pad: 0.0,
         }
     }
@@ -73,6 +76,12 @@ pub(crate) trait RowFeed:
     type Read: Copy + Send + Sync + 'static;
 
     fn tag(self, row: usize) -> Self::Tag;
+
+    /// The view whose [`Numbers`](crate::numbers::Numbers) draw the
+    /// rows' line numbers, or `None` when each row draws its own.
+    fn numbers(self) -> Option<Entity> {
+        None
+    }
 
     fn rows(self, world: &World) -> usize;
 
@@ -181,6 +190,14 @@ where
         .size(style.size)
         .tone(Tone::Faint)
         .wrap(false);
+    let number = match feed.numbers() {
+        None => number.boxed(),
+        Some(_) => AnyView::new(move |cx: &mut Cx<'_, Bevy, T>| {
+            let node = cx.build(number);
+            cx.world.entity_mut(node).insert(Visibility::Hidden);
+            node
+        }),
+    };
     let gutter = row((number,))
         .shrink(0.0)
         .padding(UiRect::right(px(style.gap)));
@@ -198,23 +215,52 @@ where
             .padding(UiRect::right(px(style.pad)))
             .boxed();
     }
-    row((gutter, slot.sideways(text)))
+    let whole = row((gutter, slot.sideways(text)))
         .align(AlignItems::FlexStart)
-        .gap(0.0)
-        .boxed()
+        .gap(0.0);
+    match feed.numbers() {
+        None => whole.boxed(),
+        Some(view) => {
+            AnyView::new(move |cx: &mut Cx<'_, Bevy, T>| {
+                let node = cx.build(whole);
+                select::tag_row(cx, node, slot, move |line| {
+                    NumberedRow { view, line }
+                });
+                node
+            })
+        }
+    }
 }
 
+/// On the root of each row whose line number a
+/// [`Numbers`](crate::numbers::Numbers) draws: the view, and the line
+/// the row shows now.
+#[derive(Component, Clone, Copy)]
+pub(crate) struct NumberedRow {
+    pub(crate) view: Entity,
+    pub(crate) line: usize,
+}
+
+/// A row's line number, or, when [`RowFeed::numbers`] draws them, as
+/// many digits as the widest number: the room the number takes, held
+/// while the slot moves to other lines.
 fn gutter<F: RowFeed>(feed: F, slot: RowSlot) -> Signal<Vec<Span>> {
     let width = move |world: &World| digits(feed.rows(world));
+    let own = feed.numbers().is_none();
     let row = slot.index();
     let mut index = slot.index();
     let mut shown = None;
     derived(move |world| {
         let width = width(world);
-        vec![Span::new(format!("{:>width$}", row.get(world) + 1))]
+        let text = if own {
+            format!("{:>width$}", row.get(world) + 1)
+        } else {
+            "0".repeat(width)
+        };
+        vec![Span::new(text)]
     })
     .when(move |world| {
-        let moved = index.changed(world);
+        let moved = own && index.changed(world);
         let now = Some(width(world));
         moved | (mem::replace(&mut shown, now) != now)
     })
