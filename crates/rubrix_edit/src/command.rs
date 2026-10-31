@@ -1,4 +1,5 @@
 use alloc::borrow::Cow;
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::ops::Range;
 
@@ -102,6 +103,22 @@ impl Editor {
 
     pub fn history(&self) -> &History {
         &self.history
+    }
+
+    /// The text of the selections in buffer order, joined by the
+    /// buffer's line ending. A caret adds nothing, so bare carets
+    /// copy nothing.
+    pub fn copy_text(&self) -> String {
+        let eol = self.buffer.eol().as_str();
+        let mut text = String::new();
+        let ranges = self.selections.iter().filter(|s| !s.is_caret());
+        for (i, selection) in ranges.enumerate() {
+            if i > 0 {
+                text.push_str(eol);
+            }
+            text.push_str(&self.buffer.slice(selection.range()));
+        }
+        text
     }
 
     /// Replaces the selections. Clamps each end to the text and moves

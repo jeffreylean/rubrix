@@ -1,3 +1,5 @@
+use core::ops::Range;
+
 use unicode_segmentation::{GraphemeCursor, UnicodeSegmentation};
 
 use crate::buffer::{Buffer, Spot};
@@ -108,6 +110,76 @@ pub trait Layout {
 
     /// The rows Page Up and Page Down move.
     fn page_rows(&self) -> u32;
+}
+
+/// A layout borrowed, so a `&dyn Layout` can go where
+/// [`Editor::apply`](crate::Editor::apply) takes `&impl Layout`.
+impl<L: Layout + ?Sized> Layout for &L {
+    fn x(&self, buffer: &Buffer, offset: usize) -> f32 {
+        (**self).x(buffer, offset)
+    }
+
+    fn vertical(
+        &self,
+        buffer: &Buffer,
+        from: usize,
+        rows: i32,
+        x: f32,
+    ) -> Option<usize> {
+        (**self).vertical(buffer, from, rows, x)
+    }
+
+    fn page_rows(&self) -> u32 {
+        (**self).page_rows()
+    }
+}
+
+/// The unit a double click selects at `at` in `line`: the run of
+/// word graphemes or of whitespace graphemes around the grapheme at
+/// `at`, or that one grapheme when it is neither. At the end of the
+/// line it takes the grapheme before. `line` is one line's content,
+/// without its terminator, and `at` lies on a char boundary of it.
+///
+/// It classes graphemes as the word motions do, so a word a double
+/// click selects is a word [`Motion::WordRight`] stops around. Unlike
+/// the motions, a grapheme that is neither word nor whitespace stands
+/// alone, so in `::` it selects one `:`.
+pub fn word_at(line: &str, at: usize) -> Range<usize> {
+    let grapheme = if at < line.len() {
+        let mut cursor = GraphemeCursor::new(at, line.len(), true);
+        let start = match cursor.is_boundary(line, 0) {
+            Ok(true) => at,
+            _ => boundary(line, at, false).unwrap_or(0),
+        };
+        boundary(line, start, true).map(|end| start..end)
+    } else {
+        boundary(line, at, false).map(|start| start..at)
+    };
+    let Some(grapheme) = grapheme else {
+        return at..at;
+    };
+    let class = Class::of(&line[grapheme.clone()]);
+    if class == Class::Other {
+        return grapheme;
+    }
+    let (mut start, mut end) = (grapheme.start, grapheme.end);
+    while let Some(before) = boundary(line, start, false)
+        && Class::of(&line[before..start]) == class
+    {
+        start = before;
+    }
+    while let Some(after) = boundary(line, end, true)
+        && Class::of(&line[end..after]) == class
+    {
+        end = after;
+    }
+    start..end
+}
+
+/// The grapheme clusters of `text`, each with its byte offset, as
+/// the editor steps over them.
+pub fn graphemes(text: &str) -> impl Iterator<Item = (usize, &str)> {
+    text.grapheme_indices(true)
 }
 
 /// A fixed-width layout. One row per line, one column per grapheme
