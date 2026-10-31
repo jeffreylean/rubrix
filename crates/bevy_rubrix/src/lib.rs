@@ -4,6 +4,7 @@ mod caret;
 mod clipboard;
 mod code_view;
 mod damage;
+mod diff_edit;
 mod diff_view;
 mod editor;
 mod frame;
@@ -36,6 +37,7 @@ pub use code_view::{
     CodeDoc, CodeLine, CodeSource, CodeStream, CodeView, Overflow,
     code_view,
 };
+pub use diff_edit::DiffEditStatus;
 pub use diff_view::{
     DiffDoc, DiffRow, DiffRowAt, DiffSource, DiffView, diff_view,
 };
@@ -138,6 +140,7 @@ impl Plugin for RubrixPlugin {
                     .after(UiSystems::PostLayout),
             );
         ime::plugin(app);
+        diff_edit::plugin(app);
     }
 }
 

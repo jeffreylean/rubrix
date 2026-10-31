@@ -706,7 +706,7 @@ fn dispatch(tx: &mut Tx, act: &Act) {
     }
 }
 
-fn copy(tx: &mut Tx) {
+pub(crate) fn copy(tx: &mut Tx) {
     let text = tx.editor().copy_text();
     if !text.is_empty() {
         tx.copy(text);
@@ -715,7 +715,7 @@ fn copy(tx: &mut Tx) {
 
 /// Pastes at once when the clipboard read is ready, and otherwise
 /// parks the read on the doc for later frames.
-fn paste(tx: &mut Tx) {
+pub(crate) fn paste(tx: &mut Tx) {
     let mut read = clipboard::read(tx.world);
     match read.poll_result() {
         Some(Ok(text)) => {

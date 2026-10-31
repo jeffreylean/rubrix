@@ -234,6 +234,10 @@ impl EditDoc {
         self.paste = None;
         Some((text, view))
     }
+
+    pub(crate) fn damage(&self) -> &Damage {
+        &self.damage
+    }
 }
 
 /// A change to an [`EditDoc`] from outside its views, run through the
