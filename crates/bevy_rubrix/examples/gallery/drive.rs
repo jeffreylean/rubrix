@@ -1520,6 +1520,7 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
             None => "paste none".into(),
         },
         "ime" => ime(world),
+        "find" => pages::editor::find(world),
         "diff-colours" => pages::hamlet_diff::colours_line(world),
         "diff-more" => pages::hamlet_diff::more_line(world),
         "stress" => pages::stress::log(world),

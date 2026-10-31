@@ -127,3 +127,27 @@ Gotchas:
 - Bevy's `TextInputPlugin` turns the window's IME off in `PreUpdate` of every frame in which no `EditableText` has the focus. The editor turns it on again in `PostUpdate`, so a system between them reads `false`. The driver reads the window in `First`, the value winit saw.
 - Bevy draws a span's underline 0.7 px thick at scale 1 and fills only the pixels whose centres it covers, so the CJK run of a preedit shows none. The editor draws its own bar under the preedit, at least one device pixel thick.
 - `wtype` cannot send a lone space, because the driver trims its text. Lane 10 commits with `1`, Pinyin's first candidate, instead of a space.
+
+## Find and replace
+
+E5 adds a find bar, `find_bar(doc)`, which the editor page lays over the view's top right. `mod+f` opens it on the word at a bare caret, and `mod+alt+f` opens it with its replace row, the focus in the replace field. It searches plain or as a regex, with toggles for match case (`Aa`), whole word (`W`) and regex (`.*`). A search scans at most 0.25 ms a frame, so the count reads `searching <n>` until it ends. It stops at 100,000 matches and reads `<i> of 100000+`. Each built row tints its matches, and the current match takes a stronger tint.
+
+- In the find field, Enter and `mod+g` go to the next match, Shift+Enter and `mod+shift+g` to the previous one, and Escape closes the bar and gives the focus back to the editor. Enter and Escape do nothing while the field holds an IME preedit. Enter in the replace field replaces the current match.
+- `Replace` replaces the current match and puts the caret after it. `Replace All` replaces every match as one undo step. With the regex toggle on, `$1` to `$n`, `$&` and `$$` in the replacement expand.
+- The bar sits at y 151 for its find row and 179 for its replace row. The find field is at x 745, `Aa` at 873, `W` at 902, `.*` at 930, `Replace` at 894 and `Replace All` at 986. `gen_drives.py` names each once.
+- `log find` prints `find <open|closed> query "<text>" <index> of <count>[ capped] marked <rows> final <ms|pending> label "<label>"`. The index counts from 1, and 0 means no current match. `marked` counts the built rows with a tinted match, and `final` is the time from the last change to the query until its count was final.
+
+The recipes. `gen_drives.py` writes every `editor-find-*.drive`, and each count is the one `grep` gives with the same options, named in a `# grep` line of the script.
+
+- **Regression (lane 1).** Run `editor-acceptance.drive` at trunk and at head, and `editor-find-open.drive` at head. Save the head acceptance shot as `e5-regress.png`. Pass when both print the same `drive: <n> of <n> checks pass` line and `editor-find-open.drive` passes.
+- **Open (lane 2).** `editor-find-open.drive` clicks inside `theme` on line 676 and presses `mod+f`. `log find` prints `open query "theme" 13 of 132 marked 9`, and the caret selects `676:16..676:21`. `e5-open.png` shows every visible `theme` tinted.
+- **Next and previous (lane 3).** `editor-find-next.drive` opens on the first `theme` and presses Enter, `mod+g`, Shift+Enter and `mod+shift+g`. The index goes 2, 3, 2, 1, and `log caret` selects each match with `visible true`. Save `e5-next.png`.
+- **Options (lane 4).** `editor-find-options.drive` types `tab.`, then turns on match case, whole word and regex in turn. The counts are 39, 38, 8 and 135, so each toggle changes the count. Save `e5-options.png`.
+- **Across lines (lane 5).** `editor-find-multiline.drive` turns on regex and types `\{\n\s+let`. The count is 281, and the caret selects the first match, `15:27..16:8`. Save `e5-multiline.png`.
+- **Marks (lane 6).** `editor-find-marks.drive` searches `self` from line 3,944, scrolls 4,000 px down and back. `marked` is 25 and then 4, each no more than the 87 rows built. `e5-marks.png` shows the tints and the current match at line 3,970.
+- **Replace (lane 7).** `editor-find-replace.drive` presses `mod+alt+f` on `theme`, types `palette` and presses Enter. The count drops to 131, a `mod+z` in the editor brings 132 back, `Replace All` reads `No results`, and one `mod+z` brings 132 back. Save `e5-replace.png`.
+- **Regex replace (lane 8).** `editor-find-regex-replace.drive` replaces `(\w+)_(\w+)` with `$2_$1` once, then `fn` with `$&$&` once. `log text 305` shows `list_keyed` and `log text 320` shows `fnfn`. Save `e5-regex-replace.png`.
+- **100,000 lines (lane 9).** `editor-find-100k.drive` opens the 100,000-line input and types `cx.theme()` one char every 10 frames inside `frames start` and `frames stop editor-find-100k.csv`. `log find` prints `1 of 150` and the `final` time. Save `e5-100k.png`.
+- **Close (lane 10).** `editor-find-close.drive` searches `e` on the 100,000-line input. The count reads `1 of 100000 capped` with the label `1 of 100000+`. Escape prints `closed` and `marked 0`, and a typed `x` replaces the selected `e` on line 1. Save `e5-close.png`.
+
+Perf: run `editor-find-100k.drive`, and `editor-100k.drive` at trunk and at head, with `RUBRIX_NO_VSYNC=1` in `--release`, interleaved, five runs each, alone, through `perf-run.sh`. The find-field frame p95 is the p95 of `editor-find-100k.csv`, and its bar is 3.0 ms. The `final` time of a plain count must stay at or under 250 ms. The `editor-100k-type.csv` p95 at head must stay within 10% of trunk.

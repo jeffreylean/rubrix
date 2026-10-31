@@ -7,6 +7,7 @@ mod commands;
 mod damage;
 mod diff_view;
 mod editor;
+pub mod find;
 mod frame;
 mod ime;
 mod keymap;
@@ -126,6 +127,13 @@ impl Plugin for RubrixPlugin {
                 commands::match_brackets
                     .after(EditSystems::Apply)
                     .run_if(any_with_component::<EditDoc>),
+            )
+            .add_systems(
+                PreUpdate,
+                find::follow
+                    .after(EditSystems::Apply)
+                    .after(InputFocusSystems::Dispatch)
+                    .run_if(any_with_component::<find::FindBar>),
             )
             .add_systems(
                 Update,

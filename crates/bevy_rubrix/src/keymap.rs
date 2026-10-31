@@ -518,6 +518,10 @@ const SHARED: &[Entry] = &[
         "shift+alt+a",
         Action::Run(crate::commands::toggle_block_comment),
     ),
+    ("mod+f", Action::Run(crate::find::open_find)),
+    ("mod+alt+f", Action::Run(crate::find::open_replace)),
+    ("mod+g", Action::Run(crate::find::next)),
+    ("mod+shift+g", Action::Run(crate::find::previous)),
 ];
 
 /// Linux and Windows conventions.

@@ -1,0 +1,17 @@
+page editor
+wait 120
+click 273.0 126
+key mod+f
+wait 5
+click 930 151
+wait 5
+type \{\n\s+let
+wait 20
+# grep -Pzo '\{\n\s+let' large.rs.txt | grep -c let -> 281
+log find
+expect find open query "\\{\\n\\s+let" 1 of 281
+log caret
+expect caret 1 primary 1 15:27..16:8 visible true
+wait 30
+screenshot e5-multiline.png
+exit

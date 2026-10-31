@@ -141,7 +141,7 @@ impl<'w> Tx<'w> {
         });
     }
 
-    fn transact(
+    pub(crate) fn transact(
         &mut self,
         edit: &mut dyn FnMut(
             &mut Editor,
