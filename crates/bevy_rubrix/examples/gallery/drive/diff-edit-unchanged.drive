@@ -1,0 +1,35 @@
+page diff
+wait 30
+click 586 68
+wait 120
+click 1178 68
+wait 10
+log diff-edit
+expect diff-edit none
+click 420 403
+wait 30
+log diff
+expect diff files 1 rows 3020 stacked
+move 740 400
+scroll 0 100000000
+scroll 0 -17117
+wait 10
+log diff
+expect diff first 1005 line 0 old 3001 new 2995
+click 1250 210
+key end
+wait 5
+log diff-edit
+expect diff-edit file 0 hunks 3 undo 0 rediff - marks - line 3000 hunk -
+type y
+wait 5
+log diff-edit
+expect diff-edit file 0 hunks 4 undo 1 rediff
+expect diff-edit line 3000 hunk @@ -3003,7 +2997,7 @@
+expect diff-edit stale 0
+log diff
+expect diff files 1 rows 3021 stacked
+log rows
+wait 30
+screenshot e7-unchanged.png
+exit

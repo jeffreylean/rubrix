@@ -31,13 +31,15 @@ use rubrix_diff::{
 use rubrix_highlight::{Highlights, Lang, Run, Stream, highlight};
 
 use crate::code_view::Overflow;
+use crate::diff_edit;
+use crate::editor::EditDoc;
 use crate::rows::{LINE_HEIGHT, Shown, digits, filling, line_spans};
 use crate::select::{self, Column, RowText, Selectable, selectable};
 use crate::tokens::{Styles, SyntaxTokens, Tint};
 
 const OVERSCAN: f32 = 100.0;
 
-const CONTEXT: u32 = 3;
+pub(crate) const CONTEXT: u32 = 3;
 
 const HATCH_SIZE: u32 = 8;
 
@@ -58,6 +60,7 @@ struct SourceFile {
     old: Runs,
     new: Runs,
     digits: usize,
+    lang: Lang,
 }
 
 /// A side's runs. A patch lexes each hunk apart, from the start
@@ -127,21 +130,26 @@ impl DiffSource {
     ///
     /// Panics if either text is 4 GiB or longer.
     pub fn texts(path: &str, old: &str, new: &str) -> DiffSource {
-        let change = match (old.is_empty(), new.is_empty()) {
-            (true, false) => FileChange::Added,
-            (false, true) => FileChange::Deleted,
-            _ => FileChange::Modified,
-        };
-        let meta = Meta {
-            change,
-            old_name: Some(path.to_owned()),
-            new_name: Some(path.to_owned()),
-            ..Meta::default()
-        };
-        let diff = diff_texts(old, new, CONTEXT)
-            .with_meta(meta)
-            .expect("the change kind follows the empty sides");
-        DiffSource(Arc::new([SourceFile::new(diff)]))
+        DiffSource::pairs([(path, old, new)])
+    }
+
+    /// One file per `(path, old, new)` text pair, in order, each as
+    /// [`DiffSource::texts`] makes it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any text is 4 GiB or longer.
+    pub fn pairs<'a>(
+        pairs: impl IntoIterator<Item = (&'a str, &'a str, &'a str)>,
+    ) -> DiffSource {
+        DiffSource(
+            pairs
+                .into_iter()
+                .map(|(path, old, new)| {
+                    SourceFile::pair(path, old, new)
+                })
+                .collect(),
+        )
     }
 
     /// No files.
@@ -162,6 +170,24 @@ impl PartialEq for DiffSource {
 }
 
 impl SourceFile {
+    fn pair(path: &str, old: &str, new: &str) -> SourceFile {
+        let change = match (old.is_empty(), new.is_empty()) {
+            (true, false) => FileChange::Added,
+            (false, true) => FileChange::Deleted,
+            _ => FileChange::Modified,
+        };
+        let meta = Meta {
+            change,
+            old_name: Some(path.to_owned()),
+            new_name: Some(path.to_owned()),
+            ..Meta::default()
+        };
+        let diff = diff_texts(old, new, CONTEXT)
+            .with_meta(meta)
+            .expect("the change kind follows the empty sides");
+        SourceFile::new(diff)
+    }
+
     fn new(mut diff: FileDiff) -> SourceFile {
         realign(&mut diff);
         let path =
@@ -171,7 +197,7 @@ impl SourceFile {
             .find(|lines| !lines.is_empty());
         let first = shown.map_or("", |lines| lines.line(0));
         let lang = Lang::detect(path, first);
-        let digits = digits(last_number(&diff) as usize);
+        let digits = number_width(&diff);
         let side = |lines: &Lines, len: fn(&Hunk) -> u32| {
             if diff.is_partial() {
                 let hunks =
@@ -186,15 +212,13 @@ impl SourceFile {
             new: side(diff.new_lines(), Hunk::new_len),
             diff,
             digits,
+            lang,
         }
     }
+}
 
-    fn side(&self, lane: Lane) -> (&Lines, &Runs) {
-        match lane {
-            Lane::Old => (self.diff.old_lines(), &self.old),
-            Lane::New => (self.diff.new_lines(), &self.new),
-        }
-    }
+pub(crate) fn number_width(diff: &FileDiff) -> usize {
+    digits(last_number(diff) as usize)
 }
 
 fn last_number(diff: &FileDiff) -> u32 {
@@ -233,6 +257,7 @@ pub fn diff_view(source: impl Into<Prop<DiffSource>>) -> DiffView {
         row_colours: Prop::Value(false),
         overflow: Prop::Value(Overflow::Scroll),
         limit: Prop::Value(None),
+        edit: Prop::Value(false),
     }
 }
 
@@ -244,6 +269,7 @@ pub struct DiffView {
     row_colours: Prop<bool>,
     overflow: Prop<Overflow>,
     limit: Prop<Option<u32>>,
+    edit: Prop<bool>,
 }
 
 impl DiffView {
@@ -298,6 +324,17 @@ impl DiffView {
         self.limit = limit.into();
         self
     }
+
+    /// Whether a press on a new-side line puts a caret there that
+    /// edits the file. Each file's new side is an [`EditDoc`] of its
+    /// own, so undo is per file, and each keystroke re-diffs only the
+    /// hunks near it. Off when unset. Old-side lines stay read-only,
+    /// selectable and copyable, and so does every line of a file from
+    /// a patch, of a deleted or binary file, and of a compact view.
+    pub fn edit(mut self, on: impl Into<Prop<bool>>) -> Self {
+        self.edit = on.into();
+        self
+    }
 }
 
 /// One row of a diff view, by its index from the top.
@@ -315,6 +352,7 @@ pub enum DiffRow {
 /// What a diff view shows, on the view's root entity. The view's
 /// buttons call its methods, and so may an app.
 #[derive(Component)]
+#[component(on_remove = diff_edit::drop_docs)]
 pub struct DiffDoc {
     source: DiffSource,
     files: Vec<FileRows>,
@@ -330,12 +368,57 @@ pub struct DiffDoc {
     revision: u64,
     list: Option<Entity>,
     pending_scroll: Option<usize>,
+    pub(crate) reshapes: u64,
+    pub(crate) edit: diff_edit::Session,
 }
 
-struct FileRows {
-    rows: Rows,
-    expansion: Expansion,
+pub(crate) struct FileRows {
+    pub(crate) rows: Rows,
+    pub(crate) expansion: Expansion,
     collapsed: bool,
+    pub(crate) live: Option<Live>,
+}
+
+impl FileRows {
+    fn diff<'a>(&'a self, source: &'a FileDiff) -> &'a FileDiff {
+        self.live.as_ref().map_or(source, |live| &live.diff)
+    }
+}
+
+pub(crate) struct Live {
+    pub(crate) diff: FileDiff,
+    pub(crate) doc: Entity,
+}
+
+#[derive(Clone, Copy)]
+struct FileRef<'a> {
+    source: &'a SourceFile,
+    diff: &'a FileDiff,
+    new: Option<&'a EditDoc>,
+}
+
+impl<'a> FileRef<'a> {
+    fn lines(&self, lane: Lane) -> &'a Lines {
+        match lane {
+            Lane::Old => self.diff.old_lines(),
+            Lane::New => self.diff.new_lines(),
+        }
+    }
+
+    fn runs(&self, lane: Lane, index: u32) -> &'a [Run] {
+        match (lane, self.new) {
+            (Lane::New, Some(doc)) => doc.runs(index as usize),
+            (Lane::New, None) => self.source.new.line(index),
+            (Lane::Old, _) => self.source.old.line(index),
+        }
+    }
+
+    fn digits(&self) -> usize {
+        if self.diff.is_partial() {
+            return self.source.digits;
+        }
+        number_width(self.diff)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -368,6 +451,8 @@ impl DiffDoc {
             revision: 0,
             list: None,
             pending_scroll: None,
+            reshapes: 0,
+            edit: diff_edit::Session::default(),
         }
     }
 
@@ -448,8 +533,8 @@ impl DiffDoc {
             return;
         };
         shown.expansion.reveal(hunk, side, Expansion::STEP);
-        shown.rows =
-            rows(&self.source.0[file].diff, layout, &shown.expansion);
+        let diff = shown.diff(&self.source.0[file].diff);
+        shown.rows = rows(diff, layout, &shown.expansion);
         self.index();
     }
 
@@ -459,8 +544,13 @@ impl DiffDoc {
         self.index();
     }
 
-    fn show(&mut self, source: DiffSource) {
+    fn show(&mut self, source: DiffSource) -> Vec<Entity> {
         let layout = self.layout();
+        let docs = self
+            .files
+            .iter()
+            .filter_map(|file| Some(file.live.as_ref()?.doc))
+            .collect();
         self.files = source
             .0
             .iter()
@@ -468,12 +558,14 @@ impl DiffDoc {
                 rows: rows(&file.diff, layout, &Expansion::new()),
                 expansion: Expansion::new(),
                 collapsed: false,
+                live: None,
             })
             .collect();
         self.source = source;
         self.pending_scroll = None;
         self.lists_built += 1;
         self.index();
+        docs
     }
 
     fn relayout_keeping(
@@ -487,7 +579,11 @@ impl DiffDoc {
         for (shown, file) in
             self.files.iter_mut().zip(self.source.0.iter())
         {
-            shown.rows = rows(&file.diff, layout, &shown.expansion);
+            shown.rows = rows(
+                shown.diff(&file.diff),
+                layout,
+                &shown.expansion,
+            );
         }
         self.index();
         self.pending_scroll =
@@ -502,6 +598,11 @@ impl DiffDoc {
 
     fn index(&mut self) {
         self.revision += 1;
+        self.reshapes += 1;
+        self.place_files();
+    }
+
+    pub(crate) fn place_files(&mut self) {
         self.header_rows.clear();
         let mut at = 0;
         for file in &self.files {
@@ -567,17 +668,71 @@ impl DiffDoc {
         (index < self.len).then_some(index)
     }
 
-    fn file(&self, file: usize) -> &SourceFile {
-        &self.source.0[file]
+    /// File `file`'s diff: its live diff while its new side is
+    /// edited, else the source's.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `file` is past the last file.
+    pub fn diff(&self, file: usize) -> &FileDiff {
+        self.files[file].diff(&self.source.0[file].diff)
     }
 
-    fn body(&self, index: usize) -> Option<(&SourceFile, Row)> {
+    pub(crate) fn files(&self) -> &[FileRows] {
+        &self.files
+    }
+
+    pub(crate) fn file_mut(&mut self, file: usize) -> &mut FileRows {
+        &mut self.files[file]
+    }
+
+    pub(crate) fn body_start(&self, file: usize) -> usize {
+        self.header_rows[file] + 1
+    }
+
+    pub(crate) fn list(&self) -> Option<Entity> {
+        self.list
+    }
+
+    pub(crate) fn source_diff(
+        &self,
+        file: usize,
+    ) -> (&FileDiff, Lang) {
+        let source = &self.source.0[file];
+        (&source.diff, source.lang)
+    }
+
+    fn file(&self, file: usize) -> FileRef<'_> {
+        FileRef {
+            source: &self.source.0[file],
+            diff: self.diff(file),
+            new: None,
+        }
+    }
+
+    fn body(&self, index: usize) -> Option<(FileRef<'_>, Row)> {
         match self.row(index)? {
             DiffRow::Body { file, row } => {
                 Some((self.file(file), row))
             }
             DiffRow::Header { .. } | DiffRow::More { .. } => None,
         }
+    }
+
+    fn body_in<'w>(
+        &'w self,
+        world: &'w World,
+        index: usize,
+    ) -> Option<(FileRef<'w>, Row)> {
+        let DiffRow::Body { file, row } = self.row(index)? else {
+            return None;
+        };
+        let mut shown = self.file(file);
+        shown.new = self.files[file]
+            .live
+            .as_ref()
+            .and_then(|live| world.get::<EditDoc>(live.doc));
+        Some((shown, row))
     }
 
     fn sideways(&self) -> bool {
@@ -589,15 +744,15 @@ impl DiffDoc {
     Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord,
 )]
 pub(crate) struct Spot {
-    row: usize,
-    byte: usize,
+    pub(crate) row: usize,
+    pub(crate) byte: usize,
 }
 
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DiffLine {
-    view: Entity,
-    index: usize,
-    column: Column,
+    pub(crate) view: Entity,
+    pub(crate) index: usize,
+    pub(crate) column: Column,
 }
 
 fn covered(
@@ -660,7 +815,7 @@ impl Selectable for DiffDoc {
             Column::Old => (Lane::Old, row.old_line()?, ""),
             Column::New => (Lane::New, row.new_line()?, ""),
         };
-        let line = file.side(lane).0.line(line.index);
+        let line = file.lines(lane).line(line.index);
         Some(RowText { lead, line })
     }
 
@@ -710,7 +865,7 @@ pub struct DiffRowAt {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Lane {
+pub(crate) enum Lane {
     Old,
     New,
 }
@@ -779,6 +934,7 @@ struct RowStyle {
     dim: Color,
     header: Color,
     selected: Color,
+    caret: Color,
 }
 
 impl RowStyle {
@@ -800,6 +956,7 @@ impl RowStyle {
             dim: theme.tone(Tone::Dim),
             header: theme.fill(),
             selected: select::selected_colour(theme),
+            caret: theme.tone(Tone::Accent),
         }
     }
 
@@ -831,8 +988,10 @@ where
         let mut view = cx.world.entity_mut(root);
         view.insert(DiffDoc::new());
         select::attach::<DiffDoc>(&mut view);
+        diff_edit::attach(&mut view, style.caret);
         cx.effect(root, self.source, |world, root, source| {
-            doc_mut(world, root).show(source.clone());
+            let docs = doc_mut(world, root).show(source.clone());
+            diff_edit::restart(world, root, docs);
         });
         cx.effect(root, self.layout, |world, root, &layout| {
             reshape(world, root, |doc| doc.layout = layout);
@@ -841,10 +1000,17 @@ where
             reshape(world, root, |doc| doc.compact = compact);
         });
         cx.effect(root, self.row_colours, |world, root, &on| {
-            doc_mut(world, root).row_colours = on;
+            let mut doc = doc_mut(world, root);
+            doc.row_colours = on;
+            doc.reshapes += 1;
         });
         cx.effect(root, self.overflow, |world, root, &overflow| {
-            doc_mut(world, root).overflow = overflow;
+            let mut doc = doc_mut(world, root);
+            doc.overflow = overflow;
+            doc.reshapes += 1;
+        });
+        cx.effect(root, self.edit, |world, root, &on| {
+            diff_edit::set(world, root, on);
         });
         cx.effect(root, self.limit, |world, root, &limit| {
             doc_mut(world, root).set_limit(limit);
@@ -920,18 +1086,25 @@ where
 fn row_signal<V: Default + 'static>(
     root: Entity,
     slot: RowSlot,
-    read: impl Fn(&DiffDoc, usize) -> V + Send + Sync + 'static,
+    read: impl Fn(&World, &DiffDoc, usize) -> V + Send + Sync + 'static,
 ) -> Signal<V> {
     let index = slot.index();
+    let at = slot.index();
     let mut moved = slot.index();
-    let mut changed = component::<DiffDoc, ()>(root, |_| ());
+    let mut stamp = None;
     derived(move |world| {
         world
             .get::<DiffDoc>(root)
-            .map(|doc| read(doc, index.get(world)))
+            .map(|doc| read(world, doc, index.get(world)))
             .unwrap_or_default()
     })
-    .when(move |world| moved.changed(world) | changed.changed(world))
+    .when(move |world| {
+        let moved = moved.changed(world);
+        let touched = world.get::<DiffDoc>(root).is_some_and(|doc| {
+            diff_edit::fires(world, doc, || at.get(world), &mut stamp)
+        });
+        moved | touched
+    })
 }
 
 fn slot_view<T>(
@@ -943,7 +1116,7 @@ fn slot_view<T>(
 where
     T: Tokens,
 {
-    let kind = row_signal(root, slot, |doc, index| {
+    let kind = row_signal(root, slot, |_, doc, index| {
         doc.row(index).map(Kind::of)
     });
     let style = style.clone();
@@ -1004,22 +1177,25 @@ where
 {
     let spans = style.clone();
     let text = code(
-        row_signal(root, slot, move |doc, index| {
-            doc.body(index).map_or_else(Vec::new, |(file, row)| {
-                let colours = compact && doc.row_colours;
-                stacked_spans(file, row, &spans, compact, colours)
-            })
+        row_signal(root, slot, move |world, doc, index| {
+            doc.body_in(world, index).map_or_else(
+                Vec::new,
+                |(file, row)| {
+                    let colours = compact && doc.row_colours;
+                    stacked_spans(file, row, &spans, compact, colours)
+                },
+            )
         }),
         style,
     )
     .wrap(wraps(root));
     let tints = style.clone();
-    let fill = row_signal(root, slot, move |doc, index| {
-        match doc.body(index) {
-            Some((_, Row::Deletion { .. })) => tints.delete.row,
-            Some((_, Row::Addition { .. })) => tints.add.row,
-            _ => Color::NONE,
-        }
+    let fill = row_signal(root, slot, move |_, doc, index| match doc
+        .body(index)
+    {
+        Some((_, Row::Deletion { .. })) => tints.delete.row,
+        Some((_, Row::Addition { .. })) => tints.add.row,
+        _ => Color::NONE,
     });
     let text = slot.sideways(selectable(
         text,
@@ -1034,9 +1210,9 @@ where
     if compact {
         return row((text,)).gap(0.0).fill(fill).boxed();
     }
-    let numbers = row_signal(root, slot, |doc, index| {
+    let numbers = row_signal(root, slot, |_, doc, index| {
         doc.body(index).map_or_else(String::new, |(file, row)| {
-            let width = file.digits;
+            let width = file.digits();
             let old = number(row.old_line(), width);
             let new = number(row.new_line(), width);
             format!("{old} {new}")
@@ -1074,34 +1250,36 @@ fn side<T>(
 where
     T: Tokens,
 {
-    let numbers = row_signal(root, slot, move |doc, index| {
+    let numbers = row_signal(root, slot, move |_, doc, index| {
         doc.body(index).map_or_else(String::new, |(file, row)| {
-            number(line_of(row, lane), file.digits)
+            number(line_of(row, lane), file.digits())
         })
     });
     let spans = style.clone();
     let text = code(
-        row_signal(root, slot, move |doc, index| {
-            doc.body(index).map_or_else(Vec::new, |(file, row)| {
-                side_spans(file, row, lane, &spans)
-            })
+        row_signal(root, slot, move |world, doc, index| {
+            doc.body_in(world, index)
+                .map_or_else(Vec::new, |(file, row)| {
+                    side_spans(file, row, lane, &spans)
+                })
         }),
         style,
     )
     .wrap(wraps(root));
     let tints = style.clone();
-    let fill = row_signal(root, slot, move |doc, index| {
-        match doc.body(index).map(|(_, row)| (row, lane)) {
-            Some((
-                Row::Paired { .. } | Row::Deletion { .. },
-                Lane::Old,
-            ))
-            | Some((
-                Row::Paired { .. } | Row::Addition { .. },
-                Lane::New,
-            )) => tints.tint(lane).row,
-            _ => Color::NONE,
-        }
+    let fill = row_signal(root, slot, move |_, doc, index| match doc
+        .body(index)
+        .map(|(_, row)| (row, lane))
+    {
+        Some((
+            Row::Paired { .. } | Row::Deletion { .. },
+            Lane::Old,
+        ))
+        | Some((
+            Row::Paired { .. } | Row::Addition { .. },
+            Lane::New,
+        )) => tints.tint(lane).row,
+        _ => Color::NONE,
     });
     let column = match lane {
         Lane::Old => Column::Old,
@@ -1122,7 +1300,7 @@ where
         .min_width(px(0.0))
         .fill(fill);
     let hatch = style.faint.with_alpha(HATCH_ALPHA);
-    let empty = row_signal(root, slot, move |doc, index| {
+    let empty = row_signal(root, slot, move |_, doc, index| {
         doc.body(index).is_some_and(|(_, row)| {
             !matches!(row, Row::Gap { .. })
                 && line_of(row, lane).is_none()
@@ -1177,7 +1355,9 @@ fn number(line: Option<LineRef>, width: usize) -> String {
     }
 }
 
-fn stacked_line(row: Row) -> Option<(Lane, LineRef, &'static str)> {
+pub(crate) fn stacked_line(
+    row: Row,
+) -> Option<(Lane, LineRef, &'static str)> {
     match row {
         Row::Deletion { old } => Some((Lane::Old, old, "- ")),
         Row::Addition { new } => Some((Lane::New, new, "+ ")),
@@ -1189,7 +1369,7 @@ fn stacked_line(row: Row) -> Option<(Lane, LineRef, &'static str)> {
 }
 
 fn stacked_spans(
-    file: &SourceFile,
+    file: FileRef,
     row: Row,
     style: &RowStyle,
     compact: bool,
@@ -1218,7 +1398,7 @@ fn stacked_spans(
 }
 
 fn side_spans(
-    file: &SourceFile,
+    file: FileRef,
     row: Row,
     lane: Lane,
     style: &RowStyle,
@@ -1229,20 +1409,19 @@ fn side_spans(
 }
 
 fn line_text(
-    file: &SourceFile,
+    file: FileRef,
     row: Row,
     lane: Lane,
     line: LineRef,
     style: &RowStyle,
 ) -> Vec<Span> {
-    let (lines, highlights) = file.side(lane);
-    let text = lines.line(line.index);
+    let text = file.lines(lane).line(line.index);
     let spans =
-        line_spans(text, highlights.line(line.index), &style.styles);
+        line_spans(text, file.runs(lane, line.index), &style.styles);
     let marks = match row {
         Row::Paired { .. }
         | Row::Deletion { .. }
-        | Row::Addition { .. } => row.words(&file.diff),
+        | Row::Addition { .. } => row.words(file.diff),
         _ => None,
     };
     let Some((old, new)) = marks else {
@@ -1308,10 +1487,10 @@ where
 {
     let spans = style.clone();
     let text = code(
-        row_signal(root, slot, move |doc, index| {
+        row_signal(root, slot, move |_, doc, index| {
             match doc.row(index) {
                 Some(DiffRow::Header { file }) => header_spans(
-                    &doc.file(file).diff,
+                    doc.diff(file),
                     doc.is_collapsed(file),
                     &spans,
                 ),
@@ -1403,13 +1582,17 @@ where
     T: Tokens,
 {
     let text = code(
-        row_signal(root, slot, |doc, index| match doc.body(index) {
-            Some((_, Row::Gap { hidden, .. })) => {
-                let lines =
-                    if hidden == 1 { "line" } else { "lines" };
-                vec![Span::new(format!("⋯ {hidden} hidden {lines}"))]
+        row_signal(root, slot, |_, doc, index| {
+            match doc.body(index) {
+                Some((_, Row::Gap { hidden, .. })) => {
+                    let lines =
+                        if hidden == 1 { "line" } else { "lines" };
+                    vec![Span::new(format!(
+                        "⋯ {hidden} hidden {lines}"
+                    ))]
+                }
+                _ => Vec::new(),
             }
-            _ => Vec::new(),
         }),
         style,
     )
@@ -1436,15 +1619,15 @@ fn expand<T>(
 where
     T: Tokens,
 {
-    let display = row_signal(root, slot, move |doc, index| match doc
-        .body(index)
-    {
-        Some((_, Row::Gap { up, down, .. }))
-            if offers(side, up, down) =>
-        {
-            Display::Flex
+    let display = row_signal(root, slot, move |_, doc, index| {
+        match doc.body(index) {
+            Some((_, Row::Gap { up, down, .. }))
+                if offers(side, up, down) =>
+            {
+                Display::Flex
+            }
+            _ => Display::None,
         }
-        _ => Display::None,
     });
     button(label(text))
         .display(display)
@@ -1477,13 +1660,14 @@ fn more<T>(root: Entity, slot: RowSlot) -> AnyView<Bevy, T>
 where
     T: Tokens,
 {
-    let text =
-        row_signal(root, slot, |doc, index| match doc.row(index) {
+    let text = row_signal(root, slot, |_, doc, index| {
+        match doc.row(index) {
             Some(DiffRow::More { lines }) => {
                 format!("... {lines} more lines")
             }
             _ => String::new(),
-        });
+        }
+    });
     button(label(text))
         .rules(ghost)
         .on_activate(move |world| doc_mut(world, root).show_all())
