@@ -163,7 +163,6 @@ pub fn open(
     Ok(())
 }
 
-/// The page's answers.
 pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
     let doc = world.get_resource::<EditorFile>()?.doc;
     match ask {
@@ -172,9 +171,6 @@ pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
     }
 }
 
-/// The caret, text and undo answers of an editable `doc`, for each
-/// page that shows one. Lines and columns count from 1, and a column
-/// counts chars from the line's start.
 pub fn answer_doc(
     world: &mut World,
     doc: Entity,
@@ -196,8 +192,8 @@ pub fn answer_doc(
                 .map(|s| {
                     format!(
                         "{}..{}",
-                        place(buffer, s.start()),
-                        place(buffer, s.end())
+                        one_based_line_col(buffer, s.start()),
+                        one_based_line_col(buffer, s.end())
                     )
                 })
                 .collect::<Vec<_>>();
@@ -221,9 +217,7 @@ pub fn answer_doc(
     })
 }
 
-/// Byte `at` of `buffer` as `line:column`, both from 1, the column in
-/// chars.
-pub fn place(buffer: &Buffer, at: usize) -> String {
+pub fn one_based_line_col(buffer: &Buffer, at: usize) -> String {
     let line = buffer.line_of(at);
     let column =
         buffer.slice(buffer.line_start(line)..at).chars().count();

@@ -327,10 +327,10 @@ pub(crate) fn draw(
                 );
             }
         }
-        drop_hidden(&mut scene.rects, |over, under| {
+        drop_covered_by_later(&mut scene.rects, |over, under| {
             over.0 == under.0 && over.1.alpha() >= 1.0
         });
-        drop_hidden(&mut scene.tags, |over, under| {
+        drop_covered_by_later(&mut scene.tags, |over, under| {
             over.0 == under.0
                 && over.3 == under.3
                 && over.1.chars().count() >= under.1.chars().count()
@@ -497,15 +497,13 @@ fn tint(
     }
 }
 
-/// Drops each item that a later one, drawn over it, hides whole, as
-/// when carets share a byte, so the view keeps one node per spot.
-fn drop_hidden<T>(
+fn drop_covered_by_later<T>(
     items: &mut Vec<T>,
-    hides: impl Fn(&T, &T) -> bool,
+    later_covers: impl Fn(&T, &T) -> bool,
 ) {
     let mut kept: Vec<T> = Vec::with_capacity(items.len());
     for item in items.drain(..).rev() {
-        if !kept.iter().any(|over| hides(over, &item)) {
+        if !kept.iter().any(|later| later_covers(later, &item)) {
             kept.push(item);
         }
     }

@@ -31,7 +31,7 @@ use bevy_rubrix::{
 };
 
 use super::code::{LARGE_RS, stress};
-use super::editor::{answer_doc, place};
+use super::editor::{answer_doc, one_based_line_col};
 use super::{Ask, control, wrapping};
 use crate::{Build, PageView, Paste};
 
@@ -345,12 +345,12 @@ pub fn remote_line(world: &mut World) -> String {
         .enumerate()
         .map(|(i, caret)| {
             let at = if caret.anchor == caret.head {
-                place(buffer, caret.head)
+                one_based_line_col(buffer, caret.head)
             } else {
                 format!(
                     "{}..{}",
-                    place(buffer, caret.anchor),
-                    place(buffer, caret.head)
+                    one_based_line_col(buffer, caret.anchor),
+                    one_based_line_col(buffer, caret.head)
                 )
             };
             let label = &caret.label;
@@ -428,8 +428,8 @@ pub fn markers_line(world: &World) -> String {
             format!(
                 "{} {}..{}",
                 format!("{severity:?}").to_lowercase(),
-                place(buffer, range.start),
-                place(buffer, range.end)
+                one_based_line_col(buffer, range.start),
+                one_based_line_col(buffer, range.end)
             )
         })
         .collect();
