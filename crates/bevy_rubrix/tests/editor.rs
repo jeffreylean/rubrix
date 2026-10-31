@@ -2,7 +2,7 @@ mod support;
 
 use std::time::Instant;
 
-use bevy::app::App;
+use bevy::app::{App, PostUpdate};
 use bevy::camera::visibility::Visibility;
 use bevy::clipboard::{ClipboardError, ClipboardRead};
 use bevy::color::Color;
@@ -10,6 +10,8 @@ use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::Children;
 use bevy::ecs::message::Messages;
 use bevy::ecs::resource::Resource;
+use bevy::ecs::schedule::IntoScheduleConfigs;
+use bevy::ecs::system::{Query, ResMut};
 use bevy::ecs::world::World;
 use bevy::input::keyboard::{Key, KeyCode};
 use bevy::input_focus::{FocusCause, InputFocus};
@@ -24,9 +26,9 @@ use bevy_fynix::views::{
 use bevy_fynix::{ViewExt, keyed, mount, resource};
 use bevy_rubrix::{
     Action, CaretBlink, ClipboardProvider, Command, EditClipboard,
-    EditDoc, EditRequest, EditView, EditorChanged, Keymap, Lang,
-    Mark, MarkKind, MarkLayer, Marks, Motion, Request, Selection,
-    Selections, code_editor,
+    EditDoc, EditRequest, EditSystems, EditView, EditorChanged,
+    Keymap, Lang, Mark, MarkKind, MarkLayer, Marks, Motion, Request,
+    Selection, Selections, code_editor,
 };
 use rubrix_highlight::{Run, highlight, spans};
 use support::{
@@ -828,6 +830,57 @@ fn down_moves_by_visual_row_in_wrap_mode() {
     assert_eq!(
         doc(&app, entity).editor().selections().primary().head,
         once
+    );
+}
+
+/// The frames in which a doc changed, and how many of those ended
+/// with the primary caret out of sight.
+#[derive(Resource, Default)]
+struct Keystrokes {
+    seq: u64,
+    frames: u32,
+    hidden: u32,
+}
+
+fn count_keystrokes(
+    views: Query<&EditView>,
+    docs: Query<&EditDoc>,
+    mut strokes: ResMut<Keystrokes>,
+) {
+    for view in &views {
+        let Ok(doc) = docs.get(view.doc()) else {
+            continue;
+        };
+        if doc.seq() > strokes.seq {
+            strokes.seq = doc.seq();
+            strokes.frames += 1;
+            strokes.hidden += u32::from(!view.caret_shown());
+        }
+    }
+}
+
+#[test]
+fn a_join_onto_a_long_line_shows_its_caret_in_the_keystroke_frame() {
+    let mut app = laid_out();
+    let long = "x".repeat(300);
+    let source = format!("{long}\n\nend\n");
+    let (view, entity) =
+        mount_editor(&mut app, Lang::Plain, &source, 600.0, 300.0);
+    app.init_resource::<Keystrokes>().add_systems(
+        PostUpdate,
+        count_keystrokes.after(EditSystems::Draw),
+    );
+    settle(&mut app);
+    caret_at(&mut app, entity, view, long.len() + 1);
+    focus(&mut app, view);
+    settle(&mut app);
+    key_with(&mut app, &[], KeyCode::Backspace, Key::Backspace);
+    assert_eq!(text(&app, entity), format!("{long}\nend\n"));
+    let strokes = app.world().resource::<Keystrokes>();
+    assert_eq!(
+        (strokes.frames, strokes.hidden),
+        (1, 0),
+        "the view scrolls to the line's end in the frame it joins"
     );
 }
 

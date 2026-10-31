@@ -13,17 +13,32 @@ use rubrix_highlight::LineEdit;
 /// A test fails when fynix changes it.
 pub(crate) const BUILT_MAX: u32 = 199;
 
-/// The list splices one change's line edits make, in order, as
-/// `(at, removed, inserted)` for `VirtualList::splice`. Sequential
-/// coordinates need no arithmetic. A 1:1 edit, a typed letter, makes
-/// none: it changes no count and no index, and a splice would reset
-/// its row to the estimated height for a frame, a jump under
-/// `Overflow::Wrap`.
-fn row_splices(
-    edits: &[LineEdit],
-) -> impl Iterator<Item = (usize, usize, usize)> + '_ {
+/// The rows one change's line edits replace, in order, in the same
+/// sequential coordinates. An edit's first line keeps its row: it
+/// still starts the text that replaced it, as a typed letter's line
+/// does, so its row keeps its height and width and reads again. A
+/// join or an Enter replaces only the rows past it. A 1:1 edit, a
+/// typed letter, replaces none.
+pub(crate) fn row_edits(edits: &[LineEdit]) -> Vec<LineEdit> {
     edits
         .iter()
+        .filter(|edit| edit.removed > 1 || edit.inserted > 1)
+        .map(|edit| LineEdit {
+            first: edit.first + 1,
+            removed: edit.removed - 1,
+            inserted: edit.inserted - 1,
+        })
+        .collect()
+}
+
+/// The list splices one change's line edits make, in order, as
+/// `(at, removed, inserted)` for `VirtualList::splice`. A row edit
+/// that replaces one row with one changes no count and no index, and
+/// a splice would reset its row to the estimated height for a frame,
+/// a jump under `Overflow::Wrap`, so it makes none.
+fn row_splices(edits: &[LineEdit]) -> Vec<(usize, usize, usize)> {
+    row_edits(edits)
+        .into_iter()
         .filter(|edit| edit.removed != 1 || edit.inserted != 1)
         .map(|edit| {
             (
@@ -32,6 +47,7 @@ fn row_splices(
                 edit.inserted as usize,
             )
         })
+        .collect()
 }
 
 /// Splices `list` for one change of a doc that has `rows` rows after
@@ -73,7 +89,11 @@ pub(crate) fn reach(
     caret_line: u32,
     lines: u32,
 ) -> u32 {
-    let first = shift_line(first_visible as u32, edits, End::Start);
+    let first = shift_line(
+        first_visible as u32,
+        &row_edits(edits),
+        End::Start,
+    );
     first.max(caret_line).saturating_add(BUILT_MAX).min(lines)
 }
 
@@ -355,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn shift_line_moves_the_first_row_as_a_splice_does() {
+    fn shift_line_moves_the_first_row_as_the_row_splices_do() {
         let mut seed: u64 = 7;
         let mut next = |below: u64| {
             seed ^= seed << 13;
@@ -374,9 +394,15 @@ mod tests {
                 let removed =
                     1 + next((rows - at).min(5) as u64) as usize;
                 let inserted = 1 + next(5) as usize;
-                spliced = spliced_first(
-                    spliced, rows, at, removed, inserted,
-                );
+                if removed != inserted || removed > 2 {
+                    spliced = spliced_first(
+                        spliced,
+                        rows,
+                        at + 1,
+                        removed - 1,
+                        inserted - 1,
+                    );
+                }
                 rows = rows - removed + inserted;
                 edits.push(edit(
                     at as u32,
@@ -389,7 +415,12 @@ mod tests {
                 }
             }
             assert_eq!(
-                shift_line(first as u32, &edits, End::Start) as usize,
+                (shift_line(
+                    first as u32,
+                    &row_edits(&edits),
+                    End::Start
+                ) as usize)
+                    .min(rows - 1),
                 spliced.min(rows - 1),
                 "round {round}: first {first} of {count}, edits \
                  {edits:?}"
@@ -406,12 +437,14 @@ mod tests {
     }
 
     #[test]
-    fn a_typed_letter_splices_no_rows() {
-        let edits = [edit(2, 1, 1), edit(7, 1, 2), edit(9, 3, 1)];
-        assert_eq!(
-            row_splices(&edits).collect::<Vec<_>>(),
-            [(7, 1, 2), (9, 3, 1)]
-        );
+    fn an_edit_keeps_its_first_row_and_a_typed_letter_splices_none() {
+        let edits = [
+            edit(2, 1, 1),
+            edit(7, 1, 2),
+            edit(9, 3, 1),
+            edit(20, 2, 2),
+        ];
+        assert_eq!(row_splices(&edits), [(8, 0, 1), (10, 2, 0)]);
     }
 
     #[test]

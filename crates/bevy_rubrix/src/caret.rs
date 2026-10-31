@@ -34,7 +34,7 @@ use rubrix_edit::{Buffer, Layout, graphemes};
 use rubrix_highlight::LineEdit;
 
 use crate::code_view::Overflow;
-use crate::damage::{End, Shift};
+use crate::damage::{End, Shift, row_edits};
 use crate::editor::{EditDoc, EditInput, EditLine, EditView};
 use crate::keymap::content;
 use crate::marks::{MarkKind, Marks};
@@ -142,13 +142,16 @@ impl Built {
         self.rows.sort_unstable_by_key(|row| row.line);
     }
 
-    /// Moves the rows through one change's line edits. A row an edit
-    /// replaced goes, unless the edit is a typed letter, whose row
-    /// stays at its line with its layout out of date.
+    /// Moves the rows through one change's line edits. Each edit's
+    /// first line keeps its row with its layout out of date, and so
+    /// does a row a 1:1 [`row_edits`] entry replaced; the other rows
+    /// an edit replaced go.
     pub(crate) fn shift(&mut self, edits: &[LineEdit]) {
-        let mut shift = Shift::new(edits);
+        let rows = row_edits(edits);
+        let mut shift = Shift::new(&rows);
         self.rows.retain_mut(|row| match shift.inside(row.line) {
             Some(edit) if edit.removed == 1 && edit.inserted == 1 => {
+                row.line = edit.first;
                 row.laid = false;
                 true
             }
@@ -158,6 +161,11 @@ impl Built {
                 true
             }
         });
+        for row in &mut self.rows {
+            if edits.iter().any(|edit| edit.first == row.line) {
+                row.laid = false;
+            }
+        }
     }
 
     fn laid(&self, line: u32) -> Option<&BuiltRow> {
