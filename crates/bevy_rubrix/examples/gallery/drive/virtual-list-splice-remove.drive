@@ -1,0 +1,16 @@
+page virtual_list
+wait 30
+click 1030 68
+wait 2
+move 740 400
+scroll 0 -84899
+wait 10
+log rows
+expect rows first_visible 4990
+click 438 118
+wait 10
+log rows
+expect rows first_visible 4990
+expect rows total 9980
+screenshot f3-remove.png
+exit

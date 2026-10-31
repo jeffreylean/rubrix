@@ -1,0 +1,21 @@
+page virtual_list
+wait 30
+click 882 68
+wait 2
+click 1030 68
+wait 2
+move 740 400
+scroll 0 -1000000
+wait 10
+log rows
+expect rows following true
+click 290 118
+wait 10
+log rows
+expect rows total 10020 following true
+click 586 68
+wait 10
+log rows
+expect rows total 11020 following true
+screenshot f3-follow.png
+exit

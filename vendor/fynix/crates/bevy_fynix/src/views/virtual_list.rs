@@ -354,7 +354,10 @@ pub struct VirtualList {
     anchor: Anchor,
     follow: bool,
     placed_at: f32,
+    spliced_above: f64,
     widths: Option<Widths>,
+    cell_width: Option<f32>,
+    reveal_x: Option<RevealX>,
     sideways_switched: bool,
     /// The area's width when its rows were measured.
     across: f32,
@@ -388,6 +391,12 @@ enum Target {
 enum RevealFrom {
     Row(usize, f64),
     End,
+}
+
+#[derive(Clone, Copy)]
+struct RevealX {
+    x: (f32, f32),
+    placed: Option<f32>,
 }
 
 #[derive(Default)]
@@ -424,7 +433,10 @@ impl VirtualList {
             anchor: Anchor::FirstRow,
             follow,
             placed_at: 0.0,
+            spliced_above: 0.0,
             widths: None,
+            cell_width: None,
+            reveal_x: None,
             sideways_switched: false,
             across: 0.0,
             physical_per_logical: 1.0,
@@ -469,6 +481,24 @@ impl VirtualList {
         });
     }
 
+    /// Scrolls sideways as little as shows `x` of the rows'
+    /// [`sideways`](RowSlot::sideways) content, in pixels from its
+    /// left, at the next update. A range wider than the cells scrolls
+    /// as little as fills them with it. It goes no further than the
+    /// widest row laid out so far overflows, and is placed again each
+    /// frame until a frame leaves the offset where the frame before
+    /// did, so a row that grows wide in the same frame shows. A
+    /// sideways scroll before then stops it. It does nothing unless
+    /// the list scrolls [sideways](VirtualListView::sideways).
+    pub fn scroll_x_into_view(&mut self, x: Range<f32>) {
+        if self.widths.is_some() {
+            self.reveal_x = Some(RevealX {
+                x: (x.start, x.end),
+                placed: None,
+            });
+        }
+    }
+
     fn land(&mut self, mut target: Target) {
         if let (Anchor::End, Target::Reveal { from, .. }) =
             (self.anchor, &mut target)
@@ -479,6 +509,108 @@ impl VirtualList {
             target,
             placed: None,
         };
+    }
+
+    /// Replaces the rows `at..at + removed` with `inserted` rows of
+    /// unknown height, and changes [`count`](Self::count) to match.
+    /// Every other row keeps its height and the view built for it,
+    /// under its new index. A row inserted can show in the view of a
+    /// row removed at the same index, which [`RowSlot::index`] does
+    /// not report, so a row binds what it shows to the app's data as
+    /// well. Call it in `PreUpdate`, before the list places its rows
+    /// in `Update`, in the frame the list's `count` changes to the
+    /// same number. A `count` that changes without a
+    /// splice adds or removes rows at the end.
+    ///
+    /// A splice wholly above the first visible row keeps the rows on
+    /// screen where they are. One that removes the first visible row
+    /// keeps the view's pixel. A [`scroll_to`](Self::scroll_to) or a
+    /// scroll into view still on its way lands on the row it named,
+    /// or on `at` if that row is removed.
+    /// [`first_visible`](Self::first_visible) moves at once, and
+    /// [`spawned`](Self::spawned) from the next update.
+    ///
+    /// # Panics
+    ///
+    /// If `at + removed` is past the list's count.
+    pub fn splice(
+        &mut self,
+        at: usize,
+        removed: usize,
+        inserted: usize,
+    ) {
+        let end = at + removed;
+        assert!(
+            end <= self.count,
+            "a splice of rows {at}..{end} in a list of {} rows",
+            self.count
+        );
+        let moved = |index: usize| {
+            if index >= end {
+                index - removed + inserted
+            } else {
+                index.min(at)
+            }
+        };
+        let span = |heights: &Heights, rows: usize| {
+            heights.offset(at + rows) - heights.offset(at)
+        };
+        let above = self.count > 0 && end <= self.first_visible;
+        let before = if above {
+            span(&self.heights, removed)
+        } else {
+            0.0
+        };
+        self.heights.splice(at, removed, inserted, self.estimate);
+        if let Some(widths) = &mut self.widths {
+            widths.splice(at, removed, inserted);
+        }
+        self.count = self.count - removed + inserted;
+        for placed in &mut self.slots {
+            if (at..end).contains(&placed.index) {
+                placed.index = usize::MAX;
+            } else if placed.index != usize::MAX {
+                placed.index = moved(placed.index);
+            }
+        }
+        if let Anchor::Landing { target, .. } = &mut self.anchor {
+            match target {
+                Target::First(index) => *index = moved(*index),
+                Target::Reveal { index, from, .. } => {
+                    *index = moved(*index);
+                    if let Some(RevealFrom::Row(row, into)) = from {
+                        if (at..end).contains(row) {
+                            *into = 0.0;
+                        }
+                        *row = moved(*row);
+                    }
+                }
+            }
+        }
+        if above {
+            self.spliced_above +=
+                span(&self.heights, inserted) - before;
+            self.first_visible = moved(self.first_visible);
+        } else if at <= self.first_visible {
+            self.first_visible = at.min(self.count.saturating_sub(1));
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn detached(count: usize, estimate: f32) -> Self {
+        Self::new(
+            estimate,
+            OVERSCAN,
+            count,
+            false,
+            Entity::PLACEHOLDER,
+            0.0,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn measure(&mut self, index: usize, height: f32) {
+        self.heights.set(index, height);
     }
 
     /// The row at `y` in the list's content, or the nearest row when
@@ -494,9 +626,9 @@ impl VirtualList {
     /// Where the row `index` sits in the list's content, `None` past
     /// the last row.
     pub fn row_span(&self, index: usize) -> Option<RowSpan> {
-        (index < self.heights.len()).then(|| RowSpan {
+        self.heights.row(index).map(|(height, _)| RowSpan {
             top: self.heights.offset(index) as f32,
-            height: self.heights.each[index],
+            height,
         })
     }
 
@@ -556,6 +688,16 @@ impl VirtualList {
         end: f32,
         screen: f32,
     ) -> Scroll {
+        let shift = core::mem::take(&mut self.spliced_above);
+        let scroll = scroll + shift as f32;
+        self.placed_at += shift as f32;
+        if let Anchor::Landing {
+            placed: Some(placed),
+            ..
+        } = &mut self.anchor
+        {
+            *placed += shift;
+        }
         let called = matches!(
             self.anchor,
             Anchor::Landing { placed: None, .. }
@@ -652,10 +794,9 @@ impl VirtualList {
     fn shows_measured(&self, scroll: f64, view: f64) -> bool {
         let first = self.shown_at(scroll);
         let last = self.heights.index_at(scroll + view - SHOWN);
-        self.heights
-            .known
-            .get(first..=last.max(first))
-            .is_none_or(|shown| shown.iter().all(|&known| known))
+        (first..=last.max(first)).all(|index| {
+            self.heights.row(index).is_none_or(|(_, known)| known)
+        })
     }
 
     fn landing(
@@ -687,7 +828,10 @@ impl VirtualList {
                     }
                 };
                 let top = self.heights.offset(index);
-                let height = f64::from(self.heights.each[index]);
+                let height = self
+                    .heights
+                    .row(index)
+                    .map_or(0.0, |(height, _)| f64::from(height));
                 let from = f64::from(from_top.0).clamp(0.0, height);
                 let to = f64::from(from_top.1).clamp(from, height);
                 let (lo, hi) = (top + from, top + to - view);
@@ -747,11 +891,16 @@ impl VirtualList {
             (y * self.physical_per_logical).round()
                 / self.physical_per_logical
         };
+        let tops = self
+            .heights
+            .offsets(start)
+            .take(pool + 1)
+            .map(whole)
+            .collect::<Vec<_>>();
         for placed in &mut self.slots {
-            let top = whole(self.heights.offset(placed.index));
-            let bottom = whole(self.heights.offset(placed.index + 1));
-            placed.top = top as f32;
-            placed.height = (bottom - top) as f32;
+            let at = placed.index - start;
+            placed.top = tops[at] as f32;
+            placed.height = (tops[at + 1] - tops[at]) as f32;
         }
         self.spawned = start..start + pool;
         self.first_visible = self.shown_at(scroll);
@@ -807,9 +956,12 @@ fn place_rows(
             list.physical_per_logical = f64::from(scale.recip());
         }
         let view = area.content_box().height() * scale;
-        let wide = list.widths.is_some().then(|| {
+        let (wide, room) = if list.widths.is_some() {
             overflows(entity, &list.slots, &cells, &nodes, scale)
-        });
+        } else {
+            (Vec::new(), None)
+        };
+        list.cell_width = room.or(list.cell_width);
         let mut measured = list
             .slots
             .iter()
@@ -817,7 +969,8 @@ fn place_rows(
                 let (node, _) = nodes.get(placed.node?).ok()?;
                 let height = node.content_size().y
                     * node.inverse_scale_factor();
-                (height > 0.0).then_some((placed.index, height))
+                (height > 0.0 && placed.index < list.heights.len())
+                    .then_some((placed.index, height))
             })
             .collect::<Vec<_>>();
         let across = area.content_box().width() * scale;
@@ -845,12 +998,33 @@ fn place_rows(
         }
         let mut width = percent(100.0);
         let mut x = 0.0;
-        if let Some(widths) = &mut list.widths {
-            for (index, by) in wide.into_iter().flatten() {
+        let reveal = list.reveal_x.take();
+        let room = list.cell_width.unwrap_or(across);
+        let widest = list.widths.as_mut().map(|widths| {
+            for (index, by) in wide {
                 widths.set(index, by);
             }
-            x = position.x.clamp(0.0, widths.widest);
-            width = px(across + widths.widest);
+            widths.widest
+        });
+        if let Some(widest) = widest {
+            x = position.x.clamp(0.0, widest);
+            if let Some(reveal) = reveal
+                && reveal
+                    .placed
+                    .is_none_or(|placed| placed == position.x)
+            {
+                let (lo, hi) = (reveal.x.0, reveal.x.1 - room);
+                x = x
+                    .clamp(lo.min(hi), lo.max(hi))
+                    .clamp(0.0, widest);
+                if reveal.placed != Some(x) {
+                    list.reveal_x = Some(RevealX {
+                        placed: Some(x),
+                        ..reveal
+                    });
+                }
+            }
+            width = px(across + widest);
         }
         if position.x != x {
             position.x = x;
@@ -899,8 +1073,9 @@ fn overflows(
     )>,
     nodes: &Query<(&ComputedNode, &mut Node)>,
     scale: f32,
-) -> Vec<(usize, f32)> {
+) -> (Vec<(usize, f32)>, Option<f32>) {
     let mut wide = vec![None::<f32>; slots.len()];
+    let mut width = None;
     for (_, cell, room, content, _) in cells {
         let RowSlot { list: of, slot } = cell.0;
         let Ok((room, _)) = nodes.get(room.parent()) else {
@@ -909,17 +1084,19 @@ fn overflows(
         if of != list || room.size().x <= 0.0 {
             continue;
         }
-        let by = (content.size().x - room.content_box().width())
-            .max(0.0)
-            * scale;
+        let room = room.content_box().width();
+        width = Some(room * scale);
+        let by = (content.size().x - room).max(0.0) * scale;
         if let Some(most) = wide.get_mut(slot) {
             *most = Some(most.map_or(by, |most| most.max(by)));
         }
     }
-    wide.into_iter()
+    let wide = wide
+        .into_iter()
         .zip(slots)
         .filter_map(|(by, placed)| Some((placed.index, by?)))
-        .collect()
+        .collect();
+    (wide, width)
 }
 
 fn track<T: 'static>() -> AnyView<Bevy, T> {
@@ -1019,6 +1196,20 @@ impl Widths {
         }
     }
 
+    fn splice(&mut self, at: usize, removed: usize, inserted: usize) {
+        let Some(gone) = self.each.get(at..at + removed) else {
+            return;
+        };
+        let widest = self.widest > 0.0 && gone.contains(&self.widest);
+        self.each.splice(
+            at..at + removed,
+            core::iter::repeat_n(0.0, inserted),
+        );
+        if widest {
+            self.widest = self.most();
+        }
+    }
+
     fn resize(&mut self, count: usize) {
         let shrinks = count < self.each.len();
         self.each.resize(count, 0.0);
@@ -1039,99 +1230,319 @@ fn lower_median(heights: &mut [(usize, f32)]) -> Option<f32> {
     Some(height)
 }
 
+const ROWS_PER_BLOCK: usize = 512;
+const MIN_BLOCK: usize = ROWS_PER_BLOCK / 2;
+
 #[derive(Default)]
 struct Heights {
-    each: Vec<f32>,
-    known: Vec<bool>,
-    tree: Vec<f64>,
+    blocks: Vec<Block>,
+    tree: Vec<Sum>,
+    len: usize,
+}
+
+struct Block {
+    rows: Vec<(f32, bool)>,
+    px: f64,
+}
+
+#[derive(Clone, Copy, Default)]
+struct Sum {
+    rows: usize,
+    px: f64,
 }
 
 fn lowest(k: usize) -> usize {
     k & k.wrapping_neg()
 }
 
+impl Block {
+    fn new(rows: Vec<(f32, bool)>) -> Self {
+        let px =
+            rows.iter().map(|&(height, _)| f64::from(height)).sum();
+        Self { rows, px }
+    }
+
+    fn offset(&self, row: usize, above: f64) -> f64 {
+        self.rows[..row]
+            .iter()
+            .fold(above, |at, &(height, _)| at + f64::from(height))
+    }
+}
+
 impl Heights {
     fn len(&self) -> usize {
-        self.each.len()
+        self.len
     }
 
     fn total(&self) -> f64 {
-        self.offset(self.len())
+        self.offset(self.len)
     }
 
     fn resize(&mut self, count: usize, estimate: f32) {
-        if self.tree.is_empty() {
-            self.tree.push(0.0);
+        let len = self.len;
+        self.splice(
+            count.min(len),
+            len.saturating_sub(count),
+            count.saturating_sub(len),
+            estimate,
+        );
+    }
+
+    fn splice(
+        &mut self,
+        at: usize,
+        removed: usize,
+        inserted: usize,
+        estimate: f32,
+    ) {
+        let end = at + removed;
+        let (mut first, mut start) = match self.locate(at) {
+            (first, _, _)
+                if first == self.blocks.len() && first > 0 =>
+            {
+                (first - 1, at - self.blocks[first - 1].rows.len())
+            }
+            (first, row, _) => (first, at - row),
+        };
+        let mut stop = match self.locate(end) {
+            (last, 0, _) if last > first => last,
+            (last, _, _) => (last + 1).min(self.blocks.len()),
+        };
+        let run = self.blocks[first..stop]
+            .iter()
+            .map(|block| block.rows.len())
+            .sum::<usize>();
+        if run - removed + inserted < MIN_BLOCK {
+            if stop < self.blocks.len() {
+                stop += 1;
+            } else if first > 0 {
+                first -= 1;
+                start -= self.blocks[first].rows.len();
+            }
         }
-        self.known.resize(count, false);
-        self.each.resize(count, estimate);
-        self.tree.truncate(count + 1);
-        for k in self.tree.len()..=count {
-            let below =
-                self.offset(k - 1) - self.offset(k - lowest(k));
-            self.tree.push(f64::from(estimate) + below);
+        let mut rows = self.blocks[first..stop]
+            .iter()
+            .flat_map(|block| block.rows.iter().copied())
+            .collect::<Vec<_>>();
+        rows.splice(
+            at - start..end - start,
+            core::iter::repeat_n((estimate, false), inserted),
+        );
+        let pieces = into_blocks(rows);
+        let same = pieces.len() == stop - first;
+        if same {
+            for (block, piece) in (first..).zip(&pieces) {
+                let was = &self.blocks[block];
+                let rows = piece.rows.len() as isize
+                    - was.rows.len() as isize;
+                let px = piece.px - was.px;
+                self.add(block, rows, px);
+            }
         }
+        self.blocks.splice(first..stop, pieces);
+        if !same {
+            self.rebuild();
+        }
+        self.len = self.len - removed + inserted;
     }
 
     fn set(&mut self, index: usize, height: f32) {
-        self.known[index] = true;
-        if self.each[index] == height {
+        let (block, row, _) = self.locate(index);
+        let (was, known) = &mut self.blocks[block].rows[row];
+        *known = true;
+        if *was == height {
             return;
         }
-        let by = f64::from(height) - f64::from(self.each[index]);
-        self.each[index] = height;
-        let mut k = index + 1;
+        let by = f64::from(height) - f64::from(*was);
+        *was = height;
+        self.blocks[block].px += by;
+        self.add(block, 0, by);
+    }
+
+    fn forget(&mut self) {
+        for block in &mut self.blocks {
+            for (_, known) in &mut block.rows {
+                *known = false;
+            }
+        }
+    }
+
+    fn reestimate(&mut self, estimate: f32) {
+        for block in &mut self.blocks {
+            for (height, known) in &mut block.rows {
+                if !*known {
+                    *height = estimate;
+                }
+            }
+            *block = Block::new(core::mem::take(&mut block.rows));
+        }
+        self.rebuild();
+    }
+
+    fn add(&mut self, block: usize, rows: isize, px: f64) {
+        let mut k = block + 1;
         while k < self.tree.len() {
-            self.tree[k] += by;
+            self.tree[k].rows =
+                self.tree[k].rows.wrapping_add_signed(rows);
+            self.tree[k].px += px;
             k += lowest(k);
         }
     }
 
-    fn forget(&mut self) {
-        self.known.fill(false);
-    }
-
-    fn reestimate(&mut self, estimate: f32) {
-        for (height, &known) in self.each.iter_mut().zip(&self.known)
-        {
-            if !known {
-                *height = estimate;
-            }
-        }
-        let len = self.len();
-        self.tree.truncate(1);
-        self.tree.extend(self.each.iter().map(|&h| f64::from(h)));
-        for k in 1..=len {
+    fn rebuild(&mut self) {
+        self.tree.clear();
+        self.tree.push(Sum::default());
+        self.tree.extend(self.blocks.iter().map(|block| Sum {
+            rows: block.rows.len(),
+            px: block.px,
+        }));
+        for k in 1..self.tree.len() {
             let up = k + lowest(k);
-            if up <= len {
-                self.tree[up] += self.tree[k];
+            if let Some(&below) = self.tree.get(k)
+                && let Some(sum) = self.tree.get_mut(up)
+            {
+                sum.rows += below.rows;
+                sum.px += below.px;
             }
         }
     }
 
-    fn offset(&self, index: usize) -> f64 {
-        let mut sum = 0.0;
-        let mut k = index;
-        while k > 0 {
-            sum += self.tree[k];
-            k &= k - 1;
-        }
-        sum
-    }
-
-    fn index_at(&self, y: f64) -> usize {
-        let len = self.len();
-        let mut at = 0;
-        let mut left = y;
-        let mut step = len.checked_ilog2().map_or(0, |log| 1 << log);
+    fn locate(&self, index: usize) -> (usize, usize, f64) {
+        let (mut block, mut rows, mut px) = (0, 0, 0.0);
+        let mut step = self.top_step();
         while step > 0 {
-            let next = at + step;
-            if next <= len && self.tree[next] <= left {
-                at = next;
-                left -= self.tree[next];
+            let next = block + step;
+            if next < self.tree.len()
+                && rows + self.tree[next].rows <= index
+            {
+                block = next;
+                rows += self.tree[next].rows;
+                px += self.tree[next].px;
             }
             step >>= 1;
         }
-        at.min(len.saturating_sub(1))
+        (block, index - rows, px)
+    }
+
+    fn above(&self, block: usize) -> f64 {
+        let (mut at, mut px) = (0, 0.0);
+        let mut step = self.top_step();
+        while step > 0 {
+            if at + step <= block {
+                at += step;
+                px += self.tree[at].px;
+            }
+            step >>= 1;
+        }
+        px
+    }
+
+    fn top_step(&self) -> usize {
+        self.blocks.len().checked_ilog2().map_or(0, |log| 1 << log)
+    }
+
+    fn row(&self, index: usize) -> Option<(f32, bool)> {
+        let (block, row, _) = self.locate(index);
+        self.blocks.get(block)?.rows.get(row).copied()
+    }
+
+    fn offset(&self, index: usize) -> f64 {
+        let (block, row, above) = self.locate(index);
+        self.blocks
+            .get(block)
+            .map_or(above, |block| block.offset(row, above))
+    }
+
+    fn offsets(&self, from: usize) -> impl Iterator<Item = f64> + '_ {
+        let (mut block, mut row, _) = self.locate(from);
+        let mut at = self.offset(from);
+        core::iter::from_fn(move || {
+            let offset = at;
+            if let Some(rows) = self.blocks.get(block) {
+                if row + 1 < rows.rows.len() {
+                    at += f64::from(rows.rows[row].0);
+                    row += 1;
+                } else {
+                    block += 1;
+                    row = 0;
+                    at = self.above(block);
+                }
+            }
+            Some(offset)
+        })
+    }
+
+    fn index_at(&self, y: f64) -> usize {
+        let (mut block, mut rows, mut px) = (0, 0, 0.0);
+        let mut step = self.top_step();
+        while step > 0 {
+            let next = block + step;
+            if next < self.tree.len() && px + self.tree[next].px <= y
+            {
+                block = next;
+                rows += self.tree[next].rows;
+                px += self.tree[next].px;
+            }
+            step >>= 1;
+        }
+        let Some(block) = self.blocks.get(block) else {
+            return self.len.saturating_sub(1);
+        };
+        let last = block.rows.len() - 1;
+        let mut row = 0;
+        for &(height, _) in &block.rows[..last] {
+            px += f64::from(height);
+            if px > y {
+                break;
+            }
+            row += 1;
+        }
+        rows + row
+    }
+}
+
+fn into_blocks(rows: Vec<(f32, bool)>) -> Vec<Block> {
+    if rows.is_empty() {
+        return Vec::new();
+    }
+    if rows.len() <= 2 * ROWS_PER_BLOCK {
+        return vec![Block::new(rows)];
+    }
+    let count = rows.len().div_ceil(ROWS_PER_BLOCK);
+    (0..count)
+        .map(|piece| {
+            let from = piece * rows.len() / count;
+            let to = (piece + 1) * rows.len() / count;
+            Block::new(rows[from..to].to_vec())
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn splice_walk_matches_offset() {
+        let mut heights = Heights::default();
+        heights.resize(3_000, 19.3);
+        for index in (0..3_000).step_by(7) {
+            heights.set(index, 13.7 + (index % 11) as f32 * 0.37);
+        }
+        heights.splice(100, 0, 700, 21.1);
+        heights.splice(1_500, 1_200, 3, 21.1);
+        heights.splice(0, 40, 0, 21.1);
+        let len = heights.len();
+        for from in [0, 1, 511, 512, 1_000, len - 1, len] {
+            let walked = heights
+                .offsets(from)
+                .take(len + 1 - from)
+                .collect::<Vec<_>>();
+            let offsets = (from..=len)
+                .map(|index| heights.offset(index))
+                .collect::<Vec<_>>();
+            assert!(walked == offsets, "the walk from {from}");
+        }
+        assert!(heights.total() == heights.offset(len));
     }
 }

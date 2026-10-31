@@ -230,6 +230,141 @@ write(
     "exit",
 )
 
+SPLICE_ON = ["click 1030 68", "wait 2"]
+INSERT, REMOVE, INSERT_ABOVE, GROW_ABOVE, JUMP_INSERT, REVEAL_WIDE, SIDEWAYS = (
+    f"click {290 + 148 * k} 118" for k in range(7)
+)
+ROW_4990_AT_TOP = 4990 * ROW + ROWS_MEASURED_AT_TOP * THREE_LINE_EXTRA + 1
+SPLICED_PX = 20 * ROW
+WIDE = 3000
+LIST_WIDTH = 1040
+to_row_4990 = [CENTER, f"scroll 0 -{ROW_4990_AT_TOP}", "wait 10", "log rows", "expect rows first_visible 4990"]
+to_row_4996 = [CENTER, "scroll 0 -85000", "wait 10", "log rows", "expect rows first_visible 4996"]
+
+
+def splice(name, *steps):
+    write(f"virtual-list-{name}", "page virtual_list", "wait 30", list(steps), "exit")
+
+
+for name, button, total, shot in [
+    ("splice-insert", INSERT, 10020, "f3-insert.png"),
+    ("splice-remove", REMOVE, 9980, "f3-remove.png"),
+]:
+    splice(
+        name,
+        SPLICE_ON,
+        to_row_4990,
+        button,
+        "wait 10",
+        "log rows",
+        "expect rows first_visible 4990",
+        f"expect rows total {total}",
+        f"screenshot {shot}",
+    )
+splice(
+    "splice-above",
+    SPLICE_ON,
+    to_row_4996,
+    "log scroll",
+    "expect scroll 85000",
+    INSERT_ABOVE,
+    "log rows",
+    "expect rows first_visible 5016",
+    "log scroll",
+    f"expect scroll {85000 + SPLICED_PX}",
+    "wait 10",
+    "log rows",
+    "expect rows first_visible 5016",
+    "log scroll",
+    f"expect scroll {85000 + SPLICED_PX}",
+    "screenshot f3-above.png",
+)
+splice(
+    "splice-grow",
+    SPLICE_ON,
+    to_row_4996,
+    GROW_ABOVE,
+    "log rows",
+    "expect rows first_visible 4996",
+    "wait 10",
+    "log rows",
+    "expect rows first_visible 4996",
+    "screenshot f3-grow.png",
+)
+splice(
+    "splice-100k",
+    HUNDRED_K,
+    "wait 30",
+    SPLICE_ON,
+    CENTER,
+    "scroll 0 -2000000",
+    "wait 10",
+    "log rows",
+    "expect rows ..=99999",
+    INSERT,
+    "wait 10",
+    "log rows",
+    "expect rows total 100020",
+    "expect rows ..=100019",
+    "screenshot f3-100k.png",
+)
+splice(
+    "splice-reuse",
+    SPLICE_ON,
+    to_row_4990,
+    "log entities",
+    [[INSERT, "wait 2", REMOVE, "wait 2"] for _ in range(50)],
+    "wait 10",
+    "log rows",
+    "expect rows first_visible 4990",
+    "expect rows total 10000",
+    "log entities",
+    "screenshot f3-reuse.png",
+)
+splice(
+    "splice-follow",
+    FOLLOW_ON,
+    SPLICE_ON,
+    CENTER,
+    "scroll 0 -1000000",
+    "wait 10",
+    "log rows",
+    "expect rows following true",
+    INSERT,
+    "wait 10",
+    "log rows",
+    "expect rows total 10020 following true",
+    APPEND,
+    "wait 10",
+    "log rows",
+    "expect rows total 11020 following true",
+    "screenshot f3-follow.png",
+)
+splice(
+    "splice-jump",
+    SPLICE_ON,
+    JUMP_INSERT,
+    "wait 30",
+    "log rows",
+    "expect rows first_visible 9020",
+    "screenshot f3-jump.png",
+)
+splice(
+    "reveal",
+    SPLICE_ON,
+    SIDEWAYS,
+    "wait 2",
+    CENTER,
+    f"scroll 0 -{ROW_4990_AT_TOP}",
+    "wait 10",
+    "log rows",
+    REVEAL_WIDE,
+    "wait 10",
+    "log rows",
+    f"expect rows x {WIDE - LIST_WIDTH}",
+    "screenshot f3-reveal.png",
+)
+
 LARGE_RS, LARGE_TS, STRESS, WRAP = BUTTONS[:4]
 THEME = "click 100 771"
 SETTLE = "wait 120"

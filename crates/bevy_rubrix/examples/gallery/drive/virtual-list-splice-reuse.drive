@@ -1,0 +1,217 @@
+page virtual_list
+wait 30
+click 1030 68
+wait 2
+move 740 400
+scroll 0 -84899
+wait 10
+log rows
+expect rows first_visible 4990
+log entities
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+click 290 118
+wait 2
+click 438 118
+wait 2
+wait 10
+log rows
+expect rows first_visible 4990
+expect rows total 10000
+log entities
+screenshot f3-reuse.png
+exit
