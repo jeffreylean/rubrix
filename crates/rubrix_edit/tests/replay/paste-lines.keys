@@ -1,0 +1,17 @@
+# Pasting three lines at three carets puts one line at each caret, as
+# one undo step that restores the text and the carets.
+caret 3:1
+add-caret 5:1
+add-caret 13:1
+paste a\nb\nc
+expect line 3 ause core::time::Duration;
+expect line 5 buse bevy::color::Color;
+expect line 13 cpub struct Monokai;
+expect carets 3 primary 3 3:2 5:2 13:2
+expect undo-depth 1
+key undo
+expect line 3 use core::time::Duration;
+expect line 5 use bevy::color::Color;
+expect line 13 pub struct Monokai;
+expect carets 3 primary 3 3:1 5:1 13:1
+expect undo-depth 0

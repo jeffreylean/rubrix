@@ -1,0 +1,23 @@
+# Shift+Alt+Down copies the selected lines below and selects the
+# lower copy; Shift+Alt+Up keeps the upper one. Each is one undo step
+# that restores the selection.
+select 16:3 17:5
+key copy-down
+expect line 16 \s\s\s\slet [_, r, g, b] = rgb.to_be_bytes();
+expect line 17 \s\s\s\sColor::srgb_u8(r, g, b)
+expect line 18 \s\s\s\slet [_, r, g, b] = rgb.to_be_bytes();
+expect line 19 \s\s\s\sColor::srgb_u8(r, g, b)
+expect line 20 }
+expect carets 1 primary 1 18:3..19:5
+expect undo-depth 1
+key undo
+expect line 18 }
+expect carets 1 primary 1 16:3..17:5
+key copy-up
+expect line 18 \s\s\s\slet [_, r, g, b] = rgb.to_be_bytes();
+expect line 20 }
+expect carets 1 primary 1 16:3..17:5
+key undo
+expect line 18 }
+expect carets 1 primary 1 16:3..17:5
+expect undo-depth 0

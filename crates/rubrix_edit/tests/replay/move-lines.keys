@@ -1,0 +1,29 @@
+# Alt+Down and Alt+Up move the selected lines past the line beside
+# them, each as one undo step that restores the selection. A move at
+# the first or the last line does nothing.
+select 16:3 17:5
+key move-down
+expect line 16 }
+expect line 17 \s\s\s\slet [_, r, g, b] = rgb.to_be_bytes();
+expect line 18 \s\s\s\sColor::srgb_u8(r, g, b)
+expect carets 1 primary 1 17:3..18:5
+expect undo-depth 1
+key undo
+expect line 16 \s\s\s\slet [_, r, g, b] = rgb.to_be_bytes();
+expect line 18 }
+expect carets 1 primary 1 16:3..17:5
+key move-up
+expect line 15 \s\s\s\slet [_, r, g, b] = rgb.to_be_bytes();
+expect line 16 \s\s\s\sColor::srgb_u8(r, g, b)
+expect line 17 fn hex(rgb: u32) -> Color {
+expect carets 1 primary 1 15:3..16:5
+key undo
+expect line 15 fn hex(rgb: u32) -> Color {
+expect carets 1 primary 1 16:3..17:5
+expect undo-depth 0
+caret 1:4
+key move-up
+expect carets 1 primary 1 1:4
+key doc-end
+key move-down
+expect undo-depth 0
