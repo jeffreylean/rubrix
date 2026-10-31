@@ -775,6 +775,36 @@ fn down_moves_by_visual_row_in_wrap_mode() {
     );
 }
 
+#[test]
+fn page_down_moves_by_the_rows_that_show() {
+    let mut app = laid_out();
+    let (view, entity) = mount_editor(
+        &mut app,
+        Lang::Plain,
+        &numbered(200),
+        600.0,
+        300.0,
+    );
+    settle(&mut app);
+    let area = list(&mut app);
+    let state = app.world().get::<VirtualList>(area).expect("a list");
+    let row = state.row_span(0).expect("a measured row").height;
+    let node = app.world().get::<ComputedNode>(area).expect("a node");
+    let view_height =
+        node.content_box().height() * node.inverse_scale_factor();
+    let page = (view_height / row).floor() as usize;
+    caret_at(&mut app, entity, view, 0);
+    focus(&mut app, view);
+    key_with(&mut app, &[], KeyCode::PageDown, Key::PageDown);
+    let editor = doc(&app, entity).editor();
+    let head = editor.selections().primary().head;
+    assert_eq!(
+        editor.buffer().line_of(head) as usize,
+        page,
+        "{view_height} px of {row} px rows"
+    );
+}
+
 /// A sanity number, not a perf claim: the update a key lands in, less
 /// an idle update, at 100k lines. Run with `--release --ignored
 /// --nocapture`.

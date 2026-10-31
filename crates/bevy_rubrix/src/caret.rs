@@ -651,11 +651,14 @@ fn measure(
         let logical = laid.node.inverse_scale_factor();
         let metrics = first.metrics();
         let bytes = first.text_range().len().max(1) as f32;
+        // Parley rounds a line's block extent outward, so a 16.8 px
+        // line spans 18; the node is the pitch the list stacks rows
+        // at.
+        let lines = laid.layout.len().max(1) as f32;
         return Metrics {
             advance: metrics.advance / bytes * logical,
-            line_height: (metrics.block_max_coord
-                - metrics.block_min_coord)
-                * logical,
+            line_height: laid.node.content_box().height() * logical
+                / lines,
             wrap: (overflow == Overflow::Wrap)
                 .then(|| laid.node.content_box().width() * logical),
         };
