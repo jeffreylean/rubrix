@@ -75,9 +75,7 @@ fn text_of(app: &App, doc: Entity) -> String {
     doc.editor().buffer().to_string()
 }
 
-/// Runs frames until the count is final, and returns the count each
-/// frame showed before that.
-fn searched(app: &mut App) -> Vec<usize> {
+fn counts_until_final(app: &mut App) -> Vec<usize> {
     let mut counts = Vec::new();
     while bar(app).settled().is_none() {
         counts.push(bar(app).count());
@@ -90,7 +88,7 @@ fn searched(app: &mut App) -> Vec<usize> {
 
 fn open(app: &mut App) -> Vec<usize> {
     chord(app, &[KeyCode::ControlLeft], KeyCode::KeyF, "f");
-    searched(app)
+    counts_until_final(app)
 }
 
 fn tinted(app: &mut App, view: Entity, line: u32) -> bool {
@@ -136,7 +134,7 @@ fn replace_all_is_one_undo_step() {
         KeyCode::KeyF,
         "f",
     );
-    searched(&mut app);
+    counts_until_final(&mut app);
     assert_eq!(bar(&mut app).count(), 3);
     let world = app.world_mut();
     let field = world.resource::<InputFocus>().get();
@@ -153,7 +151,7 @@ fn replace_all_is_one_undo_step() {
         view: Some(view),
         request: Request::new(bevy_rubrix::find::replace_all),
     });
-    searched(&mut app);
+    counts_until_final(&mut app);
     assert_eq!(
         text_of(&app, doc),
         "palette = palette();\nfn palette() {}\n"
@@ -161,7 +159,7 @@ fn replace_all_is_one_undo_step() {
     assert_eq!(bar(&mut app).label(), "No results");
     let undo = Request::command(Command::Undo);
     app.world_mut().write_message(EditRequest::new(doc, undo));
-    searched(&mut app);
+    counts_until_final(&mut app);
     assert_eq!(text_of(&app, doc), text);
     assert_eq!(bar(&mut app).count(), 3);
 }
