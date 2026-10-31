@@ -110,6 +110,26 @@ fn a_regex_with_a_newline_matches_across_lines() {
 }
 
 #[test]
+fn a_newline_in_a_query_matches_a_crlf_line_break() {
+    let text = "let a = {\r\n    let b;\r\n}\r\n[x\ny]";
+    assert_eq!(found(text, &query("{\n    let")), vec![8..18]);
+    let regex = Query {
+        regex: true,
+        ..query(r"\{\n\s+let")
+    };
+    assert_eq!(found(text, &regex), vec![8..18]);
+    let class = Query {
+        regex: true,
+        ..query(r"x[\n]y")
+    };
+    assert_eq!(found(text, &class), vec![27..30]);
+    assert_eq!(
+        found(text, &query(r"\n")),
+        Vec::<Range<usize>>::new()
+    );
+}
+
+#[test]
 fn an_invalid_regex_finds_nothing_and_says_why() {
     let bad = Query {
         regex: true,

@@ -320,7 +320,7 @@ fn compile(query: &Query) -> Pattern {
     } else {
         Cow::Owned(regex::escape(&query.text))
     };
-    let built = RegexBuilder::new(&source)
+    let built = RegexBuilder::new(&crlf_newlines(&source))
         .case_insensitive(!query.match_case)
         .multi_line(true)
         .crlf(true)
@@ -337,6 +337,38 @@ fn compile(query: &Query) -> Pattern {
                 .to_string(),
         ),
     }
+}
+
+/// `source` with each newline outside a character class, typed or as
+/// `\n`, matching an optional `\r` before it, so a query written with
+/// `\n` matches across the lines of a CRLF buffer too.
+fn crlf_newlines(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut chars = source.chars();
+    let mut class = false;
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next() {
+                Some('n') if !class => out.push_str(r"(?:\r?\n)"),
+                Some(next) => {
+                    out.push('\\');
+                    out.push(next);
+                }
+                None => out.push('\\'),
+            },
+            '\n' if !class => out.push_str(r"(?:\r?\n)"),
+            '[' => {
+                class = true;
+                out.push(c);
+            }
+            ']' => {
+                class = false;
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 fn whole_word(text: &str, range: &Range<usize>) -> bool {
