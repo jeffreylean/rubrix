@@ -1752,7 +1752,7 @@ for _ in range(2):
     steps += ["key mod+d", selections(found)]
 after = replace(doc, found, ["var"] * len(found))
 steps += ["type var", "wait 5", texts(doc, [n for (n, _), _ in found]), carets_at(after)]
-steps += ["key escape", caret(after[-1])]
+steps += ["wait 30", "screenshot e4-regress.png", "key escape", caret(after[-1])]
 editor("occurrence", steps, "wait 30", "screenshot e4-occurrence.png")
 
 doc = Doc(LARGE_RS_LINES)

@@ -25,6 +25,8 @@ log text 635
 expect text 635 "                var mut rows = world.resource_mut::<Rows>();"
 log caret
 expect caret 3 primary 3 629:20..629:20 630:20..630:20 635:20..635:20
+wait 30
+screenshot e4-regress.png
 key escape
 log caret
 expect caret 1 primary 1 635:20..635:20 visible true
