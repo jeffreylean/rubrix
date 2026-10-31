@@ -376,3 +376,7 @@ impl Class {
         }
     }
 }
+
+pub(crate) fn is_word(grapheme: &str) -> bool {
+    Class::of(grapheme) == Class::Word
+}

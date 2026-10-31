@@ -10,8 +10,13 @@ repository.workspace = true
 no_std = true
 
 [dependencies]
+regex = { version = "1.12", optional = true }
 rubrix_highlight = { path = "../rubrix_highlight" }
 unicode-segmentation = { version = "1.13", default-features = false }
+
+[features]
+std = []
+find = ["std", "dep:regex"]
 
 [lints]
 workspace = true

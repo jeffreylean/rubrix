@@ -32,3 +32,9 @@ pub use command::{Command, Editor};
 pub use history::History;
 pub use motion::{Layout, Monospace, Motion, graphemes, word_at};
 pub use selection::{Selection, Selections};
+
+#[cfg(feature = "std")]
+extern crate std;
+
+#[cfg(feature = "find")]
+pub mod find;
