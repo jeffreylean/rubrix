@@ -3,6 +3,7 @@ mod support;
 use core::time::Duration;
 
 use bevy::app::App;
+use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::Children;
 use bevy::ecs::resource::Resource;
 use bevy::input::keyboard::{Key, KeyCode};
@@ -14,10 +15,11 @@ use bevy_fynix::views::{FrameProps, column};
 use bevy_fynix::{FynixPlugin, Theme, mount, resource};
 use bevy_rubrix::{
     DiffDoc, DiffEditStatus, DiffRow, DiffSource, Layout, Overflow,
-    Row, RubrixPlugin, diff_view,
+    Row, RubrixPlugin, Side, diff_view,
 };
 use support::diff::{
-    Plain, doc, line_text, settle, sides, slot, slots, texts,
+    Plain, doc, line_text, scroll_to, settle, sides, slot, slots,
+    texts,
 };
 use support::{
     chord, copy, keep_copies, key_with, lay_out, point_in, press_on,
@@ -35,6 +37,9 @@ struct Shape(Layout);
 #[derive(Resource)]
 struct Source(DiffSource);
 
+#[derive(Resource)]
+struct Editing(bool);
+
 fn editing(source: DiffSource, layout: Layout) -> App {
     let mut app = App::new();
     app.add_plugins((
@@ -47,7 +52,8 @@ fn editing(source: DiffSource, layout: Layout) -> App {
         Duration::from_millis(50),
     ))
     .insert_resource(Shape(layout))
-    .insert_resource(Source(source));
+    .insert_resource(Source(source))
+    .insert_resource(Editing(true));
     lay_out(&mut app, 1.0);
     keep_copies(&mut app);
     mount::<Plain>(
@@ -57,7 +63,7 @@ fn editing(source: DiffSource, layout: Layout) -> App {
         }))
         .layout(resource::<Shape, _>(|shape| shape.0))
         .overflow(Overflow::Scroll)
-        .edit(true),))
+        .edit(resource::<Editing, _>(|editing| editing.0)),))
         .width(px(900.0))
         .height(px(600.0)),
     );
@@ -382,4 +388,103 @@ diff --git a/a.rs b/a.rs
     settle(&mut app);
     assert_eq!(new_text(&mut app, 0), before);
     assert!(status(&mut app).is_none());
+}
+
+fn drawn_line(app: &mut App, line: u32) -> Vec<String> {
+    app.world_mut()
+        .query::<&mut DiffDoc>()
+        .single_mut(app.world_mut())
+        .expect("one view")
+        .reveal(0, 1, Side::All);
+    settle(app);
+    let index = row_where(app, 0, |row| {
+        row.new_line().is_some_and(|new| new.index == line)
+    });
+    scroll_to(app, index);
+    drawn(app)
+        .into_iter()
+        .find(|&(at, _)| at == index)
+        .map(|(_, spans)| spans)
+        .expect("a slot draws the row")
+}
+
+fn far_rows_after_opening_a_comment(turn_off: bool) {
+    let body: String =
+        (1..1000).map(|n| format!("let a{n} = {n};\n")).collect();
+    let old = format!("let x = 1;\n{body}");
+    let new = format!("let x = 2;\n{body}");
+    let edited = format!("/*let x = 2;\n{body}");
+    let mut app = editing(
+        DiffSource::texts("a.rs", &old, &new),
+        Layout::Stacked,
+    );
+    let addition = row_where(&mut app, 0, |row| {
+        matches!(row, Row::Addition { .. })
+    });
+    click_stacked(&mut app, addition, 0);
+    type_text(&mut app, "/*");
+    settle(&mut app);
+    assert_eq!(new_text(&mut app, 0), edited);
+    if turn_off {
+        app.world_mut().resource_mut::<Editing>().0 = false;
+        settle(&mut app);
+    }
+    let live = drawn_line(&mut app, 900);
+    let mut fresh = editing(
+        DiffSource::texts("a.rs", &old, &edited),
+        Layout::Stacked,
+    );
+    assert_eq!(live, drawn_line(&mut fresh, 900));
+}
+
+#[test]
+fn a_row_scrolled_far_below_the_caret_draws_the_lexing_an_edit_changed()
+ {
+    far_rows_after_opening_a_comment(false);
+}
+
+#[test]
+fn rows_still_catch_up_on_an_edit_after_editing_turns_off() {
+    far_rows_after_opening_a_comment(true);
+}
+
+fn gutter_widths(app: &mut App) -> Vec<usize> {
+    let lines: Vec<Entity> = slots(app)
+        .into_iter()
+        .filter(|&(index, _)| {
+            matches!(
+                doc(app).row(index),
+                Some(DiffRow::Body { row, .. }) if !matches!(row, Row::Gap { .. })
+            )
+        })
+        .map(|(_, slot)| slot)
+        .collect();
+    let mut widths: Vec<usize> = lines
+        .into_iter()
+        .map(|slot| texts(app, slot)[0].len())
+        .collect();
+    widths.sort_unstable();
+    widths.dedup();
+    widths
+}
+
+#[test]
+fn every_row_s_gutter_widens_when_an_edit_adds_a_digit_to_the_line_count()
+ {
+    let old = numbered_with(9, &[]);
+    let new = numbered_with(9, &[(5, "let line_5 = 50;")]);
+    let mut app = editing(
+        DiffSource::texts("a.rs", &old, &new),
+        Layout::Stacked,
+    );
+    assert_eq!(gutter_widths(&mut app), ["1 1 ".len()]);
+    let addition = row_where(&mut app, 0, |row| {
+        matches!(row, Row::Addition { .. })
+    });
+    click_stacked(&mut app, addition, 0);
+    key_with(&mut app, &[], KeyCode::Enter, Key::Enter);
+    settle(&mut app);
+    assert_eq!(new_text(&mut app, 0).lines().count(), 10);
+    assert_eq!(gutter_widths(&mut app), [" 1  1 ".len()]);
+    assert_slots_show_their_rows(&mut app);
 }

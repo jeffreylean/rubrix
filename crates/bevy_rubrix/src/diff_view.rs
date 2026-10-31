@@ -197,7 +197,7 @@ impl SourceFile {
             .find(|lines| !lines.is_empty());
         let first = shown.map_or("", |lines| lines.line(0));
         let lang = Lang::detect(path, first);
-        let digits = digits(last_number(&diff) as usize);
+        let digits = number_width(&diff);
         let side = |lines: &Lines, len: fn(&Hunk) -> u32| {
             if diff.is_partial() {
                 let hunks =
@@ -215,6 +215,12 @@ impl SourceFile {
             lang,
         }
     }
+}
+
+/// The digits of the widest line number `diff`'s rows show. O(rows)
+/// for a partial diff, O(1) otherwise.
+pub(crate) fn number_width(diff: &FileDiff) -> usize {
+    digits(last_number(diff) as usize)
 }
 
 fn last_number(diff: &FileDiff) -> u32 {
@@ -410,11 +416,10 @@ impl<'a> FileRef<'a> {
     }
 
     fn digits(&self) -> usize {
-        if self.new.is_none() {
+        if self.diff.is_partial() {
             return self.source.digits;
         }
-        let lines = self.diff.old_lines().len();
-        digits(lines.max(self.diff.new_lines().len()) as usize)
+        number_width(self.diff)
     }
 }
 

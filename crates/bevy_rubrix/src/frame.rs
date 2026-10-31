@@ -364,9 +364,18 @@ impl EditTarget for EditView {
 }
 
 /// What a key press does to the view it was sent to.
-enum Act {
+pub(crate) enum Act {
     Action(Action),
     Text(String),
+}
+
+impl From<Resolved<'_>> for Act {
+    fn from(resolved: Resolved<'_>) -> Act {
+        match resolved {
+            Resolved::Action(action) => Act::Action(action),
+            Resolved::Text(text) => Act::Text(text.to_owned()),
+        }
+    }
 }
 
 /// What a frame starts by settling: every doc's and marks' damage,
@@ -485,14 +494,11 @@ pub(crate) fn apply(world: &mut World, mut frame: Local<Frame>) {
                 let view = press.focus?;
                 let (_, edit, _, composing) =
                     scene.views.get(view).ok()?;
-                let act = match scene.keymap.resolve(press)? {
-                    _ if composing => return None,
-                    Resolved::Action(action) => Act::Action(action),
-                    Resolved::Text(text) => {
-                        Act::Text(text.to_owned())
-                    }
-                };
-                Some((view, edit.doc(), act))
+                let resolved = scene.keymap.resolve(press)?;
+                if composing {
+                    return None;
+                }
+                Some((view, edit.doc(), Act::from(resolved)))
             })
             .collect()
     };
@@ -689,7 +695,7 @@ fn strokes(
 }
 
 /// One key, through the transaction of the view it was sent to.
-fn dispatch(tx: &mut Tx, act: &Act) {
+pub(crate) fn dispatch(tx: &mut Tx, act: &Act) {
     match act {
         Act::Text(text) => {
             tx.apply(Command::Type(text));
@@ -707,7 +713,7 @@ fn dispatch(tx: &mut Tx, act: &Act) {
     }
 }
 
-pub(crate) fn copy(tx: &mut Tx) {
+fn copy(tx: &mut Tx) {
     let text = tx.editor().copy_text();
     if !text.is_empty() {
         tx.copy(text);
@@ -716,7 +722,7 @@ pub(crate) fn copy(tx: &mut Tx) {
 
 /// Pastes at once when the clipboard read is ready, and otherwise
 /// parks the read on the doc for later frames.
-pub(crate) fn paste(tx: &mut Tx) {
+fn paste(tx: &mut Tx) {
     let mut read = clipboard::read(tx.world);
     match read.poll_result() {
         Some(Ok(text)) => {

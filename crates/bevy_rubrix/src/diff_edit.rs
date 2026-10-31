@@ -36,18 +36,18 @@ use rubrix_diff::{
     Anchor, FileChange, FileDiff, Layout, Rediff, Row, RowSplice,
     Rows,
 };
-use rubrix_edit::{Command, Selection, Selections};
+use rubrix_edit::{Selection, Selections};
 
 use crate::damage::BUILT_MAX;
 use crate::diff_view::{
     CONTEXT, DiffDoc, DiffLine, DiffRow, Lane, Live, Spot,
-    stacked_line,
+    number_width, stacked_line,
 };
 use crate::editor::{
     EditDoc, EditRequest, EditSystems, EditorChanged, Request,
 };
-use crate::frame::{copy, paste};
-use crate::keymap::{Action, KeyPress, Keymap, Keys, Mods, Resolved};
+use crate::frame::{Act, dispatch};
+use crate::keymap::{KeyPress, Keymap, Keys, Mods};
 use crate::rows::Shown;
 use crate::select::{CodeSelection, Column, Selectable, Selects};
 
@@ -59,10 +59,10 @@ pub(crate) fn plugin(app: &mut App) {
         (
             keys.after(PickingSystems::Last)
                 .after(EditSystems::Keys)
-                .before(EditSystems::Apply),
-            apply.after(EditSystems::Apply),
-        )
-            .run_if(editing),
+                .before(EditSystems::Apply)
+                .run_if(editing),
+            apply.after(EditSystems::Apply).run_if(shows_edits),
+        ),
     )
     .add_systems(
         PostUpdate,
@@ -72,6 +72,13 @@ pub(crate) fn plugin(app: &mut App) {
 
 fn editing(docs: Query<&DiffDoc>) -> bool {
     docs.iter().any(|doc| doc.edit.on)
+}
+
+/// Editing is on, or was, and left live files whose rows still read
+/// their runs from the file's `EditDoc`.
+fn shows_edits(docs: Query<&DiffDoc>) -> bool {
+    docs.iter()
+        .any(|doc| doc.edit.on || !doc.edit.damage.is_empty())
 }
 
 #[derive(Default)]
@@ -86,6 +93,7 @@ pub(crate) struct Session {
     damage: Vec<(Entity, u64)>,
     in_sight: Option<(usize, usize)>,
     rediff: Option<(usize, Duration)>,
+    colour: Color,
     bar: Option<Entity>,
 }
 
@@ -193,27 +201,9 @@ fn row_doc<'w>(
 }
 
 pub(crate) fn attach(view: &mut EntityWorldMut, colour: Color) {
-    let root = view.id();
     view.observe(pressed).observe(keep_keys);
-    let bar = view.world_scope(|world| {
-        world
-            .spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    width: px(CARET_WIDTH),
-                    ..Node::default()
-                },
-                BackgroundColor(colour),
-                Pickable::IGNORE,
-                ZIndex(1),
-                Visibility::Hidden,
-                DiffCaret,
-                ChildOf(root),
-            ))
-            .id()
-    });
     if let Some(mut doc) = view.get_mut::<DiffDoc>() {
-        doc.edit.bar = Some(bar);
+        doc.edit.colour = colour;
     }
 }
 
@@ -290,11 +280,32 @@ fn begin(world: &mut World, root: Entity) {
                 })
             })
             .collect();
+    let bar = doc.edit.bar.is_none().then_some(doc.edit.colour);
     for (file, diff, editor) in starts {
         let doc = world.spawn(editor).id();
         if let Some(mut view) = world.get_mut::<DiffDoc>(root) {
             view.bypass_change_detection().file_mut(file).live =
                 Some(Live { diff, doc });
+        }
+    }
+    if let Some(colour) = bar {
+        let bar = world
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: px(CARET_WIDTH),
+                    ..Node::default()
+                },
+                BackgroundColor(colour),
+                Pickable::IGNORE,
+                ZIndex(1),
+                Visibility::Hidden,
+                DiffCaret,
+                ChildOf(root),
+            ))
+            .id();
+        if let Some(mut view) = world.get_mut::<DiffDoc>(root) {
+            view.bypass_change_detection().edit.bar = Some(bar);
         }
     }
 }
@@ -453,26 +464,15 @@ pub(crate) fn keys(
             if press.focus != Some(root) {
                 continue;
             }
-            let request = match keymap.resolve(press) {
-                Some(Resolved::Text(text)) => Request::typed(text),
-                Some(Resolved::Action(action)) => request(action),
-                None => continue,
+            let Some(act) = keymap.resolve(press).map(Act::from)
+            else {
+                continue;
             };
-            requests.write(EditRequest::new(live.doc, request));
+            requests.write(EditRequest::new(
+                live.doc,
+                Request::new(move |tx| dispatch(tx, &act)),
+            ));
         }
-    }
-}
-
-fn request(action: Action) -> Request {
-    match action {
-        Action::Command(command) => Request::command(command),
-        Action::Run(run) => Request::new(run),
-        Action::Copy => Request::new(copy),
-        Action::Cut => Request::new(|tx| {
-            copy(tx);
-            tx.apply(Command::Cut);
-        }),
-        Action::Paste => Request::new(paste),
     }
 }
 
@@ -564,6 +564,7 @@ fn rediff(
     {
         let shown = doc.file_mut(file);
         let live = shown.live.as_mut().expect("a live file");
+        let width = number_width(&live.diff);
         for (lines, text) in &edits {
             let len = live.diff.new_lines().len();
             let lines = lines.start.min(len)..lines.end.min(len);
@@ -583,6 +584,9 @@ fn rediff(
                 seen.start.min(rows.start)..u32::MAX
             }));
             splices.push(splice);
+        }
+        if number_width(&live.diff) != width {
+            redrawn = Some(0..u32::MAX);
         }
     }
     let took = started.elapsed();
@@ -671,32 +675,34 @@ fn keep_top(world: &mut World, list: Entity, index: usize, top: f32) {
     }
 }
 
+/// Lexes each live file's stale lines up to its window, as E2's
+/// views do: `max(first shown line, caret line) + 2 * BUILT_MAX`.
 fn catch_up(world: &mut World, root: Entity) {
     let Some(doc) = world.get::<DiffDoc>(root) else {
         return;
     };
-    let docs: Vec<Entity> = doc
-        .files()
-        .iter()
-        .filter_map(|file| Some(file.live.as_ref()?.doc))
+    let first = doc
+        .list()
+        .and_then(|list| world.get::<VirtualList>(list))
+        .map_or(0, VirtualList::first_visible);
+    let docs: Vec<(Entity, u32)> = (0..doc.files().len())
+        .filter_map(|file| {
+            let live = doc.files()[file].live.as_ref()?;
+            Some((live.doc, first_shown_line(doc, file, first)))
+        })
         .collect();
-    let active = doc
-        .edit
-        .active
-        .and_then(|file| Some(doc.files()[file].live.as_ref()?.doc));
     let mut moved = false;
     let mut seen = Vec::with_capacity(docs.len());
-    for entity in docs {
+    for (entity, shown) in docs {
         let Some(mut editor) = world.get_mut::<EditDoc>(entity)
         else {
             continue;
         };
-        if active == Some(entity) {
-            let buffer = editor.editor().buffer();
-            let head = editor.editor().selections().primary().head;
-            let window = buffer.line_of(head) + 2 * BUILT_MAX;
-            editor.bypass_change_detection().catch_up(window);
-        }
+        let buffer = editor.editor().buffer();
+        let caret = buffer
+            .line_of(editor.editor().selections().primary().head);
+        let window = shown.max(caret).saturating_add(2 * BUILT_MAX);
+        editor.bypass_change_detection().catch_up(window);
         seen.push((entity, editor.damage().seq()));
     }
     let Some(mut doc) = world.get_mut::<DiffDoc>(root) else {
@@ -712,6 +718,20 @@ fn catch_up(world: &mut World, root: Entity) {
     if moved {
         session.reads += 1;
     }
+}
+
+/// The new-side line of file `file`'s first row at or below list row
+/// `first`, or 0 when none of the next rows shows one.
+fn first_shown_line(doc: &DiffDoc, file: usize, first: usize) -> u32 {
+    if doc.is_collapsed(file) {
+        return 0;
+    }
+    let at = first.saturating_sub(doc.body_start(file)) as u32;
+    doc.files()[file]
+        .rows
+        .range(at..at.saturating_add(2 * BUILT_MAX))
+        .find_map(|row| row.new_line())
+        .map_or(0, |line| line.index)
 }
 
 fn reveal(world: &mut World, root: Entity) {
