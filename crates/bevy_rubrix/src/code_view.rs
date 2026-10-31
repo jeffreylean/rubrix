@@ -1,37 +1,23 @@
 use core::ops::Range;
-use std::borrow::Cow;
 use std::mem;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use bevy::color::Color;
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::system::Query;
-use bevy::ecs::world::World;
-use bevy::text::FontSource;
-use bevy::ui::{AlignItems, UiRect, px};
-use bevy_fynix::tokens::{SpacingTokens, Tone};
-use bevy_fynix::views::{
-    FrameProps, RowSlot, Span, Stack, column, rich, row, virtual_list,
-};
-use bevy_fynix::{
-    AnyView, Bevy, Cx, Prop, Signal, View, ViewExt, component,
-    derived, keyed,
-};
-use rubrix_highlight::{
-    Highlights, Lang, Run, Stream, highlight, spans,
-};
+use bevy_fynix::tokens::SpacingTokens;
+use bevy_fynix::views::virtual_list;
+use bevy_fynix::{AnyView, Bevy, Cx, Prop, View, component, keyed};
+use rubrix_highlight::{Highlights, Lang, Run, Stream, highlight};
 
+use crate::rows::{
+    LINE_HEIGHT, RowStyle, ViewFeed, code_row, filling,
+};
 use crate::select::{
-    self, CodeSelection, Column, RowText, Selectable, selectable,
+    self, CodeSelection, Column, RowText, Selectable,
 };
-use crate::tokens::{Styles, SyntaxTokens};
-
-/// Bevy's line height, as a factor of the font size.
-pub(crate) const LINE_HEIGHT: f32 = 1.2;
-
-const TAB: usize = 4;
+use crate::tokens::SyntaxTokens;
 
 pub(crate) const OVERSCAN: f32 = 400.0;
 
@@ -390,6 +376,15 @@ impl CodeDoc {
         }
     }
 
+    pub(crate) fn overflow(&self) -> Overflow {
+        self.overflow
+    }
+
+    /// Rises each time a stream sends text.
+    pub(crate) fn edits(&self) -> u64 {
+        self.edits
+    }
+
     /// The text of row `row`, from 0, without its line ending. `None`
     /// past the last row.
     pub fn line(&self, row: usize) -> Option<&str> {
@@ -546,28 +541,12 @@ pub struct CodeLine {
     pub row: usize,
 }
 
-#[derive(Clone)]
-struct RowStyle {
-    styles: Styles,
-    font: FontSource,
-    size: f32,
-    gap: f32,
-    selected: Color,
-}
-
 impl<T> View<Bevy, T> for CodeView
 where
     T: SyntaxTokens + SpacingTokens + Send + Sync + 'static,
 {
     fn build(self, cx: &mut Cx<'_, Bevy, T>) -> Entity {
-        let theme = cx.theme();
-        let style = RowStyle {
-            styles: Styles::new(theme),
-            font: theme.code_font(),
-            size: self.size.unwrap_or_else(|| theme.body_size()),
-            gap: theme.gap(),
-            selected: select::selected_colour(theme),
-        };
+        let style = RowStyle::new(cx.theme(), self.size);
         let root = cx.build(filling());
         let mut view = cx.world.entity_mut(root);
         view.insert(CodeDoc::new(&CodeSource::empty()));
@@ -600,10 +579,6 @@ where
     }
 }
 
-pub(crate) fn filling() -> Stack<()> {
-    column(()).grow(1.0).min_width(px(0.0)).min_height(px(0.0))
-}
-
 fn list<T>(root: Entity, style: RowStyle) -> AnyView<Bevy, T>
 where
     T: SyntaxTokens + SpacingTokens + Send + Sync + 'static,
@@ -627,7 +602,7 @@ where
             if streamed { STREAM_OVERSCAN } else { OVERSCAN };
         let list = cx.build(
             virtual_list(count, estimate, move |slot| {
-                code_row(root, slot, &style)
+                code_row(ViewFeed { view: root }, slot, &style)
             })
             .overscan(overscan)
             .follow_bottom(follow)
@@ -640,279 +615,9 @@ where
     })
 }
 
-fn code_row<T>(
-    root: Entity,
-    slot: RowSlot,
-    style: &RowStyle,
-) -> AnyView<Bevy, T>
-where
-    T: SyntaxTokens + SpacingTokens + Send + Sync + 'static,
-{
-    let number = rich(gutter(root, slot))
-        .font(style.font.clone())
-        .size(style.size)
-        .tone(Tone::Faint)
-        .wrap(false);
-    let gutter = row((number,))
-        .shrink(0.0)
-        .padding(UiRect::right(px(style.gap)));
-    let styles = style.styles.clone();
-    let line = rich(line(root, slot, move |doc, row| {
-        line_spans(
-            doc.line(row).unwrap_or_default(),
-            doc.runs(row),
-            &styles,
-        )
-    }))
-    .font(style.font.clone())
-    .size(style.size)
-    .wrap(component::<CodeDoc, bool>(root, |doc| {
-        doc.is_some_and(|doc| doc.overflow == Overflow::Wrap)
-    }));
-    let text = selectable(line, slot, style.selected, move |row| {
-        CodeLine { view: root, row }
-    });
-    row((gutter, slot.sideways(text)))
-        .align(AlignItems::FlexStart)
-        .gap(0.0)
-        .boxed()
-}
-
-fn gutter(root: Entity, slot: RowSlot) -> Signal<Vec<Span>> {
-    let width = move |world: &World| {
-        world
-            .get::<CodeDoc>(root)
-            .map_or(1, |doc| digits(doc.rows()))
-    };
-    let row = slot.index();
-    let mut index = slot.index();
-    let mut shown = None;
-    derived(move |world| {
-        let width = width(world);
-        vec![Span::new(format!("{:>width$}", row.get(world) + 1))]
-    })
-    .when(move |world| {
-        let moved = index.changed(world);
-        let now = Some(width(world));
-        moved | (mem::replace(&mut shown, now) != now)
-    })
-}
-
-fn line(
-    root: Entity,
-    slot: RowSlot,
-    show: impl Fn(&CodeDoc, usize) -> Vec<Span> + Send + Sync + 'static,
-) -> Signal<Vec<Span>> {
-    let row = slot.index();
-    let mut index = slot.index();
-    let mut read: Option<Read> = None;
-    derived(move |world| {
-        world
-            .get::<CodeDoc>(root)
-            .map_or_else(Vec::new, |doc| show(doc, row.get(world)))
-    })
-    .when(move |world| {
-        let moved = index.changed(world);
-        let doc = world.get::<CodeDoc>(root);
-        let edits = doc.map(|doc| doc.edits);
-        let fires = moved
-            || read.is_none_or(|read| {
-                !read.committed && read.edits != edits
-            });
-        if fires {
-            let row = index.get(world);
-            read = Some(Read {
-                edits,
-                committed: doc
-                    .is_some_and(|doc| row < doc.committed()),
-            });
-        }
-        fires
-    })
-}
-
-#[derive(Clone, Copy)]
-struct Read {
-    edits: Option<u64>,
-    committed: bool,
-}
-
-pub(crate) fn digits(number: usize) -> usize {
-    number.checked_ilog10().map_or(1, |log| log as usize + 1)
-}
-
-pub(crate) struct Shown<'a> {
-    text: Cow<'a, str>,
-    tabs: Vec<Tab>,
-}
-
-struct Tab {
-    byte: usize,
-    spaces: usize,
-}
-
-impl<'a> Shown<'a> {
-    pub(crate) fn new(line: &'a str) -> Shown<'a> {
-        if !line.contains('\t') {
-            return Shown {
-                text: Cow::Borrowed(line),
-                tabs: Vec::new(),
-            };
-        }
-        let mut text = String::with_capacity(line.len() + TAB);
-        let mut tabs = Vec::new();
-        let mut column = 0;
-        for (at, c) in line.char_indices() {
-            if c == '\t' {
-                let spaces = TAB - column % TAB;
-                text.extend(core::iter::repeat_n(' ', spaces));
-                tabs.push(Tab { byte: at, spaces });
-                column += spaces;
-            } else {
-                text.push(c);
-                column += 1;
-            }
-        }
-        Shown {
-            text: Cow::Owned(text),
-            tabs,
-        }
-    }
-
-    pub(crate) fn text(&self) -> &str {
-        &self.text
-    }
-
-    pub(crate) fn source(&self, shown_byte: usize) -> usize {
-        let mut extra = 0;
-        for tab in &self.tabs {
-            let at = tab.byte + extra;
-            if shown_byte < at {
-                break;
-            }
-            if shown_byte < at + tab.spaces {
-                return tab.byte
-                    + usize::from(shown_byte - at > tab.spaces / 2);
-            }
-            extra += tab.spaces - 1;
-        }
-        shown_byte - extra
-    }
-
-    pub(crate) fn shown(&self, source_byte: usize) -> usize {
-        source_byte
-            + self
-                .tabs
-                .iter()
-                .take_while(|tab| tab.byte < source_byte)
-                .map(|tab| tab.spaces - 1)
-                .sum::<usize>()
-    }
-}
-
-pub(crate) fn line_spans(
-    line: &str,
-    runs: &[Run],
-    styles: &Styles,
-) -> Vec<Span> {
-    let shown = Shown::new(line);
-    let mut out: Vec<Span> = Vec::with_capacity(runs.len());
-    let mut start = 0;
-    for (range, kind) in spans(runs) {
-        let end = shown.shown(range.end);
-        let text = &shown.text()[start..end];
-        let look = styles.look(kind);
-        match out.last_mut() {
-            Some(last) if last.look == *look => {
-                last.text.push_str(text)
-            }
-            _ => out.push(Span {
-                text: text.to_owned(),
-                look: look.clone(),
-            }),
-        }
-        start = end;
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
-    use bevy::color::Color;
-    use bevy_fynix::tokens::TextTokens;
-    use rubrix_highlight::Kind;
-
     use super::*;
-
-    #[test]
-    fn tabs_expand_to_four_column_stops() {
-        let shown = Shown::new("\tab\tc");
-        assert_eq!(shown.text(), "    ab  c");
-        assert_eq!(shown.shown(0), 0);
-        assert_eq!(shown.shown(1), 4);
-        assert_eq!(shown.shown(3), 6);
-        assert_eq!(shown.shown(4), 8);
-        assert_eq!(shown.shown(5), 9);
-    }
-
-    #[test]
-    fn a_shown_byte_maps_back_to_its_source_byte() {
-        let shown = Shown::new("\tab\tc");
-        let back =
-            (0..=9).map(|at| shown.source(at)).collect::<Vec<_>>();
-        assert_eq!(back, [0, 0, 0, 1, 1, 2, 3, 3, 4, 5]);
-        assert_eq!(Shown::new("a 日").source(5), 5);
-    }
-
-    #[test]
-    fn a_line_without_tabs_shows_as_it_is() {
-        let shown = Shown::new("a 日本 b");
-        assert!(matches!(shown.text, Cow::Borrowed(_)));
-        assert_eq!(shown.shown(5), 5);
-    }
-
-    struct Theme;
-
-    impl TextTokens for Theme {
-        fn tone(&self, _: Tone) -> Color {
-            Color::WHITE
-        }
-
-        fn body_size(&self) -> f32 {
-            14.0
-        }
-
-        fn small_size(&self) -> f32 {
-            11.0
-        }
-    }
-
-    impl SyntaxTokens for Theme {}
-
-    #[test]
-    fn equal_looks_merge_into_one_span() {
-        let styles = Styles::new(&Theme);
-        let runs = [
-            Run {
-                end: 1,
-                kind: Kind::Keyword,
-            },
-            Run {
-                end: 3,
-                kind: Kind::String,
-            },
-            Run {
-                end: 5,
-                kind: Kind::Plain,
-            },
-        ];
-        let spans = line_spans("a\tbcd", &runs, &styles);
-        let texts = spans
-            .iter()
-            .map(|span| span.text.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(texts, ["a   bcd"]);
-    }
 
     #[test]
     fn rows_drop_the_empty_line_after_a_final_newline() {
@@ -938,14 +643,6 @@ mod tests {
         );
         assert!(
             source != CodeSource::new(Lang::Rust, "fn main() {}")
-        );
-    }
-
-    #[test]
-    fn digits_count_the_widest_line_number() {
-        assert_eq!(
-            [0, 9, 10, 99_999, 100_000].map(digits),
-            [1, 1, 2, 5, 6]
         );
     }
 }

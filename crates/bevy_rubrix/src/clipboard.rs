@@ -84,7 +84,9 @@ pub(crate) fn copy(world: &mut World, view: Entity, text: String) {
 
 /// Starts a read for a paste.
 pub(crate) fn read(world: &mut World) -> ClipboardRead {
-    world.resource_scope(|world, mut clipboard: Mut<EditClipboard>| {
-        clipboard.0.read(world)
-    })
+    world.resource_scope(
+        |world, mut clipboard: Mut<EditClipboard>| {
+            clipboard.0.read(world)
+        },
+    )
 }

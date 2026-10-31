@@ -3,9 +3,13 @@
 mod caret;
 mod clipboard;
 mod code_view;
+mod damage;
 mod diff_view;
 mod editor;
+mod frame;
 mod keymap;
+mod marks;
+mod rows;
 mod select;
 mod tokens;
 
@@ -14,12 +18,18 @@ use bevy::app::{
 };
 use bevy::asset::{Assets, Handle, uuid_handle};
 use bevy::ecs::schedule::IntoScheduleConfigs;
+use bevy::ecs::schedule::common_conditions::any_with_component;
 use bevy::ecs::system::ResMut;
+use bevy::input::InputSystems;
+use bevy::input::keyboard::{KeyboardFocusLost, KeyboardInput};
+use bevy::input_focus::InputFocusSystems;
 use bevy::picking::PickingSystems;
 use bevy::text::Font;
 use bevy::ui::UiSystems;
-pub use caret::Hit;
-pub use clipboard::{ClipboardProvider, EditClipboard, SystemClipboard};
+pub use caret::{CaretBlink, Hit};
+pub use clipboard::{
+    ClipboardProvider, EditClipboard, SystemClipboard,
+};
 pub use code_view::{
     CodeDoc, CodeLine, CodeSource, CodeStream, CodeView, Overflow,
     code_view,
@@ -28,13 +38,18 @@ pub use diff_view::{
     DiffDoc, DiffRow, DiffRowAt, DiffSource, DiffView, diff_view,
 };
 pub use editor::{
-    CodeEditor, EditDoc, EditLine, EditRequest, EditSystems, EditView,
-    EditorChanged, Request, code_editor,
+    CodeEditor, Composing, EditDoc, EditLine, EditRequest,
+    EditSystems, EditView, EditorChanged, Request, code_editor,
 };
+pub use frame::Tx;
 pub use keymap::{
     Action, ChordError, Gesture, Keymap, Mods, Platform, Stroke,
 };
+pub use marks::{Mark, MarkKind, MarkLayer, Marks};
 pub use rubrix_diff::{Layout, Row, Side};
+pub use rubrix_edit::{
+    Buffer, Command, Editor, History, Motion, Selection, Selections,
+};
 pub use rubrix_highlight::{Kind, Lang, Run};
 pub use select::{CodeCopied, CodeSelection};
 pub use tokens::{
@@ -55,15 +70,42 @@ pub struct RubrixPlugin;
 
 impl Plugin for RubrixPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<select::KeyTarget>()
+        app.init_resource::<Keymap>()
+            .init_resource::<keymap::Keys>()
+            .init_resource::<EditClipboard>()
+            .init_resource::<CaretBlink>()
+            .add_message::<KeyboardInput>()
+            .add_message::<KeyboardFocusLost>()
+            .add_message::<EditRequest>()
+            .add_message::<EditorChanged>()
             .add_systems(
                 Startup,
                 (load_code_font, diff_view::load_hatch),
+            )
+            .configure_sets(
+                PreUpdate,
+                (
+                    EditSystems::Keys
+                        .after(InputSystems)
+                        .before(InputFocusSystems::Dispatch),
+                    EditSystems::Apply
+                        .after(EditSystems::Keys)
+                        .after(PickingSystems::Last),
+                ),
+            )
+            .add_systems(
+                PreUpdate,
+                keymap::read_keys.in_set(EditSystems::Keys),
             )
             .add_systems(
                 PreUpdate,
                 (
                     code_view::take_sent,
+                    frame::apply
+                        .in_set(EditSystems::Apply)
+                        .run_if(any_with_component::<EditDoc>),
+                    caret::blink
+                        .run_if(any_with_component::<EditView>),
                     select::follow_drags::<CodeDoc>,
                     select::follow_drags::<DiffDoc>,
                 )
@@ -76,7 +118,13 @@ impl Plugin for RubrixPlugin {
             )
             .add_systems(
                 PostUpdate,
-                (select::draw::<CodeDoc>, select::draw::<DiffDoc>)
+                (
+                    select::draw::<CodeDoc>,
+                    select::draw::<DiffDoc>,
+                    caret::draw
+                        .in_set(EditSystems::Draw)
+                        .run_if(any_with_component::<EditView>),
+                )
                     .after(UiSystems::PostLayout),
             );
     }
