@@ -214,7 +214,7 @@ impl Damage {
 
     /// Records `lines`, in the numbers after `edits`, and moves the
     /// kept entries through `edits`, sequential and ascending. A
-    /// change notes its line edits and its highlight hull; each
+    /// change notes its line edits and the lines it lexed; each
     /// edit's inserted lines are dirty too.
     pub(crate) fn note(
         &mut self,

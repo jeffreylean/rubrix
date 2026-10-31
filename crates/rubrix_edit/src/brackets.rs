@@ -3,6 +3,8 @@
 use alloc::vec::Vec;
 use core::ops::Range;
 
+use rubrix_highlight::{Kind, Run, spans};
+
 use crate::buffer::Buffer;
 
 /// The most lines [`matching`] scans from the caret, as in Pierre.
@@ -22,6 +24,17 @@ pub struct Brackets {
 
 const PAIRS: [(u8, u8); 3] =
     [(b'(', b')'), (b'[', b']'), (b'{', b'}')];
+
+/// The byte ranges of a line's string and comment runs, which
+/// [`matching`] skips.
+pub fn skipped(runs: &[Run]) -> Vec<Range<usize>> {
+    spans(runs)
+        .filter(|(_, kind)| {
+            matches!(kind.root(), Kind::String | Kind::Comment)
+        })
+        .map(|(bytes, _)| bytes)
+        .collect()
+}
 
 /// The bracket at or just before `at` and the one that matches it,
 /// scanning at most [`SCAN_LINES`] lines and [`SCAN_CHARS`] bytes.

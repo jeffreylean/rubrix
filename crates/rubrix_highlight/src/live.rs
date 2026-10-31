@@ -26,20 +26,19 @@ struct Relexed {
     changed: bool,
 }
 
-struct Hull {
+struct Lexed {
     window: Range<u32>,
     edited: Range<u32>,
-    start: u32,
-    end: u32,
+    /// In the order noted, each run of consecutive lines as one.
+    lines: Vec<Range<u32>>,
 }
 
-impl Hull {
-    fn new(window: Range<u32>, edited: Range<u32>) -> Hull {
-        Hull {
+impl Lexed {
+    fn new(window: Range<u32>, edited: Range<u32>) -> Lexed {
+        Lexed {
             window,
             edited,
-            start: u32::MAX,
-            end: 0,
+            lines: Vec::new(),
         }
     }
 
@@ -47,17 +46,42 @@ impl Hull {
         if (changed || self.edited.contains(&line))
             && self.window.contains(&line)
         {
-            self.start = self.start.min(line);
-            self.end = self.end.max(line + 1);
+            match self.lines.last_mut() {
+                Some(last) if last.end == line => last.end = line + 1,
+                Some(last) if last.contains(&line) => {}
+                _ => self.lines.push(line..line + 1),
+            }
         }
     }
 
-    fn finish(self) -> Range<u32> {
-        if self.start < self.end {
-            self.start..self.end
-        } else {
-            0..0
+    /// The noted lines, sorted, with the ranges that overlap or touch
+    /// joined.
+    fn lines(mut self) -> Vec<Range<u32>> {
+        self.lines.sort_unstable_by_key(|lines| lines.start);
+        let mut joined: Vec<Range<u32>> =
+            Vec::with_capacity(self.lines.len());
+        for range in self.lines {
+            match joined.last_mut() {
+                Some(last) if range.start <= last.end => {
+                    last.end = last.end.max(range.end);
+                }
+                _ => joined.push(range),
+            }
         }
+        joined
+    }
+
+    fn finish(self) -> Range<u32> {
+        hull(&self.lines())
+    }
+}
+
+/// The range from the first of `lines`, sorted, to the end of the
+/// last, or `0..0` if there are none.
+fn hull(lines: &[Range<u32>]) -> Range<u32> {
+    match (lines.first(), lines.last()) {
+        (Some(first), Some(last)) => first.start..last.end,
+        _ => 0..0,
     }
 }
 
@@ -117,14 +141,14 @@ impl Highlights {
         }
 
         let region_end = first + inserted;
-        let mut hull = Hull::new(window.clone(), first..region_end);
-        self.catch_up(first, lines, &mut hull);
+        let mut lexed = Lexed::new(window.clone(), first..region_end);
+        self.catch_up(first, lines, &mut lexed);
         if self.compare_deferred() {
             self.defer(edit, lines);
             let upto =
                 window.end.min(self.line_count()).max(region_end);
-            self.catch_up(upto, lines, &mut hull);
-            return hull.finish();
+            self.catch_up(upto, lines, &mut lexed);
+            return lexed.finish();
         }
 
         let end = first + removed;
@@ -149,7 +173,7 @@ impl Highlights {
                 }
             }
             let relexed = self.relex(line, lines);
-            hull.note(line, relexed.changed);
+            lexed.note(line, relexed.changed);
             if line >= region_end {
                 expected = relexed.before;
             }
@@ -165,7 +189,7 @@ impl Highlights {
         } else {
             line
         };
-        hull.finish()
+        lexed.finish()
     }
 
     /// Brings the highlights up to date with every line edit of one
@@ -217,7 +241,24 @@ impl Highlights {
         lines: &(impl Lines + ?Sized),
         window: Range<u32>,
     ) -> Range<u32> {
-        let mut hull = Hull::new(window.clone(), 0..0);
+        hull(&self.edit_many_lines(edits, lines, window))
+    }
+
+    /// [`Highlights::edit_many`], returning the lines inside `window`
+    /// whose runs changed as sorted, disjoint ranges that do not
+    /// touch, in place of their hull. Scattered edits leave the lines
+    /// between them out.
+    ///
+    /// # Panics
+    ///
+    /// As [`Highlights::edit_many`].
+    pub fn edit_many_lines(
+        &mut self,
+        edits: impl IntoIterator<Item = LineEdit>,
+        lines: &(impl Lines + ?Sized),
+        window: Range<u32>,
+    ) -> Vec<Range<u32>> {
+        let mut lexed = Lexed::new(window.clone(), 0..0);
         let mut edits = edits.into_iter().peekable();
         let mut floor = 0;
         while let Some(edit) = edits.next() {
@@ -234,7 +275,7 @@ impl Highlights {
             if end > self.exact {
                 self.defer(edit, lines);
                 for line in first..floor {
-                    hull.note(line, true);
+                    lexed.note(line, true);
                 }
                 continue;
             }
@@ -249,7 +290,7 @@ impl Highlights {
             }
             for line in first..floor {
                 self.relex(line, lines);
-                hull.note(line, true);
+                lexed.note(line, true);
             }
 
             let next =
@@ -265,16 +306,16 @@ impl Highlights {
                     break;
                 }
                 let relexed = self.relex(line, lines);
-                hull.note(line, relexed.changed);
+                lexed.note(line, relexed.changed);
                 expected = relexed.before;
                 line += 1;
             }
         }
         let upto = window.end.min(self.line_count());
         if self.exact < upto {
-            self.catch_up(upto, lines, &mut hull);
+            self.catch_up(upto, lines, &mut lexed);
         }
-        hull.finish()
+        lexed.lines()
     }
 
     /// The line count after `edit`.
@@ -324,7 +365,7 @@ impl Highlights {
         lines: &(impl Lines + ?Sized),
     ) -> &[Run] {
         assert!(line < self.line_count(), "line past the end");
-        self.catch_up(line + 1, lines, &mut Hull::new(0..0, 0..0));
+        self.catch_up(line + 1, lines, &mut Lexed::new(0..0, 0..0));
         self.stored_runs(line)
     }
 
@@ -412,12 +453,12 @@ impl Highlights {
         &mut self,
         upto: u32,
         lines: &(impl Lines + ?Sized),
-        hull: &mut Hull,
+        lexed: &mut Lexed,
     ) {
         while self.exact < upto {
             let line = self.exact;
             let relexed = self.relex(line, lines);
-            hull.note(line, relexed.changed);
+            lexed.note(line, relexed.changed);
             let converged = line >= self.compare_from
                 && self.lines.get(line).end == relexed.before;
             self.exact = if converged {

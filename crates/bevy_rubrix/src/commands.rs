@@ -2,18 +2,15 @@
 //! which read the doc's language, the add-caret and column gestures,
 //! and the bracket pair at the primary caret.
 
-use core::ops::Range;
-
 use bevy::color::{Alpha, Color};
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::system::{Commands, Query};
 use rubrix_edit::{
-    Brackets, Buffer, Command, Selection, column, matching_bracket,
-    toggle_caret,
+    Brackets, Buffer, Command, Selection, bracket_skips, column,
+    matching_bracket, toggle_caret,
 };
-use rubrix_highlight::{Kind, spans};
 
 use crate::caret::CaretLayer;
 use crate::editor::{EditDoc, EditView};
@@ -78,8 +75,8 @@ pub(crate) const COLUMN: Gesture = Gesture(|stroke| {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct BracketMatch {
     brackets: Option<Brackets>,
-    /// The doc's seq when the match was found.
-    seq: u64,
+    /// The doc's highlight generation when the match was found.
+    lexed: u64,
     /// The primary head the match was found at.
     head: usize,
 }
@@ -105,15 +102,19 @@ pub(crate) fn match_brackets(
     mut commands: Commands,
 ) {
     for (entity, doc, held) in &mut docs {
-        let (seq, head) =
-            (doc.seq(), doc.editor().selections().primary().head);
+        let (lexed, head) = (
+            doc.highlight_seq(),
+            doc.editor().selections().primary().head,
+        );
         let find = || {
             matching_bracket(doc.editor().buffer(), head, |line| {
-                skipped(doc, line)
+                bracket_skips(doc.runs(line as usize))
             })
         };
         let brackets = match held {
-            Some(held) if (held.seq, held.head) == (seq, head) => {
+            Some(held)
+                if (held.lexed, held.head) == (lexed, head) =>
+            {
                 held.brackets
             }
             Some(mut held) => {
@@ -125,7 +126,7 @@ pub(crate) fn match_brackets(
                 };
                 *held = BracketMatch {
                     brackets,
-                    seq,
+                    lexed,
                     head,
                 };
                 brackets
@@ -134,7 +135,7 @@ pub(crate) fn match_brackets(
                 let brackets = find();
                 commands.entity(entity).insert(BracketMatch {
                     brackets,
-                    seq,
+                    lexed,
                     head,
                 });
                 brackets
@@ -155,16 +156,6 @@ pub(crate) fn match_brackets(
             }
         }
     }
-}
-
-/// The byte ranges of line `line`'s string and comment runs.
-fn skipped(doc: &EditDoc, line: u32) -> Vec<Range<usize>> {
-    spans(doc.runs(line as usize))
-        .filter(|(_, kind)| {
-            matches!(kind.root(), Kind::String | Kind::Comment)
-        })
-        .map(|(bytes, _)| bytes)
-        .collect()
 }
 
 /// A tint on each bracket, in the order [`Marks::set`] keeps them.
@@ -191,4 +182,61 @@ fn pair_marks(
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::ecs::world::World;
+    use rubrix_edit::{Editor, Monospace, Selections};
+    use rubrix_highlight::Lang;
+
+    use super::*;
+
+    #[test]
+    fn a_catch_up_finds_the_bracket_match_again() {
+        let text = format!("{{\n{}}}\n", "x\n".repeat(600));
+        let after_brace = Selections::new(Selection::caret(1));
+        let mut editor = Editor::new(Buffer::new(&text));
+        editor.set_selections(after_brace.clone());
+        let mut doc = EditDoc::from_editor(Lang::Rust, editor);
+        let opened = doc.run(
+            |editor| {
+                editor.set_selections(Selections::new(
+                    Selection::caret(2),
+                ));
+                let change = editor.apply(
+                    Command::Type("/*"),
+                    &Monospace::default(),
+                );
+                editor.set_selections(after_brace);
+                change
+            },
+            |_, _| 10,
+        );
+        assert!(opened.is_some());
+        let mut world = World::new();
+        let entity = world.spawn(doc).id();
+        let found = |world: &mut World| {
+            world
+                .run_system_once(match_brackets)
+                .expect("the system runs");
+            world
+                .get::<BracketMatch>(entity)
+                .and_then(BracketMatch::brackets)
+        };
+        assert!(
+            found(&mut world).is_some(),
+            "the runs past the reach are still stale"
+        );
+        world
+            .get_mut::<EditDoc>(entity)
+            .expect("a doc")
+            .catch_up(u32::MAX);
+        assert_eq!(
+            found(&mut world),
+            None,
+            "the closing brace is inside the comment"
+        );
+    }
 }

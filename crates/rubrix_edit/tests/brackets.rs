@@ -1,21 +1,17 @@
 use std::ops::Range;
 
 use rubrix_edit::{
-    Brackets, Buffer, SCAN_CHARS, SCAN_LINES, matching_bracket,
+    Brackets, Buffer, SCAN_CHARS, SCAN_LINES, bracket_skips,
+    matching_bracket,
 };
-use rubrix_highlight::{Kind, Lang};
+use rubrix_highlight::Lang;
 
 /// The match at `at` in `text`, skipping the string and comment runs
 /// of `text` highlighted as Rust.
 fn matched(text: &str, at: usize) -> Option<Brackets> {
     let highlights = rubrix_highlight::highlight(Lang::Rust, text);
     matching_bracket(&Buffer::new(text), at, |line| {
-        rubrix_highlight::spans(highlights.stored_runs(line))
-            .filter(|(_, kind)| {
-                matches!(kind.root(), Kind::String | Kind::Comment)
-            })
-            .map(|(range, _)| range)
-            .collect()
+        bracket_skips(highlights.stored_runs(line))
     })
 }
 

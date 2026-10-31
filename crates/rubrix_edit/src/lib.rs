@@ -41,6 +41,7 @@ mod surround;
 
 pub use brackets::{
     Brackets, SCAN_CHARS, SCAN_LINES, matching as matching_bracket,
+    skipped as bracket_skips,
 };
 pub use comment::{Markers, markers};
 pub use lines::TAB;

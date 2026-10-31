@@ -102,9 +102,10 @@ use std::{env, fs};
 
 use rubrix_edit::{
     Buffer, Command, Editor, Layout, Monospace, Motion, Selection,
-    Selections, column, matching_bracket, toggle_caret,
+    Selections, bracket_skips, column, matching_bracket,
+    toggle_caret,
 };
-use rubrix_highlight::{Kind, Lang, Lines};
+use rubrix_highlight::{Lang, Lines};
 
 /// A line and a byte column, both counted from 0.
 type Pos = (usize, usize);
@@ -659,16 +660,11 @@ fn bracket(editor: &Editor, lang: Lang) -> String {
     let buffer = editor.buffer();
     let highlights =
         rubrix_highlight::highlight(lang, &buffer.to_string());
-    let ignored = |line: u32| {
-        rubrix_highlight::spans(highlights.stored_runs(line))
-            .filter(|(_, kind)| {
-                matches!(kind.root(), Kind::String | Kind::Comment)
-            })
-            .map(|(range, _)| range)
-            .collect()
-    };
     let head = editor.selections().primary().head;
-    matching_bracket(buffer, head, ignored).map_or_else(
+    matching_bracket(buffer, head, |line| {
+        bracket_skips(highlights.stored_runs(line))
+    })
+    .map_or_else(
         || "none".to_owned(),
         |found| show(buffer, found.far),
     )
