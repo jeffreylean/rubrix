@@ -19,14 +19,17 @@ use bevy::text::{
     UnderlineColor,
 };
 use bevy::time::TimeUpdateStrategy;
-use bevy::ui::{ComputedNode, UiGlobalTransform, UiPlugin, UiScale};
+use bevy::ui::{
+    ComputedNode, UiGlobalTransform, UiPlugin, UiScale, px,
+};
 use fynix::{Motion, ScopedExt};
 use parley::{Affinity, Cluster, Cursor};
 
 use crate::tests::{Plain, app, kids};
 use crate::tokens::Tone;
 use crate::views::{
-    LineColor, Rich, Span, rich, rich_layout, rich_point,
+    FrameProps, LineColor, Rich, Span, column, rich, rich_layout,
+    rich_point,
 };
 use crate::{StateExt, hidden, mount, resource};
 
@@ -727,4 +730,28 @@ fn a_fade_treats_a_nan_span_colour_as_unset() {
     );
     assert!(world.get::<UnderlineColor>(span).is_none());
     assert!(world.get::<StrikethroughColor>(span).is_none());
+}
+
+#[test]
+fn a_word_wider_than_its_text_breaks_at_the_width() {
+    const WIDTH: f32 = 200.0;
+    let mut app = laid_out();
+    let long = format!("ab {}", "x".repeat(100));
+    let root = mount::<Plain>(
+        app.world_mut(),
+        column((rich(vec![Span::new(long)]),)).width(px(WIDTH)),
+    );
+    app.update();
+    app.update();
+    let text = kids(&app, root)[0];
+    let layout = rich_layout(app.world(), text).expect("a layout");
+    let widths = layout
+        .lines()
+        .map(|line| line.metrics().advance)
+        .collect::<Vec<_>>();
+    assert!(widths.len() > 2, "the word takes lines: {widths:?}");
+    assert!(
+        widths.iter().all(|&width| width <= WIDTH),
+        "no line runs past {WIDTH} px: {widths:?}"
+    );
 }

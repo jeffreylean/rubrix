@@ -5,6 +5,7 @@ mod clipboard;
 mod code_view;
 mod commands;
 mod damage;
+mod diff_edit;
 mod diff_view;
 mod editor;
 pub mod find;
@@ -43,6 +44,7 @@ pub use code_view::{
 pub use commands::{
     BRACKET, BracketMatch, toggle_block_comment, toggle_line_comment,
 };
+pub use diff_edit::DiffEditStatus;
 pub use diff_view::{
     DiffDoc, DiffRow, DiffRowAt, DiffSource, DiffView, diff_view,
 };
@@ -183,6 +185,7 @@ impl Plugin for RubrixPlugin {
                     .after(UiSystems::PostLayout),
             );
         ime::plugin(app);
+        diff_edit::plugin(app);
     }
 }
 

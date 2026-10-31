@@ -1,0 +1,66 @@
+page diff
+wait 30
+click 304 32
+wait 120
+click 1178 68
+wait 10
+log diff-edit
+expect diff-edit none
+click 1250 665
+key end
+wait 5
+key space
+type one
+wait 5
+log diff-edit
+expect diff-edit file 0 hunks 3 undo 1 rediff
+move 740 400
+scroll 0 100000000
+scroll 0 -674
+wait 10
+log diff
+expect diff first 34 line 1 old 1 new 1
+click 1250 210
+key end
+wait 5
+log diff-edit
+expect diff-edit file 1 hunks 2 undo 0 rediff
+key space
+type two
+wait 5
+log diff-edit
+expect diff-edit file 1 hunks 2 undo 1 rediff
+key shift+home
+key mod+c
+log copied
+expect copied "let v3 = values[3] * 2; two"
+click 1250 210
+key end
+wait 5
+key mod+z
+wait 5
+log diff-edit
+expect diff-edit file 1 hunks 2 undo 0 rediff
+click 1250 210
+key end
+wait 5
+key shift+home
+key mod+c
+log copied
+expect copied "let v3 = values[3] * 2;"
+move 740 400
+scroll 0 100000000
+wait 10
+click 1250 665
+key end
+wait 5
+log diff-edit
+expect diff-edit file 0 hunks 3 undo 1 rediff
+expect diff-edit stale 0
+key shift+home
+key mod+c
+log copied
+expect copied "#[derive(Component, Clone, Copy, Debug, Default)] // changed one"
+wait 30
+screenshot e7-undo.png
+exit
