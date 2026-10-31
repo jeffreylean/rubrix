@@ -38,3 +38,9 @@ extern crate std;
 
 #[cfg(feature = "find")]
 pub mod find;
+
+mod ranges;
+mod state;
+
+pub use ranges::{LineAnchors, Ranges};
+pub use state::EditState;

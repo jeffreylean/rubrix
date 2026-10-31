@@ -1,0 +1,24 @@
+page collab
+wait 120
+move 740 400
+scroll 0 -1938
+wait 10
+click 273.0 211
+key shift+end
+key mod+c
+clipboard
+log copied
+expect copied "        .run();"
+log paste
+expect paste "collab:         .run();"
+click 1250 296
+paste one\ntwo
+wait 5
+log text 125
+expect text 125 "one"
+log text 126
+expect text 126 "two"
+log paste
+expect paste "collab: one\ntwo"
+screenshot e6-clipboard.png
+exit

@@ -8,10 +8,12 @@ mod diff_view;
 mod editor;
 pub mod find;
 mod frame;
+mod hooks;
 mod ime;
 mod keymap;
 mod marks;
 mod numbers;
+mod remote;
 mod rows;
 mod select;
 mod tokens;
@@ -20,8 +22,8 @@ use bevy::app::{
     App, Plugin, PostUpdate, PreUpdate, Startup, Update,
 };
 use bevy::asset::{Assets, Handle, uuid_handle};
-use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::any_with_component;
+use bevy::ecs::schedule::{IntoScheduleConfigs, SystemCondition};
 use bevy::ecs::system::ResMut;
 use bevy::input::InputSystems;
 use bevy::input::keyboard::{KeyboardFocusLost, KeyboardInput};
@@ -45,15 +47,23 @@ pub use editor::{
     EditSystems, EditView, EditorChanged, Request, code_editor,
 };
 pub use frame::Tx;
+pub use hooks::{
+    EditKey, EditStates, FollowPlugin, Follows, LineAnnotations,
+    Markers, Severity,
+};
 pub use ime::Preedit;
 pub use keymap::{
     Action, ChordError, Gesture, Keymap, Mods, Platform, Stroke,
 };
 pub use marks::{Mark, MarkKind, MarkLayer, Marks};
 pub use numbers::LineNumber;
+pub use remote::{
+    Edge, Placed, RemoteCaret, RemoteCarets, RemoteView,
+};
 pub use rubrix_diff::{Layout, Row, Side};
 pub use rubrix_edit::{
-    Buffer, Command, Editor, History, Motion, Selection, Selections,
+    Buffer, Command, EditState, Editor, History, LineAnchors, Motion,
+    Ranges, Selection, Selections,
 };
 pub use rubrix_highlight::{Kind, Lang, Run};
 pub use select::{CodeCopied, CodeSelection};
@@ -83,6 +93,13 @@ impl Plugin for RubrixPlugin {
             .add_message::<KeyboardFocusLost>()
             .add_message::<EditRequest>()
             .add_message::<EditorChanged>()
+            .init_resource::<EditStates>()
+            .add_observer(hooks::save_state)
+            .add_observer(hooks::restore_state)
+            .add_plugins((
+                FollowPlugin::<RemoteCarets>::default(),
+                FollowPlugin::<Markers>::default(),
+            ))
             .add_systems(
                 Startup,
                 (load_code_font, diff_view::load_hatch),
@@ -119,10 +136,15 @@ impl Plugin for RubrixPlugin {
             )
             .add_systems(
                 PreUpdate,
-                find::follow
-                    .after(EditSystems::Apply)
-                    .after(InputFocusSystems::Dispatch)
-                    .run_if(any_with_component::<find::FindBar>),
+                (
+                    hooks::draw_markers
+                        .after(EditSystems::Apply)
+                        .run_if(any_with_component::<EditView>),
+                    find::follow
+                        .after(EditSystems::Apply)
+                        .after(InputFocusSystems::Dispatch)
+                        .run_if(any_with_component::<find::FindBar>),
+                ),
             )
             .add_systems(
                 Update,
@@ -142,6 +164,11 @@ impl Plugin for RubrixPlugin {
                     caret::draw
                         .in_set(EditSystems::Draw)
                         .run_if(any_with_component::<EditView>),
+                    remote::draw.in_set(EditSystems::Draw).run_if(
+                        any_with_component::<RemoteCarets>.or_else(
+                            any_with_component::<RemoteView>,
+                        ),
+                    ),
                 )
                     .after(UiSystems::PostLayout),
             );

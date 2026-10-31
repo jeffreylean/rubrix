@@ -26,6 +26,7 @@ use crate::{Build, Copied, PageView, Palette};
 
 mod about;
 mod code;
+pub mod collab;
 mod diff;
 pub mod editor;
 pub mod hamlet_code;
@@ -141,6 +142,12 @@ pub const PAGES: &[Page] = &[
         open: Some(editor::open),
         answer: Some(editor::answer),
     },
+    Page {
+        name: "collab",
+        build: collab::build,
+        open: None,
+        answer: Some(collab::answer),
+    },
 ];
 
 pub fn plugin(app: &mut App) {
@@ -153,6 +160,7 @@ pub fn plugin(app: &mut App) {
     hamlet_rich::plugin(app);
     hamlet_code::plugin(app);
     stress::plugin(app);
+    collab::plugin(app);
     app.add_systems(PostUpdate, fit_rows.before(UiSystems::Layout))
         .add_observer(
             |copied: On<CodeCopied>, mut last: ResMut<Copied>| {

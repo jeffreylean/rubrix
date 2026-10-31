@@ -23,8 +23,8 @@ use bevy_fynix::views::{
 use bevy_fynix::{AnyView, Signal, ViewExt, derived, resource};
 use bevy_rubrix::find::{FindBar, find_bar};
 use bevy_rubrix::{
-    EditDoc, EditLine, EditSystems, EditView, Lang, LineNumber,
-    Overflow, Preedit, code_editor,
+    Buffer, EditDoc, EditLine, EditSystems, EditView, Lang,
+    LineNumber, Overflow, Preedit, code_editor,
 };
 
 use super::code::{
@@ -163,10 +163,19 @@ pub fn open(
     Ok(())
 }
 
-/// The page's answers. Lines and columns count from 1, and a column
-/// counts chars from the line's start.
 pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
     let doc = world.get_resource::<EditorFile>()?.doc;
+    match ask {
+        Ask::Ime => ime(world, doc),
+        ask => answer_doc(world, doc, ask),
+    }
+}
+
+pub fn answer_doc(
+    world: &mut World,
+    doc: Entity,
+    ask: Ask,
+) -> Option<String> {
     let shown = world
         .query::<&EditView>()
         .iter(world)
@@ -175,12 +184,6 @@ pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
     let edit = world.get::<EditDoc>(doc)?;
     let editor = edit.editor();
     let buffer = editor.buffer();
-    let place = |at: usize| {
-        let line = buffer.line_of(at);
-        let column =
-            buffer.slice(buffer.line_start(line)..at).chars().count();
-        format!("{}:{}", line + 1, column + 1)
-    };
     Some(match ask {
         Ask::Caret => {
             let selections = editor.selections();
@@ -189,8 +192,8 @@ pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
                 .map(|s| {
                     format!(
                         "{}..{}",
-                        place(s.start()),
-                        place(s.end())
+                        one_based_line_col(buffer, s.start()),
+                        one_based_line_col(buffer, s.end())
                     )
                 })
                 .collect::<Vec<_>>();
@@ -210,8 +213,15 @@ pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
             editor.history().undo_depth(),
             editor.history().redo_depth()
         ),
-        Ask::Ime => return ime(world, doc),
+        Ask::Ime => return None,
     })
+}
+
+pub fn one_based_line_col(buffer: &Buffer, at: usize) -> String {
+    let line = buffer.line_of(at);
+    let column =
+        buffer.slice(buffer.line_start(line)..at).chars().count();
+    format!("{}:{}", line + 1, column + 1)
 }
 
 /// The frames in which the doc on show took a change, and how many
