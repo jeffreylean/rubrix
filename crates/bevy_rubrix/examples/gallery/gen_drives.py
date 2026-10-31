@@ -2377,3 +2377,17 @@ steps += ["key mod+alt+f", "wait 5", FIND_FIELD, "key mod+a", "type \U0001f469",
 steps += ["key mod+a", f"type {FAMILY}", "wait 10", "log find", f'expect find open query "{SHOWN}" 1 of 1', caret((1, 8), (1, 13)), "wait 30", "screenshot m2fa-cluster.png"]
 steps += [REPLACE_FIELD, "type Y", "key enter", "wait 10", "log text 1", 'expect text 1 "family Y end"']
 find_script("m2-cluster", steps)
+
+# The L4-F3 restart rule on the 100k input: a regex with no line bound
+# restarts at the match before the edit, so each key below line 3
+# rescans the whole buffer while the frames are timed.
+EDIT_QUERY, EDIT_LINE, EDIT_TYPED = r"\s+theme", 3, "abcdefghij"
+doc = Doc(STRESS_LINES, text_x=TEXT_X_100K)
+hits = len(find_all(STRESS_TEXT, EDIT_QUERY, regex=True))
+doc.insert((EDIT_LINE, 1), EDIT_TYPED)
+assert len(find_all("\n".join(doc.lines), EDIT_QUERY, regex=True)) == hits
+steps = [STRESS, "wait 60", f"click {doc.at(1, 1)}", "key mod+f", "wait 5", REGEX, "wait 5", FIND_FIELD, "key mod+a"]
+steps += [f"type {EDIT_QUERY}", "wait 120", f"# python re.findall(r'{EDIT_QUERY}', 100k, re.I) -> {hits}", counted(EDIT_QUERY, hits)]
+steps += [f"click {doc.at(EDIT_LINE, 1)}", "frames start", "wait 60", [[f"type {c}", "wait 9"] for c in EDIT_TYPED], "wait 20"]
+steps += ["frames stop editor-find-m2-edit-100k.csv", "wait 120", doc.text(EDIT_LINE), counted(EDIT_QUERY, hits)]
+find_script("m2-edit-100k", steps, "wait 30", "screenshot m2fa-edit-100k.png")
