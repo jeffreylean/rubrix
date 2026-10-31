@@ -32,3 +32,15 @@ pub use command::{Command, Editor};
 pub use history::History;
 pub use motion::{Layout, Monospace, Motion, graphemes, word_at};
 pub use selection::{Selection, Selections};
+
+mod brackets;
+mod comment;
+mod lines;
+mod occurrence;
+mod surround;
+
+pub use brackets::{
+    Brackets, SCAN_CHARS, SCAN_LINES, matching as matching_bracket,
+};
+pub use comment::{Markers, markers};
+pub use occurrence::{column, toggle_caret};

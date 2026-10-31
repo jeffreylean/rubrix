@@ -25,6 +25,9 @@
 //!   at least that many lines, as `rubrix_bench::Fixture::repeated`
 //!   does.
 //! - `crlf` turns every `\n` into `\r\n`, after any `repeat`.
+//! - `lang <name>` sets the script's language, a
+//!   `rubrix_highlight::Lang` name. It defaults to what
+//!   `Lang::detect` reads from the file's path and first line.
 //!
 //! A `<pos>` is `<line>:<col>`, the line counted from 1 and the
 //! column counted from 1 in bytes of the line, so `1:1` is offset 0.
@@ -48,7 +51,17 @@
 //!   `page-down`, `doc-start` and `doc-end`, each also as
 //!   `shift+<name>` to extend. The other names are `backspace`,
 //!   `delete`, `delete-word-back`, `delete-word-forward`, `enter`,
-//!   `cut`, `select-all`, `collapse`, `undo` and `redo`.
+//!   `cut`, `select-all`, `collapse`, `undo`, `redo`, `indent`,
+//!   `outdent`, `indent-lines`, `move-up`, `move-down`, `copy-up`,
+//!   `copy-down`, `blank-below`, `transpose`, `kill-line` and
+//!   `next-occurrence`, and `comment` and `block-comment`, which
+//!   toggle comments in the script's language.
+//! - `column <pos> <pos>` sets the selections `rubrix_edit::column`
+//!   gives for a drag from the first position to the second, at the
+//!   lines and [`Monospace`] x of each.
+//! - `toggle-caret <pos>` sets the selections
+//!   `rubrix_edit::toggle_caret` gives at the position.
+//! - `copy` keeps what `Editor::copy_text` gives.
 //!
 //! Checks:
 //!
@@ -62,6 +75,12 @@
 //! - `expect undo-depth <n>` compares the undo steps.
 //! - `expect hash <hex>` compares the 64-bit FNV-1a hash of the
 //!   text's bytes, as 16 lowercase hex digits.
+//! - `expect copied <text>` compares the text the last `copy` kept,
+//!   empty before the first.
+//! - `expect bracket <pos>` compares where the bracket that matches
+//!   the one at the primary head is, or `expect bracket none` checks
+//!   there is none. Strings and comments, as `rubrix_highlight` lexes
+//!   the text in the script's language, are skipped.
 //!
 //! A failed check prints the value it got in the same form, escaped,
 //! so it can be pasted back into the script.
@@ -82,9 +101,10 @@ use std::process::ExitCode;
 use std::{env, fs};
 
 use rubrix_edit::{
-    Buffer, Command, Editor, Monospace, Motion, Selection, Selections,
+    Buffer, Command, Editor, Layout, Monospace, Motion, Selection,
+    Selections, column, matching_bracket, toggle_caret,
 };
-use rubrix_highlight::Lines;
+use rubrix_highlight::{Kind, Lang, Lines};
 
 /// A line and a byte column, both counted from 0.
 type Pos = (usize, usize);
@@ -92,6 +112,7 @@ type Pos = (usize, usize);
 struct Script {
     repeat: Option<usize>,
     crlf: bool,
+    lang: Lang,
     /// Each step with its line in the script.
     steps: Vec<(usize, Step)>,
 }
@@ -104,6 +125,9 @@ enum Step {
     Paste(String),
     Key(Command<'static>, usize),
     Expect(Check, String),
+    Column(Pos, Pos),
+    ToggleCaret(Pos),
+    Copy,
 }
 
 #[derive(Clone, Copy)]
@@ -113,6 +137,8 @@ enum Check {
     Carets,
     UndoDepth,
     Hash,
+    Copied,
+    Bracket,
 }
 
 impl Check {
@@ -123,6 +149,8 @@ impl Check {
             Check::Carets => "carets",
             Check::UndoDepth => "undo-depth",
             Check::Hash => "hash",
+            Check::Copied => "copied",
+            Check::Bracket => "bracket",
         }
     }
 }
@@ -159,8 +187,9 @@ fn run(
         fs::read_to_string(path)
             .map_err(|err| format!("cannot read {path}: {err}"))
     };
-    let script = parse(&read(script)?)?;
     let mut text = read(file)?;
+    let lang = Lang::detect(file, text.lines().next().unwrap_or(""));
+    let script = parse(&read(script)?, lang)?;
     if let Some(lines) = script.repeat {
         let newlines = text.matches('\n').count().max(1);
         text = text.repeat(lines.div_ceil(newlines));
@@ -172,14 +201,15 @@ fn run(
         run_model(text, &script.steps)?;
         Ok(true)
     } else {
-        replay(&text, &script.steps)
+        replay(&text, &script.steps, script.lang)
     }
 }
 
-fn parse(source: &str) -> Result<Script, String> {
+fn parse(source: &str, lang: Lang) -> Result<Script, String> {
     let mut script = Script {
         repeat: None,
         crlf: false,
+        lang,
         steps: Vec::new(),
     };
     for (i, line) in source.lines().enumerate() {
@@ -189,7 +219,9 @@ fn parse(source: &str) -> Result<Script, String> {
         let at = |reason: String| format!("line {}: {reason}", i + 1);
         let (word, rest) = line.split_once(' ').unwrap_or((line, ""));
         match word {
-            "repeat" | "crlf" if !script.steps.is_empty() => {
+            "repeat" | "crlf" | "lang"
+                if !script.steps.is_empty() =>
+            {
                 return Err(at(format!(
                     "{word} after the first step"
                 )));
@@ -200,15 +232,22 @@ fn parse(source: &str) -> Result<Script, String> {
                 })?);
             }
             "crlf" => script.crlf = true,
-            _ => script
-                .steps
-                .push((i + 1, step(word, rest).map_err(at)?)),
+            "lang" => {
+                script.lang =
+                    Lang::from_name(rest).ok_or_else(|| {
+                        at(format!("{rest} is no language"))
+                    })?;
+            }
+            _ => script.steps.push((
+                i + 1,
+                step(word, rest, script.lang).map_err(at)?,
+            )),
         }
     }
     Ok(script)
 }
 
-fn step(word: &str, rest: &str) -> Result<Step, String> {
+fn step(word: &str, rest: &str, lang: Lang) -> Result<Step, String> {
     Ok(match word {
         "caret" => Step::Caret(pos(rest)?),
         "add-caret" => Step::AddCaret(pos(rest)?),
@@ -230,7 +269,7 @@ fn step(word: &str, rest: &str) -> Result<Step, String> {
                 ),
                 None => (rest, 1),
             };
-            Step::Key(key(name)?, times)
+            Step::Key(key(name, lang)?, times)
         }
         "expect" => {
             let (kind, value) =
@@ -245,15 +284,25 @@ fn step(word: &str, rest: &str) -> Result<Step, String> {
                 "carets" => (Check::Carets, value),
                 "undo-depth" => (Check::UndoDepth, value),
                 "hash" => (Check::Hash, value),
+                "copied" => (Check::Copied, value),
+                "bracket" => (Check::Bracket, value),
                 _ => return Err(format!("no check {kind}")),
             };
             Step::Expect(check, unescape(value)?)
         }
+        "column" => {
+            let (from, to) = rest
+                .split_once(' ')
+                .ok_or("column takes two positions")?;
+            Step::Column(pos(from)?, pos(to)?)
+        }
+        "toggle-caret" => Step::ToggleCaret(pos(rest)?),
+        "copy" => Step::Copy,
         _ => return Err(format!("no step {word}")),
     })
 }
 
-fn key(name: &str) -> Result<Command<'static>, String> {
+fn key(name: &str, lang: Lang) -> Result<Command<'static>, String> {
     let (extend, base) = match name.strip_prefix("shift+") {
         Some(base) => (true, base),
         None => (false, name),
@@ -284,7 +333,7 @@ fn key(name: &str) -> Result<Command<'static>, String> {
         "collapse" => return Ok(Command::CollapseToPrimary),
         "undo" => return Ok(Command::Undo),
         "redo" => return Ok(Command::Redo),
-        _ => return Err(format!("no key {name}")),
+        _ => return line_key(name, lang),
     };
     Ok(Command::Move { motion, extend })
 }
@@ -401,9 +450,11 @@ fn model_line(text: &str, line: usize) -> Option<(usize, &str)> {
 fn replay(
     text: &str,
     steps: &[(usize, Step)],
+    lang: Lang,
 ) -> Result<bool, String> {
     let layout = Monospace::default();
     let mut editor = Editor::new(Buffer::new(text));
+    let mut copied = String::new();
     let (mut passed, mut total) = (0, 0);
     for (n, step) in steps {
         let at = |pos: Pos, editor: &Editor| {
@@ -445,7 +496,7 @@ fn replay(
             Step::Expect(check, want) => {
                 total += 1;
                 let kind = check.name();
-                match observe(&editor, *check) {
+                match observe(&editor, *check, lang, &copied) {
                     Some(got) if got == *want => {
                         passed += 1;
                         println!("replay: {n} {kind} pass");
@@ -459,6 +510,31 @@ fn replay(
                     ),
                 }
             }
+            Step::Column(from, to) => {
+                let point = |pos: Pos| {
+                    let at = at(pos, &editor)?;
+                    let buffer = editor.buffer();
+                    Ok::<_, String>((
+                        buffer.line_of(at),
+                        layout.x(buffer, at),
+                    ))
+                };
+                let selections = column(
+                    editor.buffer(),
+                    &layout,
+                    point(*from)?,
+                    point(*to)?,
+                );
+                editor.set_selections(selections);
+            }
+            Step::ToggleCaret(pos) => {
+                let at = at(*pos, &editor)?;
+                editor.set_selections(toggle_caret(
+                    editor.selections(),
+                    at,
+                ));
+            }
+            Step::Copy => copied = editor.copy_text(),
         }
     }
     println!("replay: {passed} of {total} checks pass");
@@ -467,7 +543,12 @@ fn replay(
 
 /// What `check` reads from the editor, or `None` for a line past the
 /// end.
-fn observe(editor: &Editor, check: Check) -> Option<String> {
+fn observe(
+    editor: &Editor,
+    check: Check,
+    lang: Lang,
+    copied: &str,
+) -> Option<String> {
     let buffer = editor.buffer();
     Some(match check {
         Check::Text => buffer.to_string(),
@@ -475,15 +556,13 @@ fn observe(editor: &Editor, check: Check) -> Option<String> {
         Check::Carets => carets(editor),
         Check::UndoDepth => editor.history().undo_depth().to_string(),
         Check::Hash => hash(&buffer.to_string()),
+        Check::Copied => copied.to_owned(),
+        Check::Bracket => bracket(editor, lang),
     })
 }
 
 fn carets(editor: &Editor) -> String {
     let buffer = editor.buffer();
-    let pos = |at: usize| {
-        let line = buffer.line_of(at);
-        format!("{}:{}", line + 1, at - buffer.line_start(line) + 1)
-    };
     let selections = editor.selections();
     let mut out = format!(
         "{} primary {}",
@@ -492,10 +571,10 @@ fn carets(editor: &Editor) -> String {
     );
     for selection in selections.iter() {
         out.push(' ');
-        out.push_str(&pos(selection.anchor));
+        out.push_str(&show(buffer, selection.anchor));
         if !selection.is_caret() {
             out.push_str("..");
-            out.push_str(&pos(selection.head));
+            out.push_str(&show(buffer, selection.head));
         }
     }
     out
@@ -540,4 +619,57 @@ fn run_model(
         }
     }
     Ok(())
+}
+
+/// The keys of the line, comment and occurrence commands. `comment`
+/// and `block-comment` toggle comments in `lang`.
+fn line_key(
+    name: &str,
+    lang: Lang,
+) -> Result<Command<'static>, String> {
+    Ok(match name {
+        "indent" => Command::Indent,
+        "outdent" => Command::Outdent,
+        "indent-lines" => Command::IndentLines,
+        "move-up" => Command::MoveLines { down: false },
+        "move-down" => Command::MoveLines { down: true },
+        "copy-up" => Command::CopyLines { down: false },
+        "copy-down" => Command::CopyLines { down: true },
+        "blank-below" => Command::BlankLineBelow,
+        "transpose" => Command::Transpose,
+        "kill-line" => Command::DeleteToLineEnd,
+        "comment" => Command::ToggleComment { lang, block: false },
+        "block-comment" => {
+            Command::ToggleComment { lang, block: true }
+        }
+        "next-occurrence" => Command::AddNextOccurrence,
+        _ => return Err(format!("no key {name}")),
+    })
+}
+
+/// `at` as a `<pos>`.
+fn show(buffer: &Buffer, at: usize) -> String {
+    let line = buffer.line_of(at);
+    format!("{}:{}", line + 1, at - buffer.line_start(line) + 1)
+}
+
+/// Where the bracket that matches the one at the primary head is, or
+/// `none`.
+fn bracket(editor: &Editor, lang: Lang) -> String {
+    let buffer = editor.buffer();
+    let highlights =
+        rubrix_highlight::highlight(lang, &buffer.to_string());
+    let ignored = |line: u32| {
+        rubrix_highlight::spans(highlights.stored_runs(line))
+            .filter(|(_, kind)| {
+                matches!(kind.root(), Kind::String | Kind::Comment)
+            })
+            .map(|(range, _)| range)
+            .collect()
+    };
+    let head = editor.selections().primary().head;
+    matching_bracket(buffer, head, ignored).map_or_else(
+        || "none".to_owned(),
+        |found| show(buffer, found.far),
+    )
 }

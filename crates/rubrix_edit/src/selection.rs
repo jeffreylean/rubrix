@@ -160,6 +160,20 @@ impl Selections {
         self.normalize();
     }
 
+    /// Removes the selection at `index` in [`Selections::iter`]
+    /// order, unless it is the only one. The others keep their ages,
+    /// so the primary is the newest one left.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is not below `len()` and there is more than
+    /// one selection.
+    pub fn remove(&mut self, index: usize) {
+        if self.items.len() > 1 {
+            self.items.remove(index);
+        }
+    }
+
     /// Moves every caret and the start of every range through
     /// `change` with [`Assoc::After`], and the end of every range
     /// with [`Assoc::Before`], keeps each age, then merges. Carets

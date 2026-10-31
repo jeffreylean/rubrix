@@ -3,6 +3,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::ops::Range;
 
+use rubrix_highlight::Lang;
+
 use crate::buffer::Buffer;
 use crate::change::Change;
 use crate::history::{History, Kind};
@@ -11,6 +13,7 @@ use crate::motion::{
     word_stop,
 };
 use crate::selection::{Selection, Selections};
+use crate::{comment, lines, occurrence, surround};
 
 /// One editing action, run at every selection by [`Editor::apply`].
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -49,10 +52,69 @@ pub enum Command<'a> {
     },
     /// One selection over the whole text.
     SelectAll,
-    /// Keeps only the primary selection.
+    /// Keeps only the primary selection, as it is. A single range
+    /// becomes a caret at its head.
     CollapseToPrimary,
     Undo,
     Redo,
+    /// Indents the lines of a selection that spans lines, or puts an
+    /// indent at a caret (Tab).
+    Indent,
+    /// Removes one indent from the start of each selected line
+    /// (Shift+Tab, mod+\[).
+    Outdent,
+    /// Adds one indent to the start of each selected line, even at a
+    /// caret, like Pierre's `indentMore` (mod+\]).
+    IndentLines,
+    /// Moves the selected lines one line down, or up, past the line
+    /// next to them.
+    MoveLines {
+        down: bool,
+    },
+    /// Copies the selected lines below them, or above them, and
+    /// selects the copy.
+    CopyLines {
+        down: bool,
+    },
+    /// Opens a blank line below each caret's line and moves the caret
+    /// to it, keeping the line's indent (mod+Enter).
+    BlankLineBelow,
+    /// Swaps the grapheme clusters on either side of each caret
+    /// (Ctrl+T).
+    Transpose,
+    /// Deletes from each caret to its line's end, or joins the next
+    /// line at the end (emacs Ctrl+K).
+    DeleteToLineEnd,
+    /// Comments or uncomments the selected lines with `lang`'s
+    /// markers. With `block` false it uses the line marker, falling
+    /// back to the block pair when `lang` has none. With `block` true
+    /// it wraps each selection in the block pair.
+    ToggleComment {
+        lang: Lang,
+        block: bool,
+    },
+    /// Selects the word at a caret, or adds a selection at the next
+    /// occurrence of the primary's text (mod+D).
+    AddNextOccurrence,
+}
+
+/// Where the selections go after a [`Plan`] is applied.
+pub(crate) enum After {
+    /// Through the change, as [`Selections::map_through`] moves them.
+    Map,
+    /// To these selections, in the offsets of the text after the
+    /// change. The planner keeps their ages.
+    #[allow(dead_code, reason = "the line commands set selections")]
+    Set(Selections),
+}
+
+/// The replacements one command makes and where its selections go.
+///
+/// The edits are offsets of the text before the change, sorted by
+/// start and not overlapping, as [`Buffer::replace`] requires.
+pub(crate) struct Plan<S = String> {
+    pub(crate) edits: Vec<(Range<usize>, S)>,
+    pub(crate) after: After,
 }
 
 /// A buffer with its selections and its history. One per editable
@@ -109,6 +171,11 @@ impl Editor {
     /// buffer's line ending. A caret adds nothing, so bare carets
     /// copy nothing.
     pub fn copy_text(&self) -> String {
+        if let Some(text) =
+            lines::line_copy(&self.buffer, &self.selections)
+        {
+            return text;
+        }
         let eol = self.buffer.eol().as_str();
         let mut text = String::new();
         let ranges = self.selections.iter().filter(|s| !s.is_caret());
@@ -167,21 +234,40 @@ impl Editor {
             self.selections.clear_goals();
         }
         match command {
-            Command::Type(text) | Command::Paste(text) => {
+            Command::Type(text) => {
+                if let Some(plan) = surround::wrap(
+                    &self.buffer,
+                    &self.selections,
+                    text,
+                ) {
+                    return self.commit(Kind::Other, plan);
+                }
                 let text = self.buffer.eol().normalize(text);
-                let kind = match command {
-                    Command::Paste(_) => Kind::Boundary,
-                    _ if text.contains('\n') => Kind::Other,
-                    _ => Kind::Insert,
+                let kind = if text.contains('\n') {
+                    Kind::Other
+                } else {
+                    Kind::Insert
                 };
-                self.edit(kind, |_, selection| {
-                    (selection.range(), Cow::Borrowed(&*text))
-                })
+                self.replace_each(kind, &text)
             }
-            Command::Cut => self
-                .edit(Kind::Boundary, |_, selection| {
-                    (selection.range(), Cow::Borrowed(""))
-                }),
+            Command::Paste(text) => {
+                let text = self.buffer.eol().normalize(text);
+                match lines::paste_lines(
+                    &self.buffer,
+                    &self.selections,
+                    &text,
+                ) {
+                    Some(plan) => self.commit(Kind::Boundary, plan),
+                    None => self.replace_each(Kind::Boundary, &text),
+                }
+            }
+            Command::Cut => {
+                match lines::cut_lines(&self.buffer, &self.selections)
+                {
+                    Some(plan) => self.commit(Kind::Boundary, plan),
+                    None => self.replace_each(Kind::Boundary, ""),
+                }
+            }
             Command::Enter => {
                 let eol = self.buffer.eol().as_str();
                 self.edit(Kind::Other, |buffer, selection| {
@@ -194,7 +280,10 @@ impl Editor {
                 })
             }
             Command::Backspace => {
-                self.delete(Kind::Backspace, prev_grapheme)
+                self.delete(Kind::Backspace, |buffer, at| {
+                    lines::soft_tab_start(buffer, at)
+                        .unwrap_or_else(|| prev_grapheme(buffer, at))
+                })
             }
             Command::Delete => {
                 self.delete(Kind::Delete, next_grapheme)
@@ -219,17 +308,81 @@ impl Editor {
                 None
             }
             Command::CollapseToPrimary => {
-                self.selections.keep_primary();
+                if self.selections.len() > 1 {
+                    self.selections.keep_primary();
+                } else {
+                    self.selections.update(|selection, _| {
+                        Selection::caret(selection.head)
+                    });
+                }
                 None
             }
             Command::Undo => self.restore(History::undo),
             Command::Redo => self.restore(History::redo),
+            Command::Indent => self.planned(lines::indent),
+            Command::Outdent => self.planned(lines::outdent),
+            Command::IndentLines => self.planned(lines::indent_lines),
+            Command::MoveLines { down } => {
+                self.planned(|buffer, selections| {
+                    lines::move_lines(buffer, selections, down)
+                })
+            }
+            Command::CopyLines { down } => {
+                self.planned(|buffer, selections| {
+                    lines::copy_lines(buffer, selections, down)
+                })
+            }
+            Command::BlankLineBelow => {
+                self.planned(lines::blank_line_below)
+            }
+            Command::Transpose => self.planned(lines::transpose),
+            Command::DeleteToLineEnd => {
+                self.planned(lines::delete_to_line_end)
+            }
+            Command::ToggleComment { lang, block } => {
+                self.planned(|buffer, selections| {
+                    let markers = comment::markers(lang);
+                    comment::toggle(
+                        buffer, selections, markers, block,
+                    )
+                })
+            }
+            Command::AddNextOccurrence => {
+                if let Some(selections) = occurrence::add_next(
+                    &self.buffer,
+                    &self.selections,
+                ) {
+                    self.selections = selections;
+                }
+                None
+            }
         }
     }
 
+    /// Commits the plan `make` makes from the buffer and selections,
+    /// as an undo step that joins nothing.
+    fn planned(
+        &mut self,
+        make: impl FnOnce(&Buffer, &Selections) -> Option<Plan>,
+    ) -> Option<Change> {
+        let plan = make(&self.buffer, &self.selections)?;
+        self.commit(Kind::Other, plan)
+    }
+
+    /// Replaces every selection with `text`.
+    fn replace_each(
+        &mut self,
+        kind: Kind,
+        text: &str,
+    ) -> Option<Change> {
+        self.edit(kind, |_, selection| {
+            (selection.range(), Cow::Borrowed(text))
+        })
+    }
+
     /// Replaces the range `edit` gives for each selection, in buffer
-    /// order, with its text, joining ranges that overlap. Moves the
-    /// selections through the change and records it as `kind`.
+    /// order, with its text, joining ranges that overlap, and commits
+    /// the result with [`After::Map`].
     fn edit<'t>(
         &mut self,
         kind: Kind,
@@ -249,12 +402,32 @@ impl Editor {
                 _ => edits.push((range, text)),
             }
         }
-        let change = self.buffer.replace(edits);
+        self.commit(
+            kind,
+            Plan {
+                edits,
+                after: After::Map,
+            },
+        )
+    }
+
+    /// Makes the plan's replacements, moves the selections as it
+    /// says, and records the change as `kind`. `None`, with the
+    /// selections left as they were, when the change is empty.
+    fn commit<S: AsRef<str>>(
+        &mut self,
+        kind: Kind,
+        plan: Plan<S>,
+    ) -> Option<Change> {
+        let change = self.buffer.replace(plan.edits);
         if change.is_empty() {
             return None;
         }
         let before = self.selections.clone();
-        self.selections.map_through(&change);
+        match plan.after {
+            After::Map => self.selections.map_through(&change),
+            After::Set(selections) => self.selections = selections,
+        }
         self.history.record(
             change.clone(),
             kind,
