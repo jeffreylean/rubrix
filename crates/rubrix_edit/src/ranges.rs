@@ -58,6 +58,7 @@ impl<T> Ranges<T> {
             *range = start..end;
             start < end
         });
+        self.items.sort_by_key(|(range, _)| range.start);
     }
 }
 
@@ -120,6 +121,9 @@ enum Moved {
 }
 
 fn move_anchor(change: &Change, reps: &[Rep], at: usize) -> Moved {
+    if let Some(to) = change.moved(at, Assoc::After) {
+        return Moved::To(to);
+    }
     let first = reps.partition_point(|rep| rep.range.end < at);
     let starting = reps[first..]
         .iter()

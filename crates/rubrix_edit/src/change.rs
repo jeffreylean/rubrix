@@ -4,6 +4,8 @@ use core::ops::Range;
 
 use rubrix_highlight::LineEdit;
 
+use crate::buffer::Buffer;
+
 /// What one [`Buffer::replace`](crate::Buffer::replace) did to a
 /// text: replacements sorted by offset, none overlapping, in the byte
 /// offsets of the text before it.
@@ -17,6 +19,26 @@ use rubrix_highlight::LineEdit;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Change {
     reps: Vec<Rep>,
+    moves: Vec<Move>,
+}
+
+/// Text that a change carries whole to another place, such as a line
+/// that a line move swaps: the bytes `from` of the text before the
+/// change are the bytes from `to` of the text after it. Sorted by
+/// `from`, none overlapping.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Move {
+    pub(crate) from: Range<usize>,
+    pub(crate) to: usize,
+}
+
+impl Move {
+    fn inverse(&self) -> Move {
+        Move {
+            from: self.to..self.to + self.from.len(),
+            to: self.from.start,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,9 +84,20 @@ pub enum Assoc {
 
 impl Change {
     pub(crate) fn new(reps: Vec<Rep>) -> Change {
-        let mut change = Change { reps };
+        let mut change = Change {
+            reps,
+            moves: Vec::new(),
+        };
         change.place();
         change
+    }
+
+    /// The change with `moves`, which name text its replacements
+    /// carry whole, so [`Change::map`] takes each place in that text
+    /// along with it.
+    pub(crate) fn moving(mut self, moves: Vec<Move>) -> Change {
+        self.moves = moves;
+        self
     }
 
     /// The number of replacements. A typing keystroke has one per
@@ -111,8 +144,17 @@ impl Change {
     /// offset or starts a replaced range there, and the offset lands
     /// at the start of its new text. An offset inside a replaced
     /// range lands at the end of the new text with [`Assoc::After`]
-    /// and at its start with `Before`. O(log n) in the replacements.
+    /// and at its start with `Before`.
+    ///
+    /// A change that carries text whole, as a line move carries both
+    /// lines it swaps, takes every offset in that text, its end
+    /// included, along with it. With `Before` its start is left to
+    /// the replacements, so the end of a range before the text stays
+    /// behind. O(log n) in the replacements.
     pub fn map(&self, offset: usize, assoc: Assoc) -> usize {
+        if let Some(to) = self.moved(offset, assoc) {
+            return to;
+        }
         let ends_past_offset = |rep: &Rep| match assoc {
             Assoc::After => offset < rep.end(),
             Assoc::Before => offset < rep.end().max(rep.start + 1),
@@ -130,6 +172,23 @@ impl Change {
                     + self.end_after(i - 1)
             }
         }
+    }
+
+    /// Where `offset` lands when it is in text the change carries
+    /// whole, under the rule in [`Change::map`].
+    pub(crate) fn moved(
+        &self,
+        offset: usize,
+        assoc: Assoc,
+    ) -> Option<usize> {
+        let i =
+            self.moves.partition_point(|text| text.from.end < offset);
+        let text = self.moves.get(i)?;
+        let inside = match assoc {
+            Assoc::After => text.from.start <= offset,
+            Assoc::Before => text.from.start < offset,
+        };
+        inside.then(|| text.to + offset - text.from.start)
     }
 
     /// The change as `LineEdit`s for
@@ -172,24 +231,33 @@ impl Change {
         })
     }
 
-    /// The replacements that undo this change, in the offsets of the
-    /// text after it, ready for `Buffer::replace`.
-    pub(crate) fn inverse(
-        &self,
-    ) -> impl Iterator<Item = (Range<usize>, &str)> + '_ {
-        self.reps.iter().map(|rep| {
-            (rep.after..rep.after + rep.new.len(), rep.old.as_str())
-        })
+    /// Undoes this change on `buffer`, which holds the text after it,
+    /// and returns the change that made. Text this change carried
+    /// whole goes back whole.
+    pub(crate) fn undo(&self, buffer: &mut Buffer) -> Change {
+        let mut moves: Vec<Move> =
+            self.moves.iter().map(Move::inverse).collect();
+        moves.sort_by_key(|text| text.from.start);
+        buffer
+            .replace(self.reps.iter().map(|rep| {
+                (
+                    rep.after..rep.after + rep.new.len(),
+                    rep.old.as_str(),
+                )
+            }))
+            .moving(moves)
     }
 
-    /// The replacements that redo this change, in the offsets of the
-    /// text before it.
-    pub(crate) fn forward(
-        &self,
-    ) -> impl Iterator<Item = (Range<usize>, &str)> + '_ {
-        self.reps
-            .iter()
-            .map(|rep| (rep.start..rep.end(), rep.new.as_str()))
+    /// Makes this change again on `buffer`, which holds the text
+    /// before it, and returns the change that made.
+    pub(crate) fn redo(&self, buffer: &mut Buffer) -> Change {
+        buffer
+            .replace(
+                self.reps.iter().map(|rep| {
+                    (rep.start..rep.end(), rep.new.as_str())
+                }),
+            )
+            .moving(self.moves.clone())
     }
 
     pub(crate) fn start_after(&self, i: usize) -> usize {

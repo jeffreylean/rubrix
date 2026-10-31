@@ -6,7 +6,7 @@ use core::ops::Range;
 use rubrix_highlight::Lang;
 
 use crate::buffer::Buffer;
-use crate::change::Change;
+use crate::change::{Change, Move};
 use crate::history::{History, Kind};
 use crate::motion::{
     Layout, Motion, indent, next_grapheme, prev_grapheme, snap,
@@ -304,9 +304,12 @@ impl Editor {
             Command::Outdent => self.planned(lines::outdent),
             Command::IndentLines => self.planned(lines::indent_lines),
             Command::MoveLines { down } => {
-                self.planned(|buffer, selections| {
-                    lines::move_lines(buffer, selections, down)
-                })
+                let (plan, moves) = lines::move_lines(
+                    &self.buffer,
+                    &self.selections,
+                    down,
+                )?;
+                self.commit_moving(Kind::Other, plan, moves)
             }
             Command::CopyLines { down } => {
                 self.planned(|buffer, selections| {
@@ -400,7 +403,18 @@ impl Editor {
         kind: Kind,
         plan: Plan<S>,
     ) -> Option<Change> {
-        let change = self.buffer.replace(plan.edits);
+        self.commit_moving(kind, plan, Vec::new())
+    }
+
+    /// [`Editor::commit`] for a plan whose edits carry the text
+    /// `moves` names whole.
+    fn commit_moving<S: AsRef<str>>(
+        &mut self,
+        kind: Kind,
+        plan: Plan<S>,
+        moves: Vec<Move>,
+    ) -> Option<Change> {
+        let change = self.buffer.replace(plan.edits).moving(moves);
         if change.is_empty() {
             return None;
         }

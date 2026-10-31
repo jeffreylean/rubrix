@@ -14,8 +14,8 @@ use bevy::text::{
 };
 use bevy::ui::widget::Text;
 use bevy::ui::{
-    BackgroundColor, ComputedNode, Display, Node, PositionType,
-    UiGlobalTransform, UiRect, ZIndex, px,
+    BackgroundColor, CalculatedClip, ComputedNode, Display, Node,
+    PositionType, UiGlobalTransform, UiRect, ZIndex, px,
 };
 use bevy_fynix::views::{VirtualList, drawn_layout};
 use rubrix_edit::{Assoc, Buffer, Change};
@@ -101,12 +101,15 @@ pub(crate) struct RemoteEdges;
 const LABEL_SIZE_PX: f32 = 11.0;
 const LABEL_PAD_PX: f32 = 3.0;
 const TINT: f32 = 0.32;
+/// The `+N` label that stands for the edge labels with no room.
+const MORE: Color = Color::srgb(0.45, 0.45, 0.5);
 
 type TextParts = (
     &'static ComputedNode,
     &'static UiGlobalTransform,
     &'static ComputedTextBlock,
     &'static TextLayout,
+    Option<&'static CalculatedClip>,
 );
 
 type Rects<'w, 's> = Query<
@@ -133,6 +136,29 @@ type Tags<'w, 's> = Query<
 struct Scene {
     rects: Vec<([f32; 4], Color)>,
     tags: Vec<(Vec2, String, Color, TagIn)>,
+}
+
+impl Scene {
+    /// Cuts what the scene draws in the list at `left`, the edge of
+    /// the rows' text, where the rows clip their own text, so nothing
+    /// paints over the gutter. A label whose bar is cut away goes
+    /// with it.
+    fn clip(&mut self, left: f32) {
+        self.rects.retain_mut(|(rect, _)| {
+            let cut = (left - rect[0]).max(0.0);
+            rect[0] += cut;
+            rect[2] -= cut;
+            rect[2] > 0.0
+        });
+        self.tags.retain_mut(|(at, .., tag_in)| {
+            if *tag_in == TagIn::Edges {
+                return true;
+            }
+            let shown = at.x + CARET_WIDTH > left;
+            at.x = at.x.max(left);
+            shown
+        });
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -224,11 +250,19 @@ pub(crate) fn draw(
         };
         let any_origin =
             rows.iter().find_map(|&(_, text)| origin(text));
+        let text_left = rows
+            .iter()
+            .find_map(|&(_, text)| {
+                clip_left(texts.get(text).ok()?.4?)
+            })
+            .map_or(f32::NEG_INFINITY, |left| {
+                frame.content_from_physical(Vec2::new(left, 0.0)).x
+            });
         let mut scene = Scene::default();
         let mut placed = Vec::with_capacity(carets.len());
-        let mut free = [0.0f32; 2];
+        let mut edges: [Vec<EdgeLabel>; 2] = Default::default();
         for caret in carets {
-            let head = caret.head.min(buffer.len());
+            let head = buffer.floor_char_boundary(caret.head);
             let line = buffer.line_of(head);
             let shape = geometry.caret(buffer, head);
             let bar = row(line).and_then(origin).map(|at| {
@@ -282,37 +316,13 @@ pub(crate) fn draw(
                     let x = any_origin.map_or(0.0, |at| {
                         at.x + shape.x - frame.scroll_logical.x
                     });
-                    let slot = &mut free[edge as usize];
-                    let left = x.max(*slot).min(
-                        frame.overlay_logical.x
-                            - monospace_label_width(&text),
-                    );
-                    *slot = left
-                        + monospace_label_width(&text)
-                        + LABEL_PAD_PX;
-                    let top = match edge {
-                        Edge::Top => frame.list_top_logical,
-                        Edge::Bottom => {
-                            frame.list_top_logical
-                                + frame.viewport_logical.y
-                                - label_height()
-                        }
-                    };
-                    scene.tags.push((
-                        Vec2::new(left.max(0.0), top),
-                        text,
-                        caret.color,
-                        TagIn::Edges,
-                    ));
+                    edges[edge as usize].push((x, text, caret.color));
                     placed.push(Placed::Edge(edge));
                 }
             }
-            if caret.anchor != caret.head {
-                let range = caret
-                    .anchor
-                    .min(caret.head)
-                    .min(buffer.len())
-                    ..caret.anchor.max(caret.head).min(buffer.len());
+            let anchor = buffer.floor_char_boundary(caret.anchor);
+            if anchor != head {
+                let range = anchor.min(head)..anchor.max(head);
                 tint(
                     &mut scene,
                     &texts,
@@ -327,13 +337,38 @@ pub(crate) fn draw(
                 );
             }
         }
+        scene.clip(text_left);
+        let from = (text_left - frame.scroll_logical.x).max(0.0);
+        for (edge, labels) in
+            [Edge::Top, Edge::Bottom].into_iter().zip(edges)
+        {
+            let top = match edge {
+                Edge::Top => frame.list_top_logical,
+                Edge::Bottom => {
+                    frame.list_top_logical + frame.viewport_logical.y
+                        - label_height()
+                }
+            };
+            scene.tags.extend(
+                lay_out_edge(labels, from, frame.overlay_logical.x)
+                    .into_iter()
+                    .map(|(left, text, color)| {
+                        (
+                            Vec2::new(left, top),
+                            text,
+                            color,
+                            TagIn::Edges,
+                        )
+                    }),
+            );
+        }
         drop_covered_by_later(&mut scene.rects, |over, under| {
             over.0 == under.0 && over.1.alpha() >= 1.0
         });
         drop_covered_by_later(&mut scene.tags, |over, under| {
             over.0 == under.0
                 && over.3 == under.3
-                && over.1.chars().count() >= under.1.chars().count()
+                && label_width(&over.1) >= label_width(&under.1)
                 && over.2.alpha() >= 1.0
         });
         let remote = &mut *remote;
@@ -462,7 +497,7 @@ fn tint(
     for &(line, text) in
         rows[from..].iter().take_while(|&&(line, _)| line <= last)
     {
-        let Ok((node, at, block, layout)) = texts.get(text) else {
+        let Ok((node, at, block, layout, _)) = texts.get(text) else {
             continue;
         };
         let start = buffer.line_start(line);
@@ -497,6 +532,62 @@ fn tint(
     }
 }
 
+/// The left edge of what `clip` lets show, in physical pixels: the
+/// rightmost left edge of the rects it clips to, none of which turns.
+fn clip_left(clip: &CalculatedClip) -> Option<f32> {
+    clip.rects()?
+        .iter()
+        .filter(|clip| clip.rect.min.x.is_finite())
+        .map(|clip| {
+            let local = Vec2::new(clip.rect.min.x, 0.0);
+            clip.world_to_clip_local
+                .inverse()
+                .transform_point2(local)
+                .x
+        })
+        .reduce(f32::max)
+}
+
+/// An edge marker's label: the column of its caret, its text and its
+/// colour.
+type EdgeLabel = (f32, String, Color);
+
+/// Puts one edge's labels left to right between `from` and `to`, each
+/// at its caret's column or just past the label before it, so none
+/// covers another. The labels with no room left fold into one `+N`
+/// label at the end.
+fn lay_out_edge(
+    mut labels: Vec<EdgeLabel>,
+    from: f32,
+    to: f32,
+) -> Vec<EdgeLabel> {
+    labels.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let count = labels.len();
+    let mut laid: Vec<EdgeLabel> = Vec::with_capacity(count);
+    let past = |laid: &[EdgeLabel]| {
+        laid.last().map_or(from, |(left, text, _)| {
+            left + label_width(text) + LABEL_PAD_PX
+        })
+    };
+    for (x, text, color) in labels {
+        let left = x.min(to - label_width(&text)).max(past(&laid));
+        if left + label_width(&text) > to {
+            break;
+        }
+        laid.push((left, text, color));
+    }
+    while laid.len() < count {
+        let more = format!("+{}", count - laid.len());
+        let left = past(&laid);
+        if left + label_width(&more) <= to || laid.is_empty() {
+            laid.push((left, more, MORE));
+            break;
+        }
+        laid.pop();
+    }
+    laid
+}
+
 fn drop_covered_by_later<T>(
     items: &mut Vec<T>,
     later_covers: impl Fn(&T, &T) -> bool,
@@ -515,8 +606,13 @@ fn label_height() -> f32 {
     (LABEL_SIZE_PX * LINE_HEIGHT).ceil()
 }
 
-fn monospace_label_width(text: &str) -> f32 {
-    text.chars().count() as f32 * LABEL_SIZE_PX * crate::rows::ADVANCE
+/// The width a label's box takes, its padding included. A character
+/// past ASCII, such as an edge marker's arrow or a CJK name, may come
+/// from a wider fallback font, so it counts as two advances.
+fn label_width(text: &str) -> f32 {
+    let advances: usize =
+        text.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum();
+    advances as f32 * LABEL_SIZE_PX * crate::rows::ADVANCE
         + 2.0 * LABEL_PAD_PX
 }
 
@@ -584,6 +680,7 @@ fn paint(
             position_type: PositionType::Absolute,
             left: px(at.x),
             top: px(at.y),
+            width: px(label_width(label)),
             padding: UiRect::horizontal(px(LABEL_PAD_PX)),
             ..Node::default()
         };

@@ -1,0 +1,34 @@
+page collab
+wait 120
+move 740 400
+scroll 0 -1598
+wait 10
+remote W 119:12
+remote P 120:12
+wait 5
+log remote
+expect remote W 119:12 shown, P 120:12 shown
+click 273.0 551
+key alt+up
+wait 5
+log text 119
+expect text 119 "        .run();"
+log text 120
+expect text 120 "        .add_systems(Startup, setup)"
+log remote
+expect remote W 120:12 shown, P 119:12 shown
+key mod+z
+wait 5
+log remote
+expect remote W 119:12 shown, P 120:12 shown
+key mod+shift+z
+wait 5
+log remote
+expect remote W 120:12 shown, P 119:12 shown
+click 1250 534
+key alt+up
+wait 5
+log remote
+expect remote W 120:12 shown, P 118:12 shown
+screenshot m3fa-move-remote.png
+exit

@@ -1,0 +1,33 @@
+page collab
+wait 120
+click 290 68
+wait 60
+move 740 400
+scroll 0 -849983
+wait 10
+click 281.4 126
+click 734 68
+wait 5
+move 740 400
+scroll 0 100000000
+scroll 100000000 0
+scroll 0 -851683
+wait 10
+wait 5
+log remote
+expect remote u1 edge top at
+expect remote u50 edge top at
+expect remote overlapping 0
+screenshot m3fa-edge-top.png
+move 740 400
+scroll 0 100000000
+scroll 100000000 0
+scroll 0 -848283
+wait 10
+wait 5
+log remote
+expect remote u1 edge bottom at
+expect remote u50 edge bottom at
+expect remote overlapping 0
+screenshot m3fa-edge-bottom.png
+exit

@@ -142,7 +142,7 @@ impl History {
         buffer: &mut Buffer,
     ) -> Option<(Change, Selections)> {
         let entry = self.undo.pop_back()?;
-        let change = buffer.replace(entry.change.inverse());
+        let change = entry.change.undo(buffer);
         let before = entry.before.clone();
         self.redo.push(entry);
         self.open = false;
@@ -157,7 +157,7 @@ impl History {
         buffer: &mut Buffer,
     ) -> Option<(Change, Selections)> {
         let entry = self.redo.pop()?;
-        let change = buffer.replace(entry.change.forward());
+        let change = entry.change.redo(buffer);
         let after = entry.after.clone();
         self.undo.push_back(entry);
         self.open = false;
