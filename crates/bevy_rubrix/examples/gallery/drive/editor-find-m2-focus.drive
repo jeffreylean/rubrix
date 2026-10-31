@@ -1,0 +1,72 @@
+page editor
+wait 120
+click 373.8 500
+key mod+f
+wait 10
+key mod+enter
+wait 5
+key escape
+wait 5
+log find
+expect find closed
+click 382.2 500
+key mod+f
+wait 10
+key alt+enter
+wait 5
+key escape
+wait 5
+log find
+expect find closed
+click 390.6 500
+key mod+f
+wait 10
+key mod+shift+enter
+wait 5
+key escape
+wait 5
+log find
+expect find closed
+click 399.0 500
+key mod+f
+wait 10
+key shift+alt+enter
+wait 5
+key escape
+wait 5
+log find
+expect find closed
+click 373.8 500
+key mod+f
+wait 10
+key shift+escape
+wait 5
+key escape
+wait 5
+log find
+expect find closed
+click 382.2 500
+key mod+alt+f
+wait 10
+key mod+enter
+wait 5
+key escape
+wait 5
+log find
+expect find closed
+click 390.6 500
+key mod+alt+f
+wait 10
+key shift+escape
+wait 5
+key escape
+wait 5
+log find
+expect find closed
+type q
+wait 5
+log text 23
+expect text 23 "            q::Body => hex(0xFCFCFA),"
+wait 30
+screenshot m2fa-focus.png
+exit

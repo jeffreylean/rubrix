@@ -2803,3 +2803,59 @@ steps = [drag, "wait 5", selections(across), drag, "wait 5", selections(across)]
 after = replace(doc, across, ["x"] * len(across))
 steps += ["type x", "wait 5", texts(doc, TONE_LINES), carets_at(after), undo(1, 0)]
 editor("m2-column-again", steps, "wait 30", "screenshot m2-column-again.png")
+
+doc = Doc(LARGE_RS_LINES)
+TONE = (23, 13)
+steps = []
+presses = [("mod+f", key) for key in ["mod+enter", "alt+enter", "mod+shift+enter", "shift+alt+enter", "shift+escape"]]
+presses += [("mod+alt+f", key) for key in ["mod+enter", "shift+escape"]]
+for i, (opener, key) in enumerate(presses):
+    no_double_click_column = TONE[1] + i % 4
+    steps += [f"click {doc.at(TONE[0], no_double_click_column)}", f"key {opener}", "wait 10", f"key {key}", "wait 5", "key escape", "wait 5"]
+    steps += ["log find", "expect find closed"]
+doc.lines[TONE[0] - 1] = doc.line(TONE[0]).replace("Tone", "q", 1)
+steps += ["type q", "wait 5", doc.text(TONE[0])]
+find_script("m2-focus", steps, "wait 30", "screenshot m2fa-focus.png")
+
+steps = [f"click {Doc(LARGE_RS_LINES).at(1, 1)}", "key mod+f", "wait 5", REGEX, "wait 5"]
+for query, reference in [(r"e[[:digit:]\n]", r"e[0-9\n]"), (r"e[]\n]", r"e[]\n]")]:
+    count = len(find_all(LARGE_RS_TEXT, reference, regex=True))
+    steps += [FIND_FIELD, "key mod+a", f"type {query}", "wait 20", f"# python re.findall(r'{reference}', large.rs.txt, re.I) -> {count}"]
+    steps += counted(query, count)
+find_script("m2-class", steps, "wait 30", "screenshot m2fa-class.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [f"click {doc.at(1, 1)}", "key mod+f", "wait 5", REGEX, "wait 5"]
+for query, line, typed in [(r"share\.\n\n.*\nfoo", 4, "foo"), (r"Color;\s+use[^;]*;\s+qux", 10, "qux")]:
+    before = "\n".join(doc.lines)
+    assert not find_all(before, query, regex=True), query
+    doc.insert((line, 1), typed)
+    after = find_all("\n".join(doc.lines), query, regex=True)
+    assert len(after) == 1 and find_place("\n".join(doc.lines), after[0][0])[0] < line - 1, query
+    steps += [FIND_FIELD, "key mod+a", f"type {query}", "wait 20", counted(query, 0)]
+    steps += [f"click {doc.at(line, 1)}", f"type {typed}", "wait 30", doc.text(line), counted(query, 1)]
+find_script("m2-restart", steps, "wait 30", "screenshot m2fa-restart.png")
+
+steps = [f"click {Doc(LARGE_RS_LINES).at(1, 1)}", "key mod+f", "wait 5", REGEX, "wait 5"]
+for query, error, shot in [("e(", "unclosed group", "m2fa-error.png"), ("(?<=a)b", "look-around, including look-ahead and look-behind, is not supported", "m2fa-error-long.png")]:
+    steps += [FIND_FIELD, "key mod+a", f"type {query}", "wait 10", "log find", f'expect find label "Invalid regex: {error}"', "wait 30", f"screenshot {shot}"]
+find_script("m2-error", steps)
+
+FAMILY = "\U0001f468‍\U0001f469‍\U0001f467"
+SHOWN = FAMILY.replace("‍", "\\u{200d}")
+steps = [f"click {Doc(LARGE_RS_LINES).at(1, 1)}", f"paste family {FAMILY} end\\n", "wait 5"]
+steps += ["key mod+alt+f", "wait 5", FIND_FIELD, "key mod+a", "type \U0001f469", "wait 10", "log find", 'expect find open query "\U0001f469" 0 of 0', 'expect find label "No results"']
+steps += ["key mod+a", f"type {FAMILY}", "wait 10", "log find", f'expect find open query "{SHOWN}" 1 of 1', caret((1, 8), (1, 13)), "wait 30", "screenshot m2fa-cluster.png"]
+steps += [REPLACE_FIELD, "type Y", "key enter", "wait 10", "log text 1", 'expect text 1 "family Y end"']
+find_script("m2-cluster", steps)
+
+UNBOUNDED_QUERY, EDIT_LINE, EDIT_TYPED = r"\s+theme", 3, "abcdefghij"
+doc = Doc(STRESS_LINES, text_x=TEXT_X_100K)
+hits = len(find_all(STRESS_TEXT, UNBOUNDED_QUERY, regex=True))
+doc.insert((EDIT_LINE, 1), EDIT_TYPED)
+assert len(find_all("\n".join(doc.lines), UNBOUNDED_QUERY, regex=True)) == hits
+steps = [STRESS, "wait 60", f"click {doc.at(1, 1)}", "key mod+f", "wait 5", REGEX, "wait 5", FIND_FIELD, "key mod+a"]
+steps += [f"type {UNBOUNDED_QUERY}", "wait 120", f"# python re.findall(r'{UNBOUNDED_QUERY}', 100k, re.I) -> {hits}", counted(UNBOUNDED_QUERY, hits)]
+steps += [f"click {doc.at(EDIT_LINE, 1)}", "frames start", "wait 60", [[f"type {c}", "wait 9"] for c in EDIT_TYPED], "wait 20"]
+steps += ["frames stop editor-find-m2-edit-100k.csv", "wait 120", doc.text(EDIT_LINE), counted(UNBOUNDED_QUERY, hits)]
+find_script("m2-edit-100k", steps, "wait 30", "screenshot m2fa-edit-100k.png")

@@ -1,0 +1,40 @@
+page editor
+wait 120
+click 273.0 126
+key mod+f
+wait 5
+click 930 151
+wait 5
+click 745 151
+key mod+a
+type share\.\n\n.*\nfoo
+wait 20
+log find
+expect find open query "share\\.\\n\\n.*\\nfoo"
+expect find of 0 marked
+click 273.0 177
+type foo
+wait 30
+log text 4
+expect text 4 "foo"
+log find
+expect find open query "share\\.\\n\\n.*\\nfoo"
+expect find of 1 marked
+click 745 151
+key mod+a
+type Color;\s+use[^;]*;\s+qux
+wait 20
+log find
+expect find open query "Color;\\s+use[^;]*;\\s+qux"
+expect find of 0 marked
+click 273.0 279
+type qux
+wait 30
+log text 10
+expect text 10 "qux"
+log find
+expect find open query "Color;\\s+use[^;]*;\\s+qux"
+expect find of 1 marked
+wait 30
+screenshot m2fa-restart.png
+exit
