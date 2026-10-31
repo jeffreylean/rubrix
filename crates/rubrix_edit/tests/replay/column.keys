@@ -1,0 +1,10 @@
+# An Alt+drag from 11:5 to 15:9 makes one selection per line, a caret on the empty line 14, and typing `x` replaces each.
+column 11:5 15:9
+expect carets 5 primary 5 11:5..11:9 12:5..12:9 13:5..13:9 14:1 15:5..15:9
+type x
+expect line 11 /// xexamples' theme. Nothing in the views names it: they ask for
+expect line 12 /// xever token traits they need, and this implements them.
+expect line 13 pub xct Monokai;
+expect line 14 x
+expect line 15 fn hxgb: u32) -> Color {
+expect undo-depth 1

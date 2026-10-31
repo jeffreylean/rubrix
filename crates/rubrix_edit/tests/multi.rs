@@ -1,5 +1,6 @@
 use rubrix_edit::{
-    Buffer, Monospace, Selection, Selections, column, toggle_caret,
+    Buffer, Command, Editor, History, Monospace, Selection,
+    Selections, column, toggle_caret,
 };
 
 fn range(anchor: usize, head: usize) -> Selection {
@@ -99,4 +100,92 @@ fn column_snaps_to_grapheme_boundaries() {
     let selections =
         column(&buffer, &Monospace::default(), (0, 1.0), (1, 2.0));
     assert_eq!(listed(&selections), [range(3, 4), range(8, 9)]);
+}
+
+fn ranges(list: &[(usize, usize)]) -> Selections {
+    let mut selections = Selections::new(range(list[0].0, list[0].1));
+    for &(anchor, head) in &list[1..] {
+        selections.add(range(anchor, head));
+    }
+    selections
+}
+
+/// The selections after one mod+D on `selections` in `text`.
+fn next_occurrence(text: &str, selections: Selections) -> Selections {
+    let mut editor = Editor::from_parts(
+        Buffer::new(text),
+        selections,
+        History::new(),
+    );
+    let change = editor
+        .apply(Command::AddNextOccurrence, &Monospace::default());
+    assert!(change.is_none(), "mod+D changed the text");
+    editor.selections().clone()
+}
+
+#[test]
+fn next_occurrence_first_selects_the_word_at_each_caret() {
+    let text = "let a; let b;\nfoo(bar)";
+    let selections = next_occurrence(text, carets(&[1, 17, 19]));
+    assert_eq!(
+        listed(&selections),
+        [range(0, 3), range(14, 17), range(18, 21)]
+    );
+    assert_eq!(selections.primary(), range(18, 21));
+}
+
+#[test]
+fn next_occurrence_leaves_a_caret_away_from_words() {
+    let selections = carets(&[3]);
+    assert_eq!(
+        next_occurrence("a  ;  b", selections.clone()),
+        selections
+    );
+}
+
+#[test]
+fn next_occurrence_adds_the_next_match_as_the_primary() {
+    let selections =
+        next_occurrence("let x; let y; let z;", ranges(&[(0, 3)]));
+    assert_eq!(listed(&selections), [range(0, 3), range(7, 10)]);
+    assert_eq!(selections.primary(), range(7, 10));
+}
+
+#[test]
+fn next_occurrence_skips_a_match_already_selected() {
+    let selections =
+        next_occurrence("ab ab ab", ranges(&[(3, 5), (0, 2)]));
+    assert_eq!(
+        listed(&selections),
+        [range(0, 2), range(3, 5), range(6, 8)]
+    );
+    assert_eq!(selections.primary(), range(6, 8));
+}
+
+#[test]
+fn next_occurrence_wraps_past_the_end_and_stops_when_all_are_taken() {
+    let text = "ab ab\nab";
+    let wrapped = next_occurrence(text, ranges(&[(3, 5), (6, 8)]));
+    assert_eq!(
+        listed(&wrapped),
+        [range(0, 2), range(3, 5), range(6, 8)]
+    );
+    assert_eq!(wrapped.primary(), range(0, 2));
+    assert_eq!(next_occurrence(text, wrapped.clone()), wrapped);
+}
+
+#[test]
+fn next_occurrence_finds_a_selection_that_spans_lines() {
+    let selections =
+        next_occurrence("a\r\nb a\r\nb", ranges(&[(0, 4)]));
+    assert_eq!(listed(&selections), [range(0, 4), range(5, 9)]);
+}
+
+#[test]
+fn next_occurrence_does_nothing_when_the_texts_differ() {
+    let selections = ranges(&[(0, 2), (3, 5)]);
+    assert_eq!(
+        next_occurrence("ab cd ab cd", selections.clone()),
+        selections
+    );
 }
