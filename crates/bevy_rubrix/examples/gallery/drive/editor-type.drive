@@ -1,0 +1,21 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -2023
+wait 10
+log rows
+expect rows first_visible 119 spawned
+click 306.6 126
+log caret
+expect caret 1 primary 1 120:5..120:5 visible true
+type let x = 1;
+wait 5
+log text 120
+expect text 120 "    let x = 1;    .run();"
+log runs 120
+expect runs 120 4..7 keyword
+log caret
+expect caret 1 primary 1 120:15..120:15 visible true
+wait 30
+screenshot e2-type.png
+exit

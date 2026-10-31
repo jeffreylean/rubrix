@@ -1,0 +1,81 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -84813
+wait 10
+log rows
+expect rows total 10373 following
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+click 235 313
+key backspace
+key home
+wait 10
+log rows
+expect rows total 10353 following
+log seams
+expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok
+log caret
+expect caret 1 primary 1 5000:1..5000:1 visible true
+log text 5000
+expect text 5000 ") -> Vec<(Entity, Option<Pickable>)> {    let mut was = Vec::new();    let mut stack = vec![node];    while let Some(node) = stack.pop() {        let Ok(mut entity) = world.get_entity_mut(node) else {            continue;        };        was.push((node, entity.get::<Pickable>().copied()));        entity.insert(Pickable::IGNORE);        if let Some(children) = entity.get::<Children>() {            stack.extend(children.iter());        }    }    was}/// What a node was before a hold or a collapse changed how it takes/// space, put back when it is released.#[derive(Clone, Copy, Debug)]struct Before {    position_type: PositionType,"
+log text 5001
+expect text 5001 "    inset: UiRect,"
+wait 30
+screenshot e2-join.png
+exit

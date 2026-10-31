@@ -1,0 +1,452 @@
+page editor
+wait 120
+click 586 68
+wait 60
+move 740 400
+scroll 0 -849983
+wait 10
+log rows
+expect rows total 100001 following
+expect rows first_visible 49999 spawned
+click 1250 126
+log caret
+expect caret 1 primary 1 50000:29..50000:29 visible true
+frames start
+wait 60
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+frames stop editor-100k-type.csv
+log text 50000
+expect text 50000 "        let mut app = app();xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+log caret
+expect caret 1 primary 1 50000:229..50000:229 visible true
+frames start
+wait 60
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+frames stop editor-100k-enter.csv
+log rows
+expect rows total 100051 following
+log caret
+expect caret 1 primary 1 50050:9..50050:9 visible true
+move 740 400
+scroll 0 100000000
+scroll 100000000 0
+scroll 0 -849983
+wait 10
+frames start
+wait 60
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+click 235 143
+key backspace
+key home
+frames stop editor-100k-join.csv
+log rows
+expect rows total 100001 following
+log seams
+expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok
+log text 50000
+expect text 50000 "        let mut app = app();xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                                                                                                                                                                                                                                                                                                                                                                                                                "
+log text 50001
+expect text 50001 "        let node = mount::<Test>("
+log caret
+expect caret 1 primary 1 50000:9..50000:9 visible true
+log typing
+expect typing hidden 0
+log caret
+log rows
+wait 30
+screenshot e2-100k.png
+exit

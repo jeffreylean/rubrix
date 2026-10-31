@@ -1,0 +1,24 @@
+page editor
+wait 120
+click 734 68
+wait 60
+move 740 400
+scroll 0 -4913
+wait 10
+click 1250 296
+log caret
+expect caret 1 primary 1 300:52..300:52 visible true
+key space
+type wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap
+wait 10
+log text 300
+expect text 300 "                section(\"A scoped rule\", scoped()), wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap"
+log row 300
+expect row 300 top 5083 height 51 lines 3
+log row 301
+expect row 301 top 5134 height 17 lines 1
+log seams
+expect seams gaps 0 overlaps 0
+wait 30
+screenshot e2-wrap.png
+exit

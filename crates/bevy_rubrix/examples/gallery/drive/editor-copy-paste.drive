@@ -1,0 +1,39 @@
+page editor
+wait 120
+click 273.0 296
+log caret
+expect caret 1 primary 1 11:1..11:1 visible true
+key shift+down
+log caret
+expect caret 1 primary 1 11:1..12:1 visible true
+key shift+down
+log caret
+expect caret 1 primary 1 11:1..13:1 visible true
+key shift+down
+log caret
+expect caret 1 primary 1 11:1..14:1 visible true
+key mod+c
+clipboard
+log copied
+expect copied "/// The examples' theme. Nothing in the views names it: they ask for\n/// whatever token traits they need, and this implements them.\npub struct Monokai;\n"
+move 740 400
+scroll 0 -1700
+wait 10
+click 273.0 296
+log caret
+expect caret 1 primary 1 111:1..111:1 visible true
+key mod+v
+wait 5
+log text 111
+expect text 111 "/// The examples' theme. Nothing in the views names it: they ask for"
+log text 112
+expect text 112 "/// whatever token traits they need, and this implements them."
+log text 113
+expect text 113 "pub struct Monokai;"
+log text 114
+expect text 114 "fn main() {"
+log caret
+expect caret 1 primary 1 114:1..114:1 visible true
+wait 30
+screenshot e2-copy-paste.png
+exit

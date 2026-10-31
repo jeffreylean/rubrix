@@ -1,0 +1,321 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -84966
+wait 10
+click 1250 211
+log caret
+expect caret 1 primary 1 5004:63..5004:63 visible true
+frames start
+wait 60
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+frames stop editor-acceptance-10k.csv
+log text 5004
+expect text 5004 "        let Ok(mut entity) = world.get_entity_mut(node) else {xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+log caret
+expect caret 1 primary 1 5004:163..5004:163 visible true
+log undo
+expect undo 1 redo 0
+key home
+log caret
+expect caret 1 primary 1 5004:9..5004:9 visible true
+key shift+down
+log caret
+expect caret 1 primary 1 5004:9..5005:9 visible true
+key shift+down
+log caret
+expect caret 1 primary 1 5004:9..5006:9 visible true
+key mod+c
+log copied
+expect copied "let Ok(mut entity) = world.get_entity_mut(node) else {xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n            continue;\n        "
+click 235 381
+log caret
+expect caret 1 primary 1 5014:1..5014:1 visible true
+key mod+v
+wait 5
+log text 5014
+expect text 5014 "let Ok(mut entity) = world.get_entity_mut(node) else {xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+log text 5015
+expect text 5015 "            continue;"
+log text 5016
+expect text 5016 "        }"
+log text 5017
+expect text 5017 ""
+log caret
+expect caret 1 primary 1 5016:9..5016:9 visible true
+log undo
+expect undo 2 redo 0
+key mod+z
+wait 5
+log text 5014
+expect text 5014 "}"
+log text 5015
+expect text 5015 ""
+log text 5016
+expect text 5016 "/// What a node was before a hold or a collapse changed how it takes"
+log text 5017
+expect text 5017 "/// space, put back when it is released."
+log undo
+expect undo 1 redo 1
+wait 30
+screenshot e2-acceptance-10k.png
+click 586 68
+wait 60
+move 740 400
+scroll 0 -849966
+wait 10
+click 1250 211
+log caret
+expect caret 1 primary 1 50004:44..50004:44 visible true
+frames start
+wait 60
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+type x
+frames stop editor-acceptance-100k.csv
+log text 50004
+expect text 50004 "                .when::<Hovered, _>(accent)xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+log caret
+expect caret 1 primary 1 50004:144..50004:144 visible true
+log undo
+expect undo 1 redo 0
+key home
+log caret
+expect caret 1 primary 1 50004:17..50004:17 visible true
+key shift+down
+log caret
+expect caret 1 primary 1 50004:17..50005:17 visible true
+key shift+down
+log caret
+expect caret 1 primary 1 50004:17..50006:11 visible true
+key mod+c
+log copied
+expect copied ".when::<Hovered, _>(accent)xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n                .transition(Motion::Interact),\n        );"
+click 235 381
+log caret
+expect caret 1 primary 1 50014:1..50014:1 visible true
+key mod+v
+wait 5
+log text 50014
+expect text 50014 ".when::<Hovered, _>(accent)xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+log text 50015
+expect text 50015 "                .transition(Motion::Interact),"
+log text 50016
+expect text 50016 "        );"
+log text 50017
+expect text 50017 "        app.update();"
+log caret
+expect caret 1 primary 1 50016:11..50016:11 visible true
+log undo
+expect undo 2 redo 0
+key mod+z
+wait 5
+log text 50014
+expect text 50014 ""
+log text 50015
+expect text 50015 "        app.update();"
+log text 50016
+expect text 50016 "        assert_eq!(color(&app, node), Color::WHITE, \"and stays\");"
+log text 50017
+expect text 50017 "    }"
+log undo
+expect undo 1 redo 1
+wait 30
+screenshot e2-acceptance-100k.png
+exit
