@@ -97,7 +97,9 @@ pub(crate) fn plugin(app: &mut App) {
 /// Takes this frame's IME messages into the focused view, in order:
 /// a preedit replaces the composition, a commit goes to the doc as a
 /// request, and the IME turning on or off ends the composition. A
-/// view that lost the focus loses its composition.
+/// view that lost the focus loses its composition. A composition that
+/// starts or changes is an edit the user sees, so it brings the
+/// caret into view as an edit does.
 fn read(
     mut ime: MessageReader<Ime>,
     focus: Option<Res<InputFocus>>,
@@ -147,6 +149,11 @@ fn read(
     match now {
         Some(preedit) => {
             commands.entity(view).insert((preedit, Composing));
+            requests.write(EditRequest {
+                doc: edit.doc(),
+                view: Some(view),
+                request: Request::new(|tx| tx.keep_in_sight()),
+            });
         }
         None => {
             commands.entity(view).remove::<(Preedit, Composing)>();
@@ -195,7 +202,8 @@ fn place(
 }
 
 /// Keeps the window's IME on while an editable view holds the focus,
-/// with the candidate box at the bottom-left of the primary caret.
+/// with the candidate box at the bottom-left of the primary caret, or
+/// at the top-left of the view's rows while the caret has no rect.
 ///
 /// Bevy's `TextInputPlugin` turns the IME off in `PreUpdate` whenever
 /// no `EditableText` has the focus, and winit reads the window in
@@ -205,6 +213,7 @@ fn place(
 fn enable(
     focus: Option<Res<InputFocus>>,
     views: Query<&EditView>,
+    areas: Query<(&ComputedNode, &UiGlobalTransform)>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     ui_scale: Option<Res<UiScale>>,
 ) {
@@ -220,12 +229,20 @@ fn enable(
     if !window.ime_enabled {
         window.ime_enabled = true;
     }
-    let ui_scale = ui_scale.map_or(1.0, |scale| scale.0);
-    if let Some(caret) = edit.caret_rect() {
-        let at = Vec2::new(caret.min.x, caret.max.y) * ui_scale;
-        if window.ime_position != at {
-            window.ime_position = at;
+    let at = match edit.caret_rect() {
+        Some(caret) => Vec2::new(caret.min.x, caret.max.y),
+        None => {
+            let Some((node, area)) =
+                edit.list().and_then(|list| areas.get(list).ok())
+            else {
+                return;
+            };
+            (area.translation + node.content_box().min)
+                * node.inverse_scale_factor()
         }
+    } * ui_scale.map_or(1.0, |scale| scale.0);
+    if window.ime_position != at {
+        window.ime_position = at;
     }
 }
 

@@ -865,6 +865,7 @@ pub(crate) fn draw(
             };
             let rel = head - buffer.line_start(line);
             let mut at = geometry.shown(buffer, line).shown(rel);
+            let mut drawn = true;
             if selection == primary {
                 let insert =
                     marks.on(line).find_map(|mark| {
@@ -877,7 +878,7 @@ pub(crate) fn draw(
                     });
                 match insert {
                     Some(Some(into)) => at += into,
-                    Some(None) => continue,
+                    Some(None) => drawn = false,
                     None => {}
                 }
             }
@@ -902,6 +903,15 @@ pub(crate) fn draw(
                 .clip
                 .is_some_and(|clip| !clip.contains_point(middle))
             {
+                continue;
+            }
+            if selection == primary {
+                caret = Some(Rect::from_corners(
+                    corner * logical,
+                    (corner + size) * logical,
+                ));
+            }
+            if !drawn {
                 continue;
             }
             let placed = Node {
@@ -933,12 +943,6 @@ pub(crate) fn draw(
                         ChildOf(edit.carets()),
                     ));
                 }
-            }
-            if selection == primary {
-                caret = Some(Rect::from_corners(
-                    corner * logical,
-                    (corner + size) * logical,
-                ));
             }
             used += 1;
         }

@@ -107,6 +107,12 @@ impl<'w> Tx<'w> {
         });
     }
 
+    /// Keeps the view's primary caret in sight after this frame, as
+    /// an edit does, though nothing in the doc changed.
+    pub(crate) fn keep_in_sight(&mut self) {
+        self.acted = true;
+    }
+
     /// Copies `text` from the view, or the doc without one, to the
     /// app's clipboard.
     pub fn copy(&mut self, text: String) {
