@@ -1562,3 +1562,143 @@ editor(
     "wait 30",
     "screenshot e2-acceptance-100k.png",
 )
+
+
+# E3: typing through an input method. The `ime` steps write the
+# messages winit sends, so these scripts run without one.
+# `editor-ime-live.drive` types through fcitx5 Pinyin instead, under
+# `launch.sh --ime-live`.
+IME_LINE, IME_COLUMN = 120, 5
+COMPOSED = "你好"
+CARET_BOTTOM = 9
+
+
+def ime_debug(text):
+    """`{:?}` of text with no control character, as Rust prints it."""
+    assert all(c >= " " and c != "\x7f" for c in text), text
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def ime_text(doc, n):
+    return [f"log text {n}", f"expect text {n} {ime_debug(doc.line(n))}"]
+
+
+def ime(*expects):
+    return ["log ime", [f"expect ime {expect}" for expect in expects]]
+
+
+def preedit(text, cursor=None):
+    cursor = len(text.encode()) if cursor is None else cursor
+    return f"ime preedit {text} {cursor} {cursor}"
+
+
+def committed(text):
+    """winit's order on Wayland: an empty preedit, the commit, and the
+    next preedit, here empty."""
+    return ["ime preedit", f"ime commit {text}", "ime preedit"]
+
+
+def ime_editor(name, *steps):
+    editor(f"ime-{name}", *steps)
+
+
+def at_ime_line(doc):
+    return [
+        doc.scroll_to(IME_LINE),
+        f"click {doc.at(IME_LINE, IME_COLUMN)}",
+        caret((IME_LINE, IME_COLUMN)),
+    ]
+
+
+def composing(doc):
+    """A preedit of `COMPOSED` at the caret, which the text does not hold."""
+    shown = f'preedit {ime_debug(COMPOSED)} cursor 6..6'
+    return [preedit(COMPOSED), "wait 5", ime("enabled true", f"page {shown}"), ime_text(doc, IME_LINE), undo(0, 0)]
+
+
+doc = Doc(LARGE_RS_LINES)
+steps = [at_ime_line(doc), undo(0, 0), "ime enable", ime("enabled true", "page preedit none")]
+steps += [composing(doc), caret((IME_LINE, IME_COLUMN))]
+ime_editor("preedit", steps, "wait 30", "screenshot e3-preedit.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [at_ime_line(doc), composing(doc), committed(COMPOSED), "wait 5"]
+after = doc.insert((IME_LINE, IME_COLUMN), COMPOSED)
+steps += [ime_text(doc, IME_LINE), caret(after), ime("page preedit none"), undo(1, 0)]
+ime_editor("commit", steps, "wait 30", "screenshot e3-commit.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [at_ime_line(doc), composing(doc), committed(COMPOSED), "wait 5"]
+before = list(doc.lines)
+after = doc.insert((IME_LINE, IME_COLUMN), COMPOSED)
+steps += [ime_text(doc, IME_LINE), undo(1, 0)]
+done = list(doc.lines)
+doc.lines = before
+steps += ["key mod+z", "wait 5", ime_text(doc, IME_LINE), caret((IME_LINE, IME_COLUMN)), undo(0, 1)]
+doc.lines = done
+steps += ["key mod+shift+z", "wait 5", ime_text(doc, IME_LINE), caret(after), undo(1, 0)]
+ime_editor("undo", steps, "wait 30", "screenshot e3-undo.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [at_ime_line(doc), composing(doc), "ime preedit", "wait 5"]
+steps += [ime_text(doc, IME_LINE), ime("page preedit none"), undo(0, 0)]
+steps += [composing(doc), "ime disable", "wait 5"]
+steps += [ime_text(doc, IME_LINE), ime("page preedit none"), undo(0, 0)]
+ime_editor("cancel", steps, "wait 30", "screenshot e3-cancel.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [at_ime_line(doc), composing(doc), "type x", "key backspace", "wait 5"]
+steps += [ime_text(doc, IME_LINE), caret((IME_LINE, IME_COLUMN)), undo(0, 0)]
+after = doc.insert((IME_LINE, IME_COLUMN), COMPOSED)
+steps += [committed(COMPOSED), "type y", "wait 5"]
+after = doc.insert(after, "y")
+steps += [ime_text(doc, IME_LINE), caret(after)]
+ime_editor("keys", steps, "wait 30", "screenshot e3-keys.png")
+
+
+def candidate_box(doc, at, dy=0):
+    """The window's IME position and the page's caret, both at the
+    bottom-left of the caret at `at` on an ASCII line."""
+    n, column = at
+    x = round(doc.text_x + (column - 1) * ADVANCE)
+    y = doc.y(n) + CARET_BOTTOM + dy
+    return ime("enabled true", f"position {x} {y} last", f"caret {x} {y}")
+
+
+IME_TOP = IME_LINE - 20
+SCROLLED = 200
+doc = Doc(LARGE_RS_LINES)
+steps = [doc.scroll_to(IME_TOP), f"click {doc.at(IME_LINE, IME_COLUMN)}", "wait 2"]
+at = (IME_LINE, IME_COLUMN)
+steps += [caret(at), candidate_box(doc, at)]
+for _ in range(10):
+    n = at[0] + 1
+    at = (n, min(IME_COLUMN, len(doc.line(n)) + 1))
+    steps += ["key down", "wait 2", caret(at), candidate_box(doc, at)]
+steps += [CENTER, f"scroll 0 -{SCROLLED}", "wait 10", candidate_box(doc, at, -SCROLLED)]
+ime_editor("position", steps, "wait 30", "screenshot e3-position.png")
+
+steps = [CENTER, "click 740 400", "wait 2", ime("enabled true")]
+steps += ["page code", "wait 10", ime("enabled false"), "page editor", SETTLE]
+steps += ["click 740 400", "wait 2", ime("enabled true")]
+ime_editor("focus", steps, "wait 30", "screenshot e3-focus.png")
+
+IME_100K_LINE = 50_000
+GROWN = "你好世界" * 5
+ROUNDS = 5
+doc = Doc(STRESS_LINES, text_x=TEXT_X_100K)
+steps = [STRESS, "wait 60", doc.scroll_to(IME_100K_LINE)]
+at = (IME_100K_LINE, len(doc.line(IME_100K_LINE)) + 1)
+steps += [f"click {doc.end(IME_100K_LINE)}", caret(at)]
+grow = [[preedit(GROWN[:k]) for k in range(1, len(GROWN) + 1)], "ime preedit"] * ROUNDS
+steps += ["frames start", "wait 60", grow, "frames stop editor-ime-100k.csv"]
+steps += [preedit(GROWN), committed(GROWN), "wait 5"]
+at = doc.insert(at, GROWN)
+steps += [ime_text(doc, IME_100K_LINE), caret(at), undo(1, 0)]
+ime_editor("100k", steps, "wait 30", "screenshot e3-100k.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [at_ime_line(doc), "wtype nihao", "wait 30", ime("last preedit"), "wtype 1", "wait 30"]
+doc.insert((IME_LINE, IME_COLUMN), COMPOSED)
+steps += [ime_text(doc, IME_LINE), ime("page preedit none")]
+ime_editor("live", steps, "wait 30", "screenshot e3-live-pinyin.png")
