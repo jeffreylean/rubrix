@@ -22,9 +22,9 @@
 //! - `resize <width> <height>`, `open <path>...`
 //!
 //! `mod` is the command key, Ctrl on Linux and Cmd on macOS. A topic
-//! is a word, but `runs <line>` and `text <line>` take a line number
-//! too, so `expect runs 75 comment` checks topic `runs 75` for
-//! `comment`. `open` reads a relative path from the script's
+//! is a word, but `runs <line>`, `text <line>` and `row <line>` take
+//! a line number too, so `expect runs 75 comment` checks topic `runs
+//! 75` for `comment`. `open` reads a relative path from the script's
 //! directory. `paste` reads `\n`, `\t` and `\\` in its text as a
 //! newline, a tab and a backslash. `wtype` types through the OS, so
 //! it runs only under `launch.sh --ime-live`, which sets
