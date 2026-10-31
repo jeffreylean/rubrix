@@ -76,7 +76,7 @@ Run `editor-10k.drive`, `editor-100k.drive`, `code-large.drive` and `code-100k.d
 
 ## Find and replace
 
-E5 adds a find bar, `find_bar(doc)`, which the editor page lays over the view's top right. `mod+f` opens it on the word at a bare caret, and `mod+alt+f` opens it with its replace row, the focus in the replace field. It searches plain or as a regex, with toggles for match case (`Aa`), whole word (`W`) and regex (`.*`). A search scans at most 1 ms a frame, so the count reads `searching <n>` until it ends. It stops at 100,000 matches and reads `<i> of 100000+`. Each built row tints its matches, and the current match takes a stronger tint.
+E5 adds a find bar, `find_bar(doc)`, which the editor page lays over the view's top right. `mod+f` opens it on the word at a bare caret, and `mod+alt+f` opens it with its replace row, the focus in the replace field. It searches plain or as a regex, with toggles for match case (`Aa`), whole word (`W`) and regex (`.*`). A search scans at most 0.5 ms a frame, so the count reads `searching <n>` until it ends. It stops at 100,000 matches and reads `<i> of 100000+`. Each built row tints its matches, and the current match takes a stronger tint.
 
 - In the find field, Enter and `mod+g` go to the next match, Shift+Enter and `mod+shift+g` to the previous one, and Escape closes the bar and gives the focus back to the editor. Enter and Escape do nothing while the field holds an IME preedit. Enter in the replace field replaces the current match.
 - `Replace` replaces the current match and puts the caret after it. `Replace All` replaces every match as one undo step. With the regex toggle on, `$1` to `$n`, `$&` and `$$` in the replacement expand.

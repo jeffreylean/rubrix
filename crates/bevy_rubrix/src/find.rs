@@ -46,9 +46,11 @@ type Run = fn(&mut Tx<'_>);
 /// The [`Marks`] layer that holds a bar's match highlights.
 pub const FIND: MarkLayer = MarkLayer("find");
 
-/// The longest a search scans in one frame, the slice Pierre gives
-/// its background tokenizer.
-pub const SLICE: Duration = Duration::from_millis(1);
+/// The longest a search scans in one frame. Half the 1 ms slice
+/// Pierre gives its background tokenizer: a 100k-line frame takes
+/// about 2 ms before it, and a whole 1 ms slice put the find field's
+/// frame p95 over 3 ms.
+pub const SLICE: Duration = Duration::from_micros(500);
 
 /// A find bar for the editable views of `doc`, an entity holding an
 /// [`EditDoc`]. It shows nothing until `mod+f` or `mod+alt+f` in one
