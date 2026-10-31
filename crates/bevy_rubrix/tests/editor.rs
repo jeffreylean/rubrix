@@ -140,7 +140,7 @@ fn typing_colours_each_keystroke() {
 /// it. The view keeps both selections through the change and draws
 /// the lower one, the primary, on the row its text moved to.
 #[test]
-fn splice_selection_below_an_edit_keeps_its_text() {
+fn splice_selection_below_an_enter_follows_its_text() {
     let mut app = laid_out();
     let (view, entity) = mount_editor(
         &mut app,
@@ -205,7 +205,6 @@ fn splice_selection_below_an_edit_keeps_its_text() {
     );
 }
 
-/// A count of texts Bevy laid out again, kept by `count_layouts`.
 #[derive(Resource, Default)]
 struct Relaid(usize);
 

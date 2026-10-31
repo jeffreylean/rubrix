@@ -49,8 +49,6 @@ pub(crate) struct Numbers {
     spare: Vec<Entity>,
 }
 
-/// Puts a numbers layer over `list`, the list of `view`, which shows
-/// `doc`. It ignores the list's sideways scroll, as the gutters do.
 pub(crate) fn spawn(
     world: &mut World,
     list: Entity,

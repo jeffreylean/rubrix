@@ -1507,7 +1507,6 @@ top = (LINE - 1) * ROW
 
 
 def wrapped(lines):
-    """Line 300 takes `lines` visual lines, its top stays, and line 301 starts below them."""
     return [
         f"log row {LINE}",
         f"expect row {LINE} top {top} height {lines * ROW} lines {lines}",

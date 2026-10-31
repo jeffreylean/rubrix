@@ -232,9 +232,6 @@ where
     }
 }
 
-/// On the root of each row whose line number a
-/// [`Numbers`](crate::numbers::Numbers) draws: the view, and the line
-/// the row shows now.
 #[derive(Component, Clone, Copy)]
 pub(crate) struct NumberedRow {
     pub(crate) view: Entity,

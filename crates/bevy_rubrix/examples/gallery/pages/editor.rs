@@ -255,7 +255,6 @@ struct Shown {
     top: f32,
     bottom: f32,
     text: String,
-    /// The line's number and its top.
     number: Option<(String, f32)>,
 }
 
@@ -333,9 +332,6 @@ fn text_of(world: &World, node: Entity) -> String {
     text
 }
 
-/// The gutter text beside the row text `node`, one line high: the
-/// first text under a sibling of `node` or of its nearest ancestors.
-/// A selection layer beside the text holds no text.
 fn gutter_of(world: &World, node: Entity) -> Option<Entity> {
     let mut inner = node;
     for _ in 0..4 {
