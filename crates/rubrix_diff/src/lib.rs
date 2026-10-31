@@ -4,7 +4,9 @@
 //! [`Lines`], and [`Hunk`]s of [`Block`]s over them. [`rows()`] turns
 //! a diff, a [`Layout`] and an [`Expansion`] into [`Rows`], which a
 //! view reads a window at a time. [`Expansion::reveal`] shows more of
-//! the unchanged lines between hunks; the diff itself never changes.
+//! the unchanged lines between hunks. [`FileDiff::edit_new`] edits
+//! the new side and re-diffs only the hunks near the edit, and
+//! [`Rows::patch`] moves rows through it.
 //!
 //! ```
 //! use rubrix_diff::{Expansion, Layout, Side, diff_texts, rows};
@@ -37,6 +39,7 @@
 
 extern crate alloc;
 
+mod edit;
 mod expand;
 mod model;
 mod patch;
@@ -46,6 +49,7 @@ mod words;
 
 use alloc::vec::Vec;
 
+pub use edit::Rediff;
 pub use expand::{Expansion, Side};
 pub use model::{
     Block, Edit, FileChange, FileDiff, Hunk, Invariant, Lines, Meta,
@@ -53,7 +57,9 @@ pub use model::{
 };
 pub use patch::{PatchError, PatchErrorKind, parse_patch};
 pub use realign::realign;
-pub use rows::{Anchor, Layout, LineNo, LineRef, Row, Rows, rows};
+pub use rows::{
+    Anchor, Layout, LineNo, LineRef, Row, RowSplice, Rows, rows,
+};
 use similar::DiffOp;
 pub use words::{WordRanges, word_changes};
 

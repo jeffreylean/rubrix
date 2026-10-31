@@ -24,7 +24,7 @@ pub fn realign(diff: &mut FileDiff) {
     .expect("realign's parts cover their block");
 }
 
-fn realign_block(
+pub(crate) fn realign_block(
     old: &Lines,
     new: &Lines,
     block: Block,

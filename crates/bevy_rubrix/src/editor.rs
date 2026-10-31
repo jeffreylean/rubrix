@@ -235,6 +235,10 @@ impl EditDoc {
         Some((text, view))
     }
 
+    pub(crate) fn damage(&self) -> &Damage {
+        &self.damage
+    }
+
     /// The generation of the highlights: it grows with each change
     /// and each catch-up, which can change runs while
     /// [`EditDoc::seq`] stays.

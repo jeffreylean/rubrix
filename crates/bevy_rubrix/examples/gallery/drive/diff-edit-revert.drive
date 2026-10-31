@@ -1,0 +1,34 @@
+page diff
+wait 30
+click 586 68
+wait 120
+click 1178 68
+wait 10
+log diff-edit
+expect diff-edit none
+click 1250 665
+key end
+wait 5
+log diff-edit
+expect diff-edit file 0 hunks 3 undo 0 rediff - marks 49..60 line 7997 hunk @@ -7998,7 +7994,7 @@
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+wait 5
+log diff-edit
+expect diff-edit file 0 hunks 2 undo
+expect diff-edit marks - line 7997 hunk -
+expect diff-edit stale 0
+log diff
+expect diff files 1 rows 32 stacked
+wait 30
+screenshot e7-revert.png
+exit

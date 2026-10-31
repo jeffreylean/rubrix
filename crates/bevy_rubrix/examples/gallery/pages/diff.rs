@@ -4,8 +4,11 @@ use bevy::app::App;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::world::World;
 use bevy::ui::{percent, px};
+use bevy::ui_widgets::Button;
 use bevy_fynix::tokens::Tone;
-use bevy_fynix::views::{FrameProps, column, label, row};
+use bevy_fynix::views::{
+    BehaviorExt, FrameProps, column, label, row,
+};
 use bevy_fynix::{ViewExt, resource};
 use bevy_rubrix::{DiffSource, Layout, Overflow, diff_view};
 
@@ -13,12 +16,48 @@ use super::code::read_file;
 use super::{control, wrapping};
 use crate::PageView;
 
+#[path = "../fixtures/diff/large_pairs.rs"]
+mod large_pairs;
+
+use large_pairs::{hundred_k_pair, with_review_edits};
+
 const LARGE_PATCH: &str =
     include_str!("../../../../../bench/patch/large.patch.txt");
 pub(super) const STRESS_PATCH: &str =
     include_str!("../../../../../bench/patch/stress.patch.txt");
 const LARGE_RS: &str =
     include_str!("../../../../../bench/fixtures/rust/large.rs.txt");
+
+macro_rules! fixture_pair {
+    ($stem:literal, $ext:literal) => {
+        (
+            concat!($stem, $ext),
+            include_str!(concat!(
+                "../fixtures/diff/",
+                $stem,
+                "-old",
+                $ext
+            )),
+            include_str!(concat!(
+                "../fixtures/diff/",
+                $stem,
+                "-new",
+                $ext
+            )),
+        )
+    };
+}
+
+const FIXTURE_PAIRS: [(&str, &str, &str); 8] = [
+    fixture_pair!("merge", ".rs"),
+    fixture_pair!("retype", ".rs"),
+    fixture_pair!("forty", ".txt"),
+    fixture_pair!("gap", ".txt"),
+    fixture_pair!("long", ".rs"),
+    fixture_pair!("realign", ".rs"),
+    fixture_pair!("words", ".rs"),
+    fixture_pair!("wrap", ".rs"),
+];
 
 const COMPACT_LIMIT: u32 = 16;
 
@@ -29,6 +68,7 @@ struct DiffFile {
     layout: Layout,
     compact: bool,
     overflow: Overflow,
+    edit: bool,
 }
 
 impl Default for DiffFile {
@@ -39,6 +79,7 @@ impl Default for DiffFile {
             layout: Layout::Stacked,
             compact: false,
             overflow: Overflow::Scroll,
+            edit: false,
         }
     }
 }
@@ -53,7 +94,27 @@ pub(super) fn patch(text: &str) -> DiffSource {
 
 pub fn build() -> PageView {
     column((
-        label("Diff").size(20.0),
+        row((
+            label("Diff").size(20.0),
+            source_link("pairs", |world| {
+                let edited = with_review_edits(LARGE_RS);
+                let pairs = [("large.rs", LARGE_RS, edited.as_str())]
+                    .into_iter()
+                    .chain(FIXTURE_PAIRS);
+                show(
+                    world,
+                    "large.rs and the fixture pairs",
+                    DiffSource::pairs(pairs),
+                );
+            }),
+            source_link("100k pair", |world| {
+                let (old, new) = hundred_k_pair(LARGE_RS);
+                let source =
+                    DiffSource::texts("large.rs", &old, &new);
+                show(world, "large.rs.txt ten times, edited", source);
+            }),
+        ))
+        .gap(16.0),
         controls(),
         label(resource::<DiffFile, _>(|file| {
             let files = file.source.files().len();
@@ -69,7 +130,8 @@ pub fn build() -> PageView {
         .limit(resource::<DiffFile, _>(|file| {
             file.compact.then_some(COMPACT_LIMIT)
         }))
-        .overflow(resource::<DiffFile, _>(|file| file.overflow)),
+        .overflow(resource::<DiffFile, _>(|file| file.overflow))
+        .edit(resource::<DiffFile, _>(|file| file.edit)),
     ))
     .height(percent(100.0))
     .min_height(px(0.0))
@@ -133,34 +195,32 @@ fn controls() -> PageView {
                 file.compact = !file.compact;
             },
         ),
+        control(
+            resource::<DiffFile, _>(|file| {
+                if file.edit { "edit on" } else { "edit off" }
+                    .to_owned()
+            }),
+            |world| {
+                let mut file = world.resource_mut::<DiffFile>();
+                file.edit = !file.edit;
+            },
+        ),
     ))
     .gap(8.0);
     wrapping(buttons.boxed())
+}
+
+fn source_link(
+    text: &'static str,
+    press: impl Fn(&mut World) + Send + Sync + 'static,
+) -> PageView {
+    label(text).on_activate(press).tagged(Button).boxed()
 }
 
 fn show(world: &mut World, name: &str, source: DiffSource) {
     let mut file = world.resource_mut::<DiffFile>();
     file.name = name.into();
     file.source = source;
-}
-
-fn with_review_edits(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for (at, line) in text.lines().enumerate() {
-        match at {
-            119 => out.push_str(&line.replace("theme", "palette")),
-            2000..2006 => continue,
-            5000 => {
-                out.push_str("// Added by the pair's edit.\n");
-                out.push_str("const PAIRED: bool = true;\n");
-                out.push_str(line);
-            }
-            8000 => out.push_str(&format!("{line} // changed")),
-            _ => out.push_str(line),
-        }
-        out.push('\n');
-    }
-    out
 }
 
 pub fn open(
