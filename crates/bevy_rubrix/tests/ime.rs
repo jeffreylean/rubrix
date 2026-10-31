@@ -321,7 +321,6 @@ fn the_window_takes_ime_while_the_editor_has_focus() {
     assert!(!last_seen(&mut app).0, "off a frame after it leaves");
 }
 
-/// The view's primary caret bar, as drawn this frame.
 fn caret_rect(app: &App, view: Entity) -> Option<Rect> {
     app.world()
         .get::<EditView>(view)

@@ -2333,7 +2333,6 @@ steps += [remote("remote 50: ", *(f"u{i + 1} {LINE}:{column + 200} " for i, colu
 collab("100k", steps, "log typing", "log rows", "wait 30", "screenshot e6-100k.png")
 
 
-# m1f: the milestone 1 review's findings that break a box, one script each.
 # A value marked "measured" was read from a live run at the fix's head.
 
 def m1(name, *steps):
@@ -2342,7 +2341,7 @@ def m1(name, *steps):
 
 def wrap_lines(text, columns):
     """Visual lines of `text` at `columns`, as a wrap that breaks at
-    word starts and inside a word wider than a line, as Zed does."""
+    word starts and inside a word wider than a line."""
     lines, start, word = 1, 0, None
     for column, c in enumerate(text):
         if c == " ":
