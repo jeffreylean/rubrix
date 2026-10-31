@@ -1,0 +1,7 @@
+# After the `{` of `fn hex` the bracket check finds its closing `}`, and after a `(` inside a string it finds none.
+caret 15:28
+expect bracket 18:1
+caret 14:1
+paste let s = "(a)";
+caret 14:11
+expect bracket none
