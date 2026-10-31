@@ -688,6 +688,34 @@ fn a_press_on_the_gutter_puts_the_caret_at_the_line_start() {
 }
 
 #[test]
+fn a_press_on_the_gutter_scrolls_its_caret_into_sight() {
+    let mut app = laid_out();
+    let long = "x".repeat(300);
+    let source = format!("{long}\nabc\n");
+    let (view, entity) =
+        mount_editor(&mut app, Lang::Plain, &source, 600.0, 300.0);
+    settle(&mut app);
+    let row = edit_line(&mut app, view, 1);
+    let gutter = point_at(&app, row, 0) - Vec2::new(6.0, 0.0);
+    caret_at(&mut app, entity, view, long.len());
+    settle(&mut app);
+    let area = list(&mut app);
+    let scrolled =
+        app.world().get::<ScrollPosition>(area).expect("a scroll");
+    assert!(scrolled.x > 0.0, "the long line's end scrolls the view");
+    press_on(&mut app, row, gutter, 1);
+    settle(&mut app);
+    let head = doc(&app, entity).editor().selections().primary().head;
+    assert_eq!(
+        head,
+        long.len() + 1,
+        "the caret is at line 2's start"
+    );
+    let shown = app.world().get::<EditView>(view).expect("a view");
+    assert!(shown.caret_shown(), "and shows");
+}
+
+#[test]
 fn a_press_on_an_insert_lands_at_its_byte() {
     let mut app = laid_out();
     let (view, entity) = mount_editor(

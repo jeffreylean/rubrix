@@ -403,8 +403,9 @@ impl FromWorld for Frame {
 ///
 /// In order: settle last frame's damage and collect each view's built
 /// rows; pending pastes; requests; presses and drags; each key, to
-/// the view it was sent to; keep the caret of each view whose keys
-/// or requests acted in sight; lex stale lines the views may build.
+/// the view it was sent to; keep the caret of each view whose
+/// presses, keys or requests acted in sight; lex stale lines the
+/// views may build.
 pub(crate) fn apply(world: &mut World, mut frame: Local<Frame>) {
     let frame = &mut *frame;
     let now = world
@@ -473,7 +474,7 @@ pub(crate) fn apply(world: &mut World, mut frame: Local<Frame>) {
         acted.extend(request.view.filter(|_| tx.acted));
     }
 
-    strokes(world, frame, now);
+    acted.extend(strokes(world, frame, now));
 
     let keys: Vec<(Entity, Entity, Act)> = {
         let parts = frame.parts.get_mut(world).expect(PARTS);
@@ -573,12 +574,14 @@ pub(crate) fn apply(world: &mut World, mut frame: Local<Frame>) {
 
 /// Presses, then drags, per view: a press runs the gesture its
 /// modifiers and clicks name; a held press runs it again to the
-/// pointer, and steps the view past an edge.
+/// pointer, and steps the view past an edge. Returns the views that
+/// took a press, whose carets are kept in sight like a key's.
 fn strokes(
     world: &mut World,
     frame: &mut Frame,
     now: core::time::Duration,
-) {
+) -> Vec<Entity> {
+    let mut pressed_views = Vec::new();
     let views: Vec<(Entity, Entity)> = {
         let parts = frame.parts.get_mut(world).expect(PARTS);
         parts
@@ -624,6 +627,7 @@ fn strokes(
             };
             Tx::new(world, &mut frame.parts, doc, Some(view))
                 .stroke(gesture, hit, hit, &base);
+            pressed_views.push(view);
             if let Some(mut input) = world.get_mut::<EditInput>(view)
             {
                 let input = input.bypass_change_detection();
@@ -683,6 +687,7 @@ fn strokes(
             None => {}
         }
     }
+    pressed_views
 }
 
 /// One key, through the transaction of the view it was sent to.

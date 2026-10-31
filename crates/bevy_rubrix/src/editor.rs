@@ -525,8 +525,8 @@ pub(crate) struct EditInput {
     pub(crate) keyed_at: Duration,
     /// Whether the view held the input focus at the last blink.
     pub(crate) focused: bool,
-    /// Whether keys or requests acted this frame, so the drawer
-    /// keeps the caret in sight from the real layout.
+    /// Whether presses, keys or requests acted this frame, so the
+    /// drawer keeps the caret in sight from the real layout.
     pub(crate) acted: bool,
     /// Where the last press landed, in logical window px, and the
     /// clicks it counted.
