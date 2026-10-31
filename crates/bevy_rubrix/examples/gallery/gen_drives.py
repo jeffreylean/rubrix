@@ -1564,10 +1564,6 @@ editor(
 )
 
 
-# E3: typing through an input method. The `ime` steps write the
-# messages winit sends, so these scripts run without one.
-# `editor-ime-live.drive` types through fcitx5 Pinyin instead, under
-# `launch.sh --ime-live`.
 IME_LINE, IME_COLUMN = 120, 5
 COMPOSED = "你好"
 CARET_BOTTOM = 9
@@ -1701,4 +1697,13 @@ doc = Doc(LARGE_RS_LINES)
 steps = [at_ime_line(doc), "wtype nihao", "wait 30", ime("last preedit"), "wtype 1", "wait 30"]
 doc.insert((IME_LINE, IME_COLUMN), COMPOSED)
 steps += [ime_text(doc, IME_LINE), ime("page preedit none")]
-ime_editor("live", steps, "wait 30", "screenshot e3-live-pinyin.png")
+write(
+    "editor-ime-live",
+    "# Needs fcitx5 Pinyin and launch.sh --ime-live, which gives the gallery the keyboard focus.",
+    "page editor",
+    SETTLE,
+    steps,
+    "wait 30",
+    "screenshot e3-live-pinyin.png",
+    "exit",
+)

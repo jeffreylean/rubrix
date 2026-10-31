@@ -127,8 +127,6 @@ fn read(
             }
             Ime::Commit { value, .. } => {
                 if !value.is_empty() {
-                    // A paste is its own undo step, which a typing
-                    // run does not join.
                     let text = value.clone();
                     requests.write(EditRequest {
                         doc: edit.doc(),
@@ -158,8 +156,7 @@ fn read(
 
 /// Draws each view's preedit at its primary caret, after this frame's
 /// edits moved the caret, and clears the layer of a view whose
-/// composition ended. The layer changes only when the mark does, so
-/// the caret's row reads again only then.
+/// composition ended.
 fn place(
     mut views: Query<(&EditView, &Preedit, &mut Marks)>,
     mut ended: RemovedComponents<Preedit>,
@@ -209,7 +206,7 @@ fn enable(
     focus: Option<Res<InputFocus>>,
     views: Query<&EditView>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
-    scale: Option<Res<UiScale>>,
+    ui_scale: Option<Res<UiScale>>,
 ) {
     let Some(edit) = focus
         .and_then(|focus| focus.get())
@@ -223,10 +220,9 @@ fn enable(
     if !window.ime_enabled {
         window.ime_enabled = true;
     }
-    // The caret is in UI pixels, which `UiScale` scales.
-    let scale = scale.map_or(1.0, |scale| scale.0);
+    let ui_scale = ui_scale.map_or(1.0, |scale| scale.0);
     if let Some(caret) = edit.caret_rect() {
-        let at = Vec2::new(caret.min.x, caret.max.y) * scale;
+        let at = Vec2::new(caret.min.x, caret.max.y) * ui_scale;
         if window.ime_position != at {
             window.ime_position = at;
         }
