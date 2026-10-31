@@ -128,8 +128,6 @@ impl EditDoc {
         }
     }
 
-    /// The doc that `state` put aside, its [`EditDoc::seq`] carrying
-    /// on from the saved revision.
     pub(crate) fn restored(lang: Lang, state: EditState) -> EditDoc {
         let changes = state.revision();
         EditDoc {

@@ -22,10 +22,6 @@ pub struct Change {
     moves: Vec<Move>,
 }
 
-/// Text that a change carries whole to another place, such as a line
-/// that a line move swaps: the bytes `from` of the text before the
-/// change are the bytes from `to` of the text after it. Sorted by
-/// `from`, none overlapping.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Move {
     pub(crate) from: Range<usize>,
@@ -92,10 +88,13 @@ impl Change {
         change
     }
 
-    /// The change with `moves`, which name text its replacements
-    /// carry whole, so [`Change::map`] takes each place in that text
-    /// along with it.
     pub(crate) fn moving(mut self, moves: Vec<Move>) -> Change {
+        debug_assert!(
+            moves
+                .windows(2)
+                .all(|pair| pair[0].from.end < pair[1].from.start),
+            "moves out of order or overlapping"
+        );
         self.moves = moves;
         self
     }
@@ -174,8 +173,6 @@ impl Change {
         }
     }
 
-    /// Where `offset` lands when it is in text the change carries
-    /// whole, under the rule in [`Change::map`].
     pub(crate) fn moved(
         &self,
         offset: usize,
@@ -231,9 +228,6 @@ impl Change {
         })
     }
 
-    /// Undoes this change on `buffer`, which holds the text after it,
-    /// and returns the change that made. Text this change carried
-    /// whole goes back whole.
     pub(crate) fn undo(&self, buffer: &mut Buffer) -> Change {
         let mut moves: Vec<Move> =
             self.moves.iter().map(Move::inverse).collect();
@@ -248,8 +242,6 @@ impl Change {
             .moving(moves)
     }
 
-    /// Makes this change again on `buffer`, which holds the text
-    /// before it, and returns the change that made.
     pub(crate) fn redo(&self, buffer: &mut Buffer) -> Change {
         buffer
             .replace(

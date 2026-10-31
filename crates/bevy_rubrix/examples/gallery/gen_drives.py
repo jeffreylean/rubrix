@@ -2860,9 +2860,6 @@ steps += [f"click {doc.at(EDIT_LINE, 1)}", "frames start", "wait 60", [[f"type {
 steps += ["frames stop editor-find-m2-edit-100k.csv", "wait 120", doc.text(EDIT_LINE), counted(UNBOUNDED_QUERY, hits)]
 find_script("m2-edit-100k", steps, "wait 30", "screenshot m2fa-edit-100k.png")
 
-# m3fa: the milestone 3 fixes for remote carets, markers, annotations
-# and hooks. Each script fails at 218d8a3 and passes with the fix.
-
 TO_TOP = "scroll 0 100000000"
 
 

@@ -382,9 +382,6 @@ pub fn remote_line(world: &mut World) -> String {
     )
 }
 
-/// Where the remote nodes paint: how many of the bars, tints and
-/// labels drawn in the rows reach into the line numbers' column, and
-/// how many pairs of edge labels overlap.
 fn painted(world: &mut World, carets: &[RemoteCaret]) -> String {
     let shown = |node: &Node,
                  size: &ComputedNode,
@@ -604,21 +601,16 @@ fn give_back_clipboard(
 
 const SOURCE: &str = "collab: ";
 
-/// Keeps its text in the gallery's paste slot tagged with
-/// [`SOURCE`], so `log paste` shows that it served the text. It
-/// strips the tag only from the slot text it wrote itself: a drive's
-/// `paste` step that writes text starting with the tag gets it back
-/// whole.
 #[derive(Default)]
 struct CollabClipboard {
-    tagged: Option<String>,
+    last_written: Option<String>,
 }
 
 impl CollabClipboard {
     fn hold(&mut self, world: &mut World, text: &str) {
         let tagged = format!("{SOURCE}{text}");
         world.resource_mut::<Paste>().0 = Some(tagged.clone());
-        self.tagged = Some(tagged);
+        self.last_written = Some(tagged);
     }
 }
 
@@ -638,7 +630,7 @@ impl ClipboardProvider for CollabClipboard {
                 ClipboardError::ContentNotAvailable,
             ));
         };
-        let text = match &self.tagged {
+        let text = match &self.last_written {
             Some(tagged) if *tagged == held => {
                 held[SOURCE.len()..].to_owned()
             }

@@ -177,8 +177,7 @@ fn line_indents(
 ///
 /// Each block stays where it is and the line beside it moves to its
 /// other side, so the edit is the size of one line however long the
-/// block is. The moves name the text of the block and of the line
-/// beside it, so places in both go with their lines.
+/// block is.
 pub(crate) fn move_lines(
     buffer: &Buffer,
     selections: &Selections,

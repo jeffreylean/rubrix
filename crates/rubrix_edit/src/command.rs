@@ -406,8 +406,6 @@ impl Editor {
         self.commit_moving(kind, plan, Vec::new())
     }
 
-    /// [`Editor::commit`] for a plan whose edits carry the text
-    /// `moves` names whole.
     fn commit_moving<S: AsRef<str>>(
         &mut self,
         kind: Kind,

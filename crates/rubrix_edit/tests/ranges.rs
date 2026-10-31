@@ -262,8 +262,6 @@ fn every_line_of_one_change_comes_back_past_the_drop_limit() {
     assert_eq!(lines(&editor, &anchors), even);
 }
 
-/// Each line of `text` that a move of `line` swaps, with where it is
-/// after the move: `line` and the line it swaps with.
 fn swapped(line: u32, down: bool) -> [(u32, u32); 2] {
     let other = if down { line + 1 } else { line - 1 };
     [(line, other), (other, line)]

@@ -101,8 +101,7 @@ pub(crate) struct RemoteEdges;
 const LABEL_SIZE_PX: f32 = 11.0;
 const LABEL_PAD_PX: f32 = 3.0;
 const TINT: f32 = 0.32;
-/// The `+N` label that stands for the edge labels with no room.
-const MORE: Color = Color::srgb(0.45, 0.45, 0.5);
+const OVERFLOW_LABEL: Color = Color::srgb(0.45, 0.45, 0.5);
 
 type TextParts = (
     &'static ComputedNode,
@@ -139,13 +138,9 @@ struct Scene {
 }
 
 impl Scene {
-    /// Cuts what the scene draws in the list at `left`, the edge of
-    /// the rows' text, where the rows clip their own text, so nothing
-    /// paints over the gutter. A label whose bar is cut away goes
-    /// with it.
-    fn clip(&mut self, left: f32) {
+    fn clip(&mut self, text_left: f32) {
         self.rects.retain_mut(|(rect, _)| {
-            let cut = (left - rect[0]).max(0.0);
+            let cut = (text_left - rect[0]).max(0.0);
             rect[0] += cut;
             rect[2] -= cut;
             rect[2] > 0.0
@@ -154,8 +149,8 @@ impl Scene {
             if *tag_in == TagIn::Edges {
                 return true;
             }
-            let shown = at.x + CARET_WIDTH > left;
-            at.x = at.x.max(left);
+            let shown = at.x + CARET_WIDTH > text_left;
+            at.x = at.x.max(text_left);
             shown
         });
     }
@@ -253,7 +248,7 @@ pub(crate) fn draw(
         let text_left = rows
             .iter()
             .find_map(|&(_, text)| {
-                clip_left(texts.get(text).ok()?.4?)
+                clip_left_physical(texts.get(text).ok()?.4?)
             })
             .map_or(f32::NEG_INFINITY, |left| {
                 frame.content_from_physical(Vec2::new(left, 0.0)).x
@@ -532,9 +527,7 @@ fn tint(
     }
 }
 
-/// The left edge of what `clip` lets show, in physical pixels: the
-/// rightmost left edge of the rects it clips to, none of which turns.
-fn clip_left(clip: &CalculatedClip) -> Option<f32> {
+fn clip_left_physical(clip: &CalculatedClip) -> Option<f32> {
     clip.rects()?
         .iter()
         .filter(|clip| clip.rect.min.x.is_finite())
@@ -548,14 +541,8 @@ fn clip_left(clip: &CalculatedClip) -> Option<f32> {
         .reduce(f32::max)
 }
 
-/// An edge marker's label: the column of its caret, its text and its
-/// colour.
 type EdgeLabel = (f32, String, Color);
 
-/// Puts one edge's labels left to right between `from` and `to`, each
-/// at its caret's column or just past the label before it, so none
-/// covers another. The labels with no room left fold into one `+N`
-/// label at the end.
 fn lay_out_edge(
     mut labels: Vec<EdgeLabel>,
     from: f32,
@@ -580,7 +567,7 @@ fn lay_out_edge(
         let more = format!("+{}", count - laid.len());
         let left = past(&laid);
         if left + label_width(&more) <= to || laid.is_empty() {
-            laid.push((left, more, MORE));
+            laid.push((left, more, OVERFLOW_LABEL));
             break;
         }
         laid.pop();
@@ -606,9 +593,6 @@ fn label_height() -> f32 {
     (LABEL_SIZE_PX * LINE_HEIGHT).ceil()
 }
 
-/// The width a label's box takes, its padding included. A character
-/// past ASCII, such as an edge marker's arrow or a CJK name, may come
-/// from a wider fallback font, so it counts as two advances.
 fn label_width(text: &str) -> f32 {
     let advances: usize =
         text.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum();

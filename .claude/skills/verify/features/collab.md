@@ -46,7 +46,7 @@ The recipes:
 - **Clipboard (lane 9).** Run `wl-paste -n` before and after, read only. Run `collab-clipboard.drive`. It copies line 120 with `shift+end` and `mod+c`, then runs `paste one\ntwo` at the end of line 125. `log copied` prints the line, `log paste` prints it tagged `collab: `, `log text 125` and `log text 126` show `one` and `two`, and the last `log paste` prints `collab: one\ntwo`. The two `wl-paste` outputs match. Save `e6-clipboard.png`.
 - **100k (lane 10).** Run `collab-100k.drive`. It opens the 100,000-line input, clicks `50 carets` and `1,000 markers` with the caret at `50000:9`, and types 200 `x` inside `frames start` and `frames stop collab-100k-type.csv`. `log remote` lists 50 carets, each 200 columns right of where it started. Save `e6-100k.png`.
 
-The milestone 3 fixes (`m3fa` block of `gen_drives.py`), each failing at 218d8a3:
+The milestone 3 fixes, written by the last block of `gen_drives.py`, each failing at 218d8a3:
 
 - `collab-m3-move-annotation.drive` moves line 201 up onto the annotated empty line 200, undoes and redoes it, then moves line 200 down: the badge follows line 200's text to 201 each time and comes back to 200 on each undo.
 - `collab-m3-move-marker.drive` clicks `markers`, moves line 132 up, undoes, moves line 130 down, undoes: all three markers move with their lines and come back on each undo.
