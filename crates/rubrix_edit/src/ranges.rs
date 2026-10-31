@@ -80,7 +80,7 @@ impl<T> Default for Ranges<T> {
 #[derive(Clone, Debug)]
 pub struct LineAnchors<T> {
     text_starts: Vec<(usize, T)>,
-    dropped: Vec<Dropped<T>>,
+    dropped: Vec<Vec<Dropped<T>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -154,8 +154,9 @@ fn move_anchor(change: &Change, reps: &[Rep], at: usize) -> Moved {
 }
 
 impl<T> LineAnchors<T> {
-    /// The most deletions kept for their text to come back, as many
-    /// as `History` keeps undo steps by default.
+    /// The most changes whose deleted lines are kept for their text
+    /// to come back, as many as `History` keeps undo steps by
+    /// default.
     pub const MAX_DROPPED: usize =
         crate::History::DEFAULT_MAX_ENTRIES;
 
@@ -207,46 +208,52 @@ impl<T> LineAnchors<T> {
         }
         let reps = reps(change);
         let mut back = Vec::new();
-        self.dropped.retain_mut(|dropped| {
-            let put = reps
-                .iter()
-                .find(|rep| rep.range == dropped.put_back_at);
-            let Some((rep, found)) = put.and_then(|rep| {
-                Some((rep, rep.new.find(dropped.removed.as_str())?))
-            }) else {
-                return true;
-            };
-            let base = rep.new_start + found;
-            back.extend(
-                core::mem::take(&mut dropped.in_removed)
-                    .into_iter()
-                    .map(|(rel, item)| (base + rel, item)),
-            );
-            false
-        });
-        self.dropped.retain_mut(|dropped| {
-            let at = &dropped.put_back_at;
-            let touched = reps.iter().any(|rep| {
-                if at.is_empty() {
-                    rep.range.start < at.start
-                        && at.start < rep.range.end
-                } else {
-                    rep.range.start < at.end
-                        && at.start < rep.range.end
-                }
+        for group in &mut self.dropped {
+            group.retain_mut(|dropped| {
+                let put = reps
+                    .iter()
+                    .find(|rep| rep.range == dropped.put_back_at);
+                let Some((rep, found)) = put.and_then(|rep| {
+                    Some((
+                        rep,
+                        rep.new.find(dropped.removed.as_str())?,
+                    ))
+                }) else {
+                    return true;
+                };
+                let base = rep.new_start + found;
+                back.extend(
+                    core::mem::take(&mut dropped.in_removed)
+                        .into_iter()
+                        .map(|(rel, item)| (base + rel, item)),
+                );
+                false
             });
-            if touched {
-                return false;
-            }
-            dropped.put_back_at = if at.is_empty() {
-                let to = change.map(at.start, Assoc::After);
-                to..to
-            } else {
-                change.map(at.start, Assoc::After)
-                    ..change.map(at.end, Assoc::Before)
-            };
-            true
-        });
+            group.retain_mut(|dropped| {
+                let at = &dropped.put_back_at;
+                let touched = reps.iter().any(|rep| {
+                    if at.is_empty() {
+                        rep.range.start < at.start
+                            && at.start < rep.range.end
+                    } else {
+                        rep.range.start < at.end
+                            && at.start < rep.range.end
+                    }
+                });
+                if touched {
+                    return false;
+                }
+                dropped.put_back_at = if at.is_empty() {
+                    let to = change.map(at.start, Assoc::After);
+                    to..to
+                } else {
+                    change.map(at.start, Assoc::After)
+                        ..change.map(at.end, Assoc::Before)
+                };
+                true
+            });
+        }
+        self.dropped.retain(|group| !group.is_empty());
         let mut gone: Vec<(usize, Dropped<T>)> = Vec::new();
         let mut kept = Vec::with_capacity(self.text_starts.len());
         for (at, item) in core::mem::take(&mut self.text_starts) {
@@ -272,8 +279,13 @@ impl<T> LineAnchors<T> {
                 }
             }
         }
-        self.dropped
-            .extend(gone.into_iter().map(|(_, dropped)| dropped));
+        if !gone.is_empty() {
+            self.dropped.push(
+                gone.into_iter()
+                    .map(|(_, dropped)| dropped)
+                    .collect(),
+            );
+        }
         let excess =
             self.dropped.len().saturating_sub(Self::MAX_DROPPED);
         self.dropped.drain(..excess);

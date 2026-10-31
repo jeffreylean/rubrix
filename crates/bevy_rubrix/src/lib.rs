@@ -21,8 +21,8 @@ use bevy::app::{
     App, Plugin, PostUpdate, PreUpdate, Startup, Update,
 };
 use bevy::asset::{Assets, Handle, uuid_handle};
-use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::any_with_component;
+use bevy::ecs::schedule::{IntoScheduleConfigs, SystemCondition};
 use bevy::ecs::system::ResMut;
 use bevy::input::InputSystems;
 use bevy::input::keyboard::{KeyboardFocusLost, KeyboardInput};
@@ -137,7 +137,7 @@ impl Plugin for RubrixPlugin {
                 PreUpdate,
                 hooks::draw_markers
                     .after(EditSystems::Apply)
-                    .run_if(any_with_component::<Markers>),
+                    .run_if(any_with_component::<EditView>),
             )
             .add_systems(
                 Update,
@@ -157,9 +157,11 @@ impl Plugin for RubrixPlugin {
                     caret::draw
                         .in_set(EditSystems::Draw)
                         .run_if(any_with_component::<EditView>),
-                    remote::draw
-                        .in_set(EditSystems::Draw)
-                        .run_if(any_with_component::<RemoteCarets>),
+                    remote::draw.in_set(EditSystems::Draw).run_if(
+                        any_with_component::<RemoteCarets>.or_else(
+                            any_with_component::<RemoteView>,
+                        ),
+                    ),
                 )
                     .after(UiSystems::PostLayout),
             );

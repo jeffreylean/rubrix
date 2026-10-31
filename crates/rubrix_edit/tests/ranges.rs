@@ -46,7 +46,7 @@ fn on_line(line: u32) -> (Editor, LineAnchors<&'static str>) {
     (editor, anchors)
 }
 
-fn lines(editor: &Editor, anchors: &LineAnchors<&str>) -> Vec<u32> {
+fn lines<T>(editor: &Editor, anchors: &LineAnchors<T>) -> Vec<u32> {
     anchors
         .lines(editor.buffer())
         .map(|(line, _)| line)
@@ -230,4 +230,34 @@ fn a_line_comes_back_after_the_undo_of_a_later_edit() {
     anchors.map(&apply(&mut editor, Command::Undo));
     anchors.map(&apply(&mut editor, Command::Undo));
     assert_eq!(lines(&editor, &anchors), [3]);
+}
+
+#[test]
+fn every_line_of_one_change_comes_back_past_the_drop_limit() {
+    let count = 2 * (LineAnchors::<()>::MAX_DROPPED + 20);
+    let text: String =
+        (0..count).map(|n| format!("line {n}\n")).collect();
+    let buffer = Buffer::new(&text);
+    let even: Vec<u32> = (0..count as u32).step_by(2).collect();
+    let mut selections = Selections::new(Selection {
+        anchor: buffer.line_start(0),
+        head: buffer.line_start(1),
+    });
+    for &line in &even[1..] {
+        selections.add(Selection {
+            anchor: buffer.line_start(line),
+            head: buffer.line_start(line + 1),
+        });
+    }
+    let mut anchors = LineAnchors::new(
+        &buffer,
+        even.iter().map(|&line| (line, line)),
+    );
+    let mut editor =
+        Editor::from_parts(buffer, selections, History::new());
+    anchors.map(&apply(&mut editor, Command::Backspace));
+    assert!(anchors.is_empty(), "each selected line is deleted");
+    anchors.map(&apply(&mut editor, Command::Undo));
+    assert_eq!(editor.buffer().to_string(), text);
+    assert_eq!(lines(&editor, &anchors), even);
 }

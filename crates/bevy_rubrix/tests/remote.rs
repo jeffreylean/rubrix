@@ -117,3 +117,23 @@ fn text_typed_at_a_remote_caret_pushes_it_right() {
     );
     assert_eq!(after.min.y, before.min.y);
 }
+
+#[test]
+fn removing_the_last_remote_carets_hides_their_bars() {
+    let mut app = laid_out();
+    let (_, doc) = mount_editor(
+        &mut app,
+        Lang::Rust,
+        "fn main() {}\n",
+        600.0,
+        400.0,
+    );
+    app.world_mut()
+        .entity_mut(doc)
+        .insert(RemoteCarets(vec![ada(3)]));
+    settle(&mut app);
+    assert_eq!(shown(&mut app, "Ada"), 1);
+    app.world_mut().entity_mut(doc).remove::<RemoteCarets>();
+    settle(&mut app);
+    assert_eq!(shown(&mut app, "Ada"), 0);
+}

@@ -316,3 +316,30 @@ fn a_line_annotation_follows_an_enter_and_its_undo() {
     request(&mut app, doc, view, Request::command(Command::Undo));
     assert_eq!(lines(&app), [2]);
 }
+
+#[test]
+fn removing_the_last_markers_clears_their_underlines() {
+    let mut app = laid_out();
+    let (view, doc) = mount_editor(
+        &mut app,
+        Lang::Rust,
+        "let a = 1;\n",
+        600.0,
+        400.0,
+    );
+    app.world_mut()
+        .entity_mut(doc)
+        .insert(Markers(Ranges::new([(4..5, Severity::Error)])));
+    settle(&mut app);
+    let underlines = |app: &App| {
+        app.world()
+            .get::<Marks>(view)
+            .expect("marks")
+            .layer(MarkLayer("markers"))
+            .len()
+    };
+    assert_eq!(underlines(&app), 1);
+    app.world_mut().entity_mut(doc).remove::<Markers>();
+    settle(&mut app);
+    assert_eq!(underlines(&app), 0);
+}
