@@ -1,0 +1,17 @@
+page diff
+wait 30
+click 586 68
+wait 120
+click 1178 68
+wait 10
+click 1250 462
+key end
+wait 5
+log diff-edit
+expect diff-edit line 4994 
+log caret
+expect caret 1 primary 1 4994:39..4994:39 bracket 5010:1
+move 740 400
+wait 30
+screenshot m3fb-bracket.png
+exit
