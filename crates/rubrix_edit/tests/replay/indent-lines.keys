@@ -1,0 +1,11 @@
+# mod+] adds four spaces at the start of a caret's line, wherever the
+# caret is, as one undo step that restores the caret.
+caret 13:5
+key indent-lines
+expect line 13 \s\s\s\spub struct Monokai;
+expect carets 1 primary 1 13:9
+expect undo-depth 1
+key undo
+expect line 13 pub struct Monokai;
+expect carets 1 primary 1 13:5
+expect undo-depth 0

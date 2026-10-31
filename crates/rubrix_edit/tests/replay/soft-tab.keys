@@ -1,0 +1,24 @@
+# Backspace inside leading spaces deletes back to the previous
+# 4-column stop, as one undo step. Past the spaces it deletes one
+# character.
+# Line 22 starts with eight spaces.
+caret 22:9
+key backspace
+expect line 22 \s\s\s\smatch tone {
+expect carets 1 primary 1 22:5
+expect undo-depth 1
+key undo
+expect line 22 \s\s\s\s\s\s\s\smatch tone {
+expect carets 1 primary 1 22:9
+caret 22:7
+key backspace
+expect line 22 \s\s\s\s\s\smatch tone {
+expect carets 1 primary 1 22:5
+key undo
+caret 22:10
+key backspace
+expect line 22 \s\s\s\s\s\s\s\satch tone {
+expect carets 1 primary 1 22:9
+key undo
+expect line 22 \s\s\s\s\s\s\s\smatch tone {
+expect undo-depth 0

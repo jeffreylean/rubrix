@@ -1,0 +1,18 @@
+# Ctrl+T swaps the characters around the caret, or the two before it
+# at a line's end, as one undo step that restores the caret.
+caret 13:2
+key transpose
+expect line 13 upb struct Monokai;
+expect carets 1 primary 1 13:3
+expect undo-depth 1
+key undo
+expect line 13 pub struct Monokai;
+expect carets 1 primary 1 13:2
+key end
+key transpose
+expect line 13 pub struct Monoka;i
+expect carets 1 primary 1 13:20
+key undo
+expect line 13 pub struct Monokai;
+expect carets 1 primary 1 13:20
+expect undo-depth 0

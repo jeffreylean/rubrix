@@ -1,0 +1,20 @@
+# Ctrl+K deletes from the caret to the line's end, then at the end
+# deletes the line break. Each is one undo step that restores the
+# caret.
+caret 13:11
+key kill-line
+expect line 13 pub struct
+expect carets 1 primary 1 13:11
+expect undo-depth 1
+key kill-line
+expect line 13 pub struct
+expect line 14 fn hex(rgb: u32) -> Color {
+expect undo-depth 2
+key undo
+expect line 14 
+expect line 15 fn hex(rgb: u32) -> Color {
+expect carets 1 primary 1 13:11
+key undo
+expect line 13 pub struct Monokai;
+expect carets 1 primary 1 13:11
+expect undo-depth 0

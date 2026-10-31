@@ -1,0 +1,63 @@
+page editor
+wait 120
+click 373.8 500
+click 1250 534 shift
+log caret
+expect caret 1 primary 1 23:13..25:42 visible true
+key mod+/
+wait 5
+log text 23
+expect text 23 "            // Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            // Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "            // Tone::Faint => hex(0x727072),"
+log undo
+expect undo 1 redo 0
+key mod+/
+wait 5
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "            Tone::Faint => hex(0x727072),"
+log undo
+expect undo 2 redo 0
+key shift+alt+a
+wait 5
+log text 23
+expect text 23 "            /* Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "            Tone::Faint => hex(0x727072), */"
+log undo
+expect undo 3 redo 0
+open ../fixtures/edit/comment.py
+wait 10
+click 1250 143
+key mod+/
+wait 5
+log text 1
+expect text 1 "def greet(name):"
+log text 2
+expect text 2 "    # print(\"hello\", name)"
+log undo
+expect undo 1 redo 0
+open ../fixtures/edit/comment.json
+wait 10
+click 1250 143
+key mod+/
+wait 5
+log text 1
+expect text 1 "{"
+log text 2
+expect text 2 "  \"name\": \"rubrix\""
+log text 3
+expect text 3 "}"
+log undo
+expect undo 0 redo 0
+wait 30
+screenshot e4-comment.png
+exit

@@ -1,0 +1,19 @@
+# Shift+Tab removes up to four leading spaces from each selected line
+# as one undo step, and does nothing on a line with no indent.
+# Lines 21 and 22 are selected; the range ends at column 1 of line
+# 23, so line 23 stays.
+select 21:1 23:1
+key outdent
+expect line 21 fn tone(&self, tone: Tone) -> Color {
+expect line 22 \s\s\s\smatch tone {
+expect line 23 \s\s\s\s\s\s\s\s\s\s\s\sTone::Body => hex(0xFCFCFA),
+expect undo-depth 1
+key undo
+expect line 21 \s\s\s\sfn tone(&self, tone: Tone) -> Color {
+expect line 22 \s\s\s\s\s\s\s\smatch tone {
+expect carets 1 primary 1 21:1..23:1
+expect undo-depth 0
+caret 13:5
+key outdent
+expect line 13 pub struct Monokai;
+expect undo-depth 0

@@ -1,0 +1,13 @@
+# mod+Enter opens a line below the caret's line with its indent and
+# moves the caret there, as one undo step that restores the caret.
+caret 16:10
+key blank-below
+expect line 16 \s\s\s\slet [_, r, g, b] = rgb.to_be_bytes();
+expect line 17 \s\s\s\s
+expect line 18 \s\s\s\sColor::srgb_u8(r, g, b)
+expect carets 1 primary 1 17:5
+expect undo-depth 1
+key undo
+expect line 17 \s\s\s\sColor::srgb_u8(r, g, b)
+expect carets 1 primary 1 16:10
+expect undo-depth 0

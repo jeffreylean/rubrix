@@ -198,10 +198,14 @@ pub fn answer_doc(
                 })
                 .collect::<Vec<_>>();
             format!(
-                "{} primary {} {} visible {shown}",
+                "{} primary {} {} visible {shown} bracket {}",
                 selections.len(),
                 selections.primary_index() + 1,
                 each.join(" "),
+                bracket(world, doc).map_or_else(
+                    || "none".into(),
+                    |at| one_based_line_col(buffer, at)
+                ),
             )
         }
         Ask::Text(line) => match edit.line(line.get() - 1) {
@@ -474,6 +478,12 @@ fn visual_lines(world: &World, text: Entity) -> Option<f32> {
     };
     let one = height(gutter_of(world, text)?)?;
     (one > 0.0).then_some((height(text)? / one).round())
+}
+
+/// Where the bracket that matches the one at the primary caret sits.
+fn bracket(world: &World, doc: Entity) -> Option<usize> {
+    let pair = world.get::<bevy_rubrix::BracketMatch>(doc)?;
+    pair.brackets().map(|brackets| brackets.far)
 }
 
 /// The `log ime` answer: the editor's preedit and its cursor, and the

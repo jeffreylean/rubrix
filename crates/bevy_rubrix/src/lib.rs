@@ -3,6 +3,7 @@
 mod caret;
 mod clipboard;
 mod code_view;
+mod commands;
 mod damage;
 mod diff_edit;
 mod diff_view;
@@ -40,6 +41,9 @@ pub use code_view::{
     CodeDoc, CodeLine, CodeSource, CodeStream, CodeView, Overflow,
     code_view,
 };
+pub use commands::{
+    BRACKET, BracketMatch, toggle_block_comment, toggle_line_comment,
+};
 pub use diff_edit::DiffEditStatus;
 pub use diff_view::{
     DiffDoc, DiffRow, DiffRowAt, DiffSource, DiffView, diff_view,
@@ -64,8 +68,8 @@ pub use remote::{
 };
 pub use rubrix_diff::{Layout, Row, Side};
 pub use rubrix_edit::{
-    Buffer, Command, EditState, Editor, History, LineAnchors, Motion,
-    Ranges, Selection, Selections,
+    Brackets, Buffer, Command, EditState, Editor, History,
+    LineAnchors, Motion, Ranges, Selection, Selections,
 };
 pub use rubrix_highlight::{Kind, Lang, Run};
 pub use select::{CodeCopied, CodeSelection};
@@ -135,6 +139,12 @@ impl Plugin for RubrixPlugin {
                 )
                     .chain()
                     .after(PickingSystems::Last),
+            )
+            .add_systems(
+                PreUpdate,
+                commands::match_brackets
+                    .after(EditSystems::Apply)
+                    .run_if(any_with_component::<EditDoc>),
             )
             .add_systems(
                 PreUpdate,

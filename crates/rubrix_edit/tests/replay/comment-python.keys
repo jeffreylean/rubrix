@@ -1,0 +1,8 @@
+# With `lang python`, mod+/ comments a line with `# ` and a second press uncomments it.
+lang python
+caret 3:1
+key comment
+expect line 3 # use core::time::Duration;
+key comment
+expect line 3 use core::time::Duration;
+expect undo-depth 2

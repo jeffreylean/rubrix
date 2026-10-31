@@ -1,0 +1,141 @@
+page editor
+wait 120
+click 586 68
+wait 60
+move 740 400
+scroll 0 -849983
+wait 10
+click 281.4 126
+move 740 400
+scroll 0 100000000
+scroll 100000000 0
+scroll 0 -866813
+wait 10
+click 1250 279 shift
+log caret
+expect caret 1 primary 1 50000:1..50999:20 visible true
+log rows
+expect rows total 100001 following
+frames start
+wait 60
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+key alt+down
+frames stop editor-move-1000.csv
+wait 5
+log rows
+expect rows total 100001 following
+log caret
+expect caret 1 primary 1 50100:1..51099:20
+log text 50000
+expect text 50000 "        .entity_mut(entity)"
+log text 50099
+expect text 50099 "//! sequence, and never drops below what its children need."
+log text 50100
+expect text 50100 "        let mut app = app();"
+log text 51099
+expect text 51099 "    app.world_mut()"
+log text 51100
+expect text 51100 ""
+log seams
+expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok
+wait 30
+screenshot e4-move-1000.png
+exit

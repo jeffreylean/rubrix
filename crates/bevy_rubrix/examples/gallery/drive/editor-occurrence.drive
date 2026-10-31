@@ -1,0 +1,35 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -10523
+wait 10
+click 415.8 279
+log caret
+expect caret 1 primary 1 629:18..629:18 visible true
+key mod+d
+log caret
+expect caret 1 primary 1 629:17..629:20
+key mod+d
+log caret
+expect caret 2 primary 2 629:17..629:20 630:17..630:20
+key mod+d
+log caret
+expect caret 3 primary 3 629:17..629:20 630:17..630:20 635:17..635:20
+type var
+wait 5
+log text 629
+expect text 629 "                var mut rows = world.resource_mut::<Rows>();"
+log text 630
+expect text 630 "                var id = rows.next;"
+log text 635
+expect text 635 "                var mut rows = world.resource_mut::<Rows>();"
+log caret
+expect caret 3 primary 3 629:20..629:20 630:20..630:20 635:20..635:20
+wait 30
+screenshot e4-regress.png
+key escape
+log caret
+expect caret 1 primary 1 635:20..635:20 visible true
+wait 30
+screenshot e4-occurrence.png
+exit

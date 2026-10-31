@@ -1564,6 +1564,282 @@ editor(
 )
 
 
+EDIT_FIXTURES = Path(__file__).parent / "fixtures/edit"
+COMMENT_PY = ["def greet(name):", '    print("hello", name)']
+COMMENT_JSON = ["{", '  "name": "rubrix"', "}"]
+INDENT = "    "
+TONE_LINES = range(23, 28)
+TONE_COLUMN = 13
+
+
+def selections(sels):
+    """`log caret` for several selections, each a (start, end) pair in
+    buffer order, the last of them the newest and so the primary."""
+    each = " ".join(f"{a[0]}:{a[1]}..{b[0]}:{b[1]}" for a, b in sels)
+    return ["log caret", f"expect caret {len(sels)} primary {len(sels)} {each}"]
+
+
+def carets_at(points):
+    return selections([(p, p) for p in points])
+
+
+def replace(doc, sels, texts):
+    """Puts each text in place of its one-line selection, as typing or a
+    line-per-caret paste does, and returns the carets after the texts."""
+    shift, after = {}, []
+    for ((n, a), (m, b)), text in sorted(zip(sels, texts)):
+        assert n == m and "\n" not in text, (n, m, text)
+        s = shift.get(n, 0)
+        line = doc.line(n)
+        doc.lines[n - 1] = line[: a - 1 + s] + text + line[b - 1 + s :]
+        shift[n] = s + len(text) - (b - a)
+        after.append((n, a + s + len(text)))
+    return after
+
+
+def next_occurrence(doc, needle, after):
+    """The next `needle` at or after `after`, as `mod+d` finds it. Each
+    one found must be a whole word, so a substring search and a
+    whole-word search agree on it."""
+    n, column = after
+    while True:
+        line = doc.line(n)
+        i = line.find(needle, column - 1)
+        if i >= 0:
+            j = i + len(needle)
+            assert not (i > 0 and word_char(line[i - 1])), (n, line)
+            assert not (j < len(line) and word_char(line[j])), (n, line)
+            return (n, i + 1), (n, j + 1)
+        n, column = n + 1, 1
+
+
+def leading(line):
+    return line[: len(line) - len(line.lstrip())]
+
+
+def indent_lines(doc, lines):
+    for n in lines:
+        line = doc.line(n)
+        if line.strip():
+            doc.lines[n - 1] = ("\t" if line.startswith("\t") else INDENT) + line
+
+
+def outdent_lines(doc, lines):
+    for n in lines:
+        line = doc.line(n)
+        cut = 1 if line.startswith("\t") else min(len(INDENT), len(line) - len(line.lstrip(" ")))
+        doc.lines[n - 1] = line[cut:]
+
+
+def toggle_comment(doc, lines, token):
+    marker = token + " "
+    indent = min(len(leading(doc.line(n))) for n in lines)
+    commented = all(doc.line(n)[indent:].startswith(marker) for n in lines)
+    for n in lines:
+        line = doc.line(n)
+        if commented:
+            doc.lines[n - 1] = line[:indent] + line[indent + len(marker) :]
+        else:
+            doc.lines[n - 1] = line[:indent] + marker + line[indent:]
+
+
+def move_lines(doc, first, last, down):
+    block = doc.lines[first - 1 : last]
+    if down:
+        doc.lines[first - 1 : last + 1] = [doc.line(last + 1), *block]
+    else:
+        doc.lines[first - 2 : last] = [*block, doc.line(first - 1)]
+
+
+def copy_lines_down(doc, first, last):
+    doc.lines[last:last] = doc.lines[first - 1 : last]
+
+
+def closing_brace(doc, n):
+    """The `}` that closes the `{` ending line `n`, where no string,
+    char or comment between them holds a brace."""
+    depth = 0
+    while True:
+        line = doc.line(n)
+        assert '"' not in line and "'" not in line and "//" not in line, (n, line)
+        for i, c in enumerate(line):
+            depth += {"{": 1, "}": -1}.get(c, 0)
+            if depth == 0 and c == "}":
+                return (n, i + 1)
+        n += 1
+
+
+def texts(doc, lines):
+    return [doc.text(n) for n in lines]
+
+
+def select_tone_block(doc):
+    """Selects from the `T` of the first `Tone::` line to the end of the
+    third, by a click and a shift click."""
+    block = TONE_LINES[:3]
+    start, end = (block[0], TONE_COLUMN), (block[-1], len(doc.line(block[-1])) + 1)
+    return block, start, end, [f"click {doc.at(*start)}", f"click {doc.end(block[-1])} shift", caret(start, end)]
+
+
+EDIT_FIXTURES.mkdir(exist_ok=True)
+(EDIT_FIXTURES / "comment.py").write_text("\n".join(COMMENT_PY) + "\n")
+(EDIT_FIXTURES / "comment.json").write_text("\n".join(COMMENT_JSON) + "\n")
+
+doc = Doc(LARGE_RS_LINES)
+block, start, end, steps = select_tone_block(doc)
+commands = [("tab", indent_lines), ("shift+tab", outdent_lines), ("mod+]", indent_lines), ("mod+[", outdent_lines)]
+for depth, (key, command) in enumerate(commands, start=1):
+    width = len(doc.line(block[0]))
+    command(doc, block)
+    by = len(doc.line(block[0])) - width
+    start, end = (start[0], start[1] + by), (end[0], end[1] + by)
+    steps += [f"key {key}", "wait 5", texts(doc, block), caret(start, end), undo(depth, 0)]
+SOFT_TAB = TONE_LINES[-1]
+assert doc.line(SOFT_TAB).startswith(" " * 8)
+doc.lines[SOFT_TAB - 1] = doc.line(SOFT_TAB)[4:]
+steps += [f"click {doc.at(SOFT_TAB, 9)}", caret((SOFT_TAB, 9)), "key backspace", "wait 5"]
+steps += [doc.text(SOFT_TAB), caret((SOFT_TAB, 5)), undo(len(commands) + 1, 0)]
+editor("indent", steps, "wait 30", "screenshot e4-indent.png")
+
+doc = Doc(LARGE_RS_LINES)
+first, last = TONE_LINES[0], TONE_LINES[1]
+start, end = (first, TONE_COLUMN), (last, TONE_COLUMN + 7)
+steps = [f"click {doc.at(*start)}", f"click {doc.at(*end)} shift", caret(start, end)]
+original = list(doc.lines)
+around = range(first - 2, last + 4)
+for key, by, change in [
+    ("alt+down", 1, lambda: move_lines(doc, first, last, True)),
+    ("alt+up", -1, lambda: move_lines(doc, first, last, False)),
+    ("shift+alt+down", last - first + 1, lambda: copy_lines_down(doc, first, last)),
+]:
+    change()
+    shifted = caret((start[0] + by, start[1]), (end[0] + by, end[1]))
+    steps += [f"key {key}", "wait 5", texts(doc, around), shifted, undo(1, 0)]
+    doc.lines = list(original)
+    steps += ["key mod+z", "wait 5", texts(doc, around), caret(start, end), undo(0, 1)]
+indent = leading(doc.line(end[0]))
+doc.lines.insert(end[0], indent)
+steps += ["key mod+enter", "wait 5", texts(doc, around), caret((end[0] + 1, len(indent) + 1)), undo(1, 0)]
+doc.lines = list(original)
+steps += ["key mod+z", "wait 5", texts(doc, around), caret(start, end), undo(0, 1)]
+editor("move-lines", steps, "wait 30", "screenshot e4-move-lines.png")
+
+doc = Doc(LARGE_RS_LINES)
+block, start, end, steps = select_tone_block(doc)
+for depth in (1, 2):
+    toggle_comment(doc, block, "//")
+    steps += ["key mod+/", "wait 5", texts(doc, block), undo(depth, 0)]
+doc.lines[block[-1] - 1] += " */"
+doc.lines[block[0] - 1] = doc.line(block[0])[: TONE_COLUMN - 1] + "/* " + doc.line(block[0])[TONE_COLUMN - 1 :]
+steps += ["key shift+alt+a", "wait 5", texts(doc, block), undo(3, 0)]
+py_doc = Doc(COMMENT_PY)
+toggle_comment(py_doc, [2], "#")
+steps += ["open ../fixtures/edit/comment.py", "wait 10", f"click {py_doc.end(2)}", "key mod+/", "wait 5"]
+steps += [texts(py_doc, [1, 2]), undo(1, 0)]
+json_doc = Doc(COMMENT_JSON)
+steps += ["open ../fixtures/edit/comment.json", "wait 10", f"click {json_doc.end(2)}", "key mod+/", "wait 5"]
+steps += [texts(json_doc, [1, 2, 3]), undo(0, 0)]
+editor("comment", steps, "wait 30", "screenshot e4-comment.png")
+
+doc = Doc(LARGE_RS_LINES)
+LET = 629
+steps = [doc.scroll_to(LET - 9)]
+found = [next_occurrence(doc, "let", (LET, 1))]
+inside = (LET, found[0][0][1] + 1)
+steps += [f"click {doc.at(*inside)}", caret(inside), "key mod+d", selections(found)]
+for _ in range(2):
+    found.append(next_occurrence(doc, "let", found[-1][1]))
+    steps += ["key mod+d", selections(found)]
+after = replace(doc, found, ["var"] * len(found))
+steps += ["type var", "wait 5", texts(doc, [n for (n, _), _ in found]), carets_at(after)]
+steps += ["wait 30", "screenshot e4-regress.png", "key escape", caret(after[-1])]
+editor("occurrence", steps, "wait 30", "screenshot e4-occurrence.png")
+
+doc = Doc(LARGE_RS_LINES)
+left, right = TONE_COLUMN, TONE_COLUMN + len("Tone::")
+assert all(doc.line(n)[left - 1 : right - 1] == "Tone::" for n in TONE_LINES)
+across = [((n, left), (n, right)) for n in TONE_LINES]
+steps = [f"drag {doc.at(TONE_LINES[0], left)} {doc.at(TONE_LINES[-1], right)} alt", "wait 5", selections(across)]
+after = replace(doc, across, ["x"] * len(across))
+steps += ["type x", "wait 5", texts(doc, TONE_LINES), carets_at(after), undo(1, 0)]
+editor("column", steps, "wait 30", "screenshot e4-column.png")
+
+doc = Doc(LARGE_RS_LINES)
+points = [(n, TONE_COLUMN) for n in TONE_LINES[:4]]
+steps = [f"click {doc.at(*points[0])}", caret(points[0])]
+for k in range(2, len(points) + 1):
+    steps += [f"click {doc.at(*points[k - 1])} mod", carets_at(points[:k])]
+steps += [f"click {doc.at(*points[1])} mod", carets_at([points[0], *points[2:]])]
+editor("mod-click", steps, "wait 30", "screenshot e4-mod-click.png")
+
+doc = Doc(LARGE_RS_LINES)
+LINE = 16
+line = doc.line(LINE) + "\n"
+steps = [f"click {doc.at(LINE, 5)}", caret((LINE, 5)), "key mod+c", "clipboard"]
+steps += ["log copied", f"expect copied {rust_debug(line)}", undo(0, 0)]
+del doc.lines[LINE - 1]
+steps += ["key mod+x", "wait 5", doc.text(LINE), rows_total(doc), "log copied", f"expect copied {rust_debug(line)}", undo(1, 0)]
+points = [(n - 1, TONE_COLUMN) for n in TONE_LINES[:3]]
+steps += [f"click {doc.at(*points[0])}", [f"click {doc.at(*p)} mod" for p in points[1:]], carets_at(points)]
+after = replace(doc, [(p, p) for p in points], ["a", "b", "c"])
+steps += ["paste a\\nb\\nc", "wait 5", texts(doc, [n for n, _ in points]), carets_at(after), undo(2, 0)]
+editor("line-clipboard", steps, "wait 30", "screenshot e4-line-clipboard.png")
+
+doc = Doc(LARGE_RS_LINES)
+LINE = TONE_LINES[0]
+word = doc.line(LINE).index("Body") + 1
+start, end = word_around(doc.line(LINE), word + 1)
+steps = [f"click {doc.at(LINE, word + 1)} double", caret((LINE, start), (LINE, end))]
+original = doc.line(LINE)
+for opening, closing in ["()", "[]", "{}", '""', "''", "``"]:
+    doc.lines[LINE - 1] = original[: start - 1] + opening + original[start - 1 : end - 1] + closing + original[end - 1 :]
+    steps += [f"type {opening}", "wait 5", doc.text(LINE), caret((LINE, start + 1), (LINE, end + 1)), undo(1, 0)]
+    doc.lines[LINE - 1] = original
+    steps += ["key mod+z", "wait 5", doc.text(LINE), caret((LINE, start), (LINE, end)), undo(0, 1)]
+editor("surround", steps, "wait 30", "screenshot e4-surround.png")
+
+doc = Doc(LARGE_RS_LINES)
+FN = 21
+assert doc.line(FN).endswith("{")
+column = len(doc.line(FN)) + 1
+close = closing_brace(doc, FN)
+steps = [f"click {doc.end(FN)}", "log caret"]
+steps += [f"expect caret 1 primary 1 {FN}:{column}..{FN}:{column} visible true bracket {close[0]}:{close[1]}"]
+LINE = 9506
+column = doc.line(LINE).index('"(') + 3
+steps += [doc.scroll_to(LINE - 6), f"click {doc.at(LINE, column)}"]
+steps += [f"log kind {LINE} {column - 2}", f"expect kind {LINE} {column - 2} string"]
+steps += ["log caret", f"expect caret 1 primary 1 {LINE}:{column}..{LINE}:{column} visible true bracket none"]
+editor("brackets", steps, "wait 30", "screenshot e4-brackets.png")
+
+doc = Doc(LARGE_RS_LINES)
+CARETS = 100
+found = [next_occurrence(doc, "let", (1, 1))]
+while len(found) <= CARETS:
+    found.append(next_occurrence(doc, "let", found[-1][1]))
+beyond = found.pop()
+inside = (found[0][0][0], found[0][0][1] + 1)
+steps = [f"click {doc.at(*inside)}", caret(inside), ["key mod+d"] * CARETS, "wait 5", selections(found)]
+after = replace(doc, found, ["x" * CARETS] * CARETS)
+steps += [window("editor-occurrence-100.csv", ["type x"] * CARETS), "wait 5", carets_at(after)]
+steps += [texts(doc, sorted({n for (n, _), _ in [found[0], found[-1], beyond]}))]
+editor("occurrence-100", steps, "wait 30", "screenshot e4-occurrence-100.png")
+
+doc = Doc(STRESS_LINES, text_x=TEXT_X_100K)
+FIRST, LINES, MOVES = 50_000, 1_000, 100
+last = FIRST + LINES - 1
+assert len(doc.line(last)) < (LINE_END_X - TEXT_X_100K) / ADVANCE
+end = (last, len(doc.line(last)) + 1)
+steps = [STRESS, "wait 60", doc.scroll_to(FIRST), f"click {doc.at(FIRST, 1)}", doc.scroll_to(last - 9)]
+steps += [f"click {doc.end(last)} shift", caret((FIRST, 1), end), rows_total(doc)]
+for move in range(MOVES):
+    move_lines(doc, FIRST + move, last + move, True)
+steps += [window("editor-move-1000.csv", ["key alt+down"] * MOVES), "wait 5", rows_total(doc)]
+steps += [selections([((FIRST + MOVES, 1), (last + MOVES, end[1]))])]
+steps += [texts(doc, [FIRST, FIRST + MOVES - 1, FIRST + MOVES, last + MOVES, last + MOVES + 1]), SEAMS_CLEAN]
+editor("move-1000", steps, "wait 30", "screenshot e4-move-1000.png")
+
+
 IME_LINE, IME_COLUMN = 120, 5
 COMPOSED = "你好"
 CARET_BOTTOM = 9
