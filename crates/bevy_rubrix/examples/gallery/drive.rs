@@ -1496,6 +1496,7 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
         }
         "scroll" => format!("scroll {}", scroll_offset(world)),
         "diff" => diff(world),
+        "diff-edit" => diff_edit(world),
         "stream" => pages::stream::log(world),
         "rich-styles" => {
             let palette = world.resource::<Mode>().0;
@@ -1818,6 +1819,95 @@ fn spans_of(
             Some((span, text.0.clone(), color.0.to_srgba()))
         })
         .collect()
+}
+
+/// The editing state of the first diff view, as
+/// [`DiffDoc::edit_status`] gives it, with the caret's line from 1,
+/// then how many built stacked line rows its gutter numbers were
+/// checked on and how many show numbers other than the row's.
+fn diff_edit(world: &mut World) -> String {
+    let mut docs = world.query::<(Entity, &DiffDoc)>();
+    let Some((view, status)) =
+        docs.iter(world).next().and_then(|(view, doc)| {
+            Some((view, doc.edit_status(world)?))
+        })
+    else {
+        return "diff-edit none".into();
+    };
+    let rediff = status
+        .rediff
+        .map_or("-".into(), |took| took.as_micros().to_string());
+    let marks = if status.marks.is_empty() {
+        "-".into()
+    } else {
+        status
+            .marks
+            .iter()
+            .map(|range| format!("{}..{}", range.start, range.end))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let (shown, stale) = stale_gutters(world, view);
+    format!(
+        "diff-edit file {} hunks {} undo {} rediff {rediff} marks \
+         {marks} line {} hunk {} shown {shown} stale {stale}",
+        status.file,
+        status.hunks,
+        status.undo,
+        status.line + 1,
+        status.hunk.as_deref().unwrap_or("-")
+    )
+}
+
+/// The stacked line rows of diff view `view` that the list has built,
+/// and how many of them show gutter numbers other than their row's.
+fn stale_gutters(world: &mut World, view: Entity) -> (usize, usize) {
+    let slots = world
+        .query::<(Entity, &bevy_rubrix::DiffRowAt)>()
+        .iter(world)
+        .filter(|(_, at)| at.view == view)
+        .map(|(slot, at)| (slot, at.index))
+        .collect::<Vec<_>>();
+    let Some(doc) = world.get::<DiffDoc>(view) else {
+        return (0, 0);
+    };
+    let spawned = pages::find_under::<VirtualList>(world, view)
+        .and_then(|list| world.get::<VirtualList>(list)?.spawned());
+    let (mut shown, mut stale) = (0, 0);
+    for (slot, index) in slots {
+        if doc.layout() != Layout::Stacked
+            || !spawned
+                .as_ref()
+                .is_some_and(|rows| rows.contains(&index))
+        {
+            continue;
+        }
+        let Some(DiffRow::Body { row, .. }) = doc.row(index) else {
+            continue;
+        };
+        if matches!(row, Row::Gap { .. }) {
+            continue;
+        }
+        let want = [row.old_line(), row.new_line()]
+            .into_iter()
+            .flatten()
+            .map(|line| line.number.to_string())
+            .collect::<Vec<_>>();
+        let gutter = pages::descendants_in_order(world, slot)
+            .into_iter()
+            .find_map(|node| world.get::<TextSpan>(node))
+            .map(|span| {
+                span.0
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            });
+        shown += 1;
+        if gutter != Some(want) {
+            stale += 1;
+        }
+    }
+    (shown, stale)
 }
 
 #[cfg(test)]
