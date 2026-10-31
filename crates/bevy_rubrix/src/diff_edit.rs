@@ -44,7 +44,10 @@ use bevy::ui::{
 };
 use bevy_fynix::views::{VirtualList, drawn_layout, rich_point};
 use parley::{Affinity, Cursor};
-use rubrix_diff::{Anchor, FileChange, FileDiff, Layout, Row};
+use rubrix_diff::{
+    Anchor, FileChange, FileDiff, Layout, Rediff, Row, RowSplice,
+    Rows,
+};
 use rubrix_edit::{Command, Selection, Selections};
 
 use crate::damage::BUILT_MAX;
@@ -95,9 +98,12 @@ pub(crate) struct Session {
     /// `seq` as this frame began, and as the frame before it began.
     began: u64,
     since: u64,
-    /// Rows of a file from a row on whose line numbers an edit moved
-    /// without moving their slots: `(seq, file, first row)`.
-    renumbered: Vec<(u64, usize, u32)>,
+    /// Rows of a file an edit changed under slots that keep their
+    /// index: `(seq, file, rows)`. A row inserted can take the slot
+    /// of a row removed at its index, a re-diffed hunk's rows change
+    /// their word marks, and a line count change renumbers every row
+    /// below it.
+    redrawn: Vec<(u64, usize, Range<u32>)>,
     /// Each live doc's damage generation the rows last saw.
     damage: Vec<(Entity, u64)>,
     /// The primary caret the last frame kept in sight.
@@ -142,7 +148,8 @@ pub struct DiffEditStatus {
 
 /// Whether a row reads again: on its first read, when the rows
 /// changed shape, when it skipped a frame of edits, when an edit
-/// renumbered it, or when its file's doc damaged its new line.
+/// changed it under its slot, or when its file's doc damaged its new
+/// line.
 pub(crate) fn fires(
     world: &World,
     doc: &DiffDoc,
@@ -177,11 +184,10 @@ pub(crate) fn fires(
         return false;
     };
     let at = (index - doc.body_start(file)) as u32;
-    let renumbered =
-        session.renumbered.iter().any(|&(seq, of, from)| {
-            seq > read.seq && of == file && at >= from
-        });
-    renumbered
+    let redrawn = session.redrawn.iter().any(|(seq, of, rows)| {
+        *seq > read.seq && *of == file && rows.contains(&at)
+    });
+    redrawn
         || row.new_line().is_some_and(|line| {
             editor.damage().fires(line.index, read.damage)
         })
@@ -522,7 +528,7 @@ pub(crate) fn apply(
             session.since = session.began;
             session.began = session.seq;
             let since = session.since;
-            session.renumbered.retain(|&(seq, ..)| seq > since);
+            session.redrawn.retain(|&(seq, ..)| seq > since);
         }
         for change in &changes {
             let file = world.get::<DiffDoc>(root).and_then(|doc| {
@@ -587,7 +593,7 @@ fn rediff(
     let doc = doc.as_mut();
     let started = Instant::now();
     let mut splices = Vec::with_capacity(edits.len());
-    let mut renumber = None;
+    let mut redrawn: Option<Range<u32>> = None;
     {
         let shown = doc.file_mut(file);
         let live = shown.live.as_mut().expect("a live file");
@@ -605,15 +611,10 @@ fn rediff(
                 &shown.expansion,
                 &rediff,
             );
-            if rediff.inserted != rediff.lines.len() as u32 {
-                let from = shown
-                    .rows
-                    .find(Anchor::New(rediff.lines.start))
-                    .unwrap_or(splice.at);
-                renumber = Some(
-                    renumber.map_or(from, |at: u32| at.min(from)),
-                );
-            }
+            let rows = changed_rows(&shown.rows, &rediff, splice);
+            redrawn = Some(redrawn.map_or(rows.clone(), |seen| {
+                seen.start.min(rows.start)..u32::MAX
+            }));
             splices.push(splice);
         }
     }
@@ -621,8 +622,8 @@ fn rediff(
     let session = &mut doc.edit;
     session.seq += 1;
     session.rediff = Some((file, took));
-    if let Some(from) = renumber {
-        session.renumbered.push((session.seq, file, from));
+    if let Some(rows) = redrawn.filter(|rows| !rows.is_empty()) {
+        session.redrawn.push((session.seq, file, rows));
     }
     let moved = splices
         .iter()
@@ -646,6 +647,30 @@ fn rediff(
     if let (Some(top), Some(row)) = (kept, after) {
         keep_top(world, list, body + row as usize, top);
     }
+}
+
+/// The rows of a file that one patch changed under their slots: those
+/// it inserted, those of the hunks it re-diffed, and, when the edit
+/// changed the line count, every row below them.
+fn changed_rows(
+    rows: &Rows,
+    rediff: &Rediff,
+    splice: RowSplice,
+) -> Range<u32> {
+    let hunks =
+        rediff.hunks.start..rediff.hunks.start + rediff.new_hunks;
+    let mut changed = splice.at..splice.at + splice.inserted;
+    for hunk in [hunks.start, hunks.end.saturating_sub(1)] {
+        if hunks.contains(&hunk) {
+            let of = rows.hunk_rows(hunk);
+            changed =
+                changed.start.min(of.start)..changed.end.max(of.end);
+        }
+    }
+    if rediff.inserted != rediff.lines.len() as u32 {
+        changed.end = u32::MAX;
+    }
+    changed
 }
 
 /// How far below the view's top row `index` starts, when it shows.

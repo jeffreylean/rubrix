@@ -3,17 +3,22 @@ mod support;
 use core::time::Duration;
 
 use bevy::app::App;
+use bevy::ecs::hierarchy::Children;
 use bevy::ecs::resource::Resource;
 use bevy::input::keyboard::{Key, KeyCode};
+use bevy::text::{TextBackgroundColor, TextColor, TextSpan};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::ui::px;
+use bevy::ui::widget::Text;
 use bevy_fynix::views::{FrameProps, column};
 use bevy_fynix::{FynixPlugin, Theme, mount, resource};
 use bevy_rubrix::{
     DiffDoc, DiffEditStatus, DiffRow, DiffSource, Layout, Overflow,
     Row, RubrixPlugin, diff_view,
 };
-use support::diff::{Plain, doc, line_text, settle, sides};
+use support::diff::{
+    Plain, doc, line_text, settle, sides, slots, texts,
+};
 use support::{
     chord, keep_copies, key_with, lay_out, point_in, press_on,
     type_text,
@@ -145,6 +150,7 @@ fn undo_in_one_file_leaves_another_files_edit_alone() {
     settle(&mut app);
     assert_eq!(new_text(&mut app, 1), NEW);
     assert_eq!(new_text(&mut app, 0), NEW.replace("let x", "alet x"));
+    assert_slots_show_their_rows(&mut app);
 }
 
 #[test]
@@ -192,4 +198,145 @@ fn an_enter_inside_a_hunk_moves_the_new_numbers_below_and_keeps_the_old()
     };
     assert_eq!(row.old_line().map(|line| line.number.get()), Some(4));
     assert_eq!(row.new_line().map(|line| line.number.get()), Some(5));
+    assert_slots_show_their_rows(&mut app);
+}
+
+/// Each built slot's text runs, with their colours and backgrounds,
+/// by row index.
+fn drawn(app: &mut App) -> Vec<(usize, Vec<String>)> {
+    slots(app)
+        .into_iter()
+        .map(|(index, slot)| {
+            let world = app.world();
+            let mut found = Vec::new();
+            let mut stack = vec![slot];
+            while let Some(node) = stack.pop() {
+                let text = world
+                    .get::<Text>(node)
+                    .map(|text| text.0.clone())
+                    .or_else(|| {
+                        world
+                            .get::<TextSpan>(node)
+                            .map(|span| span.0.clone())
+                    });
+                if let Some(text) = text {
+                    found.push(format!(
+                        "{text:?} {:?} {:?}",
+                        world
+                            .get::<TextColor>(node)
+                            .map(|colour| colour.0),
+                        world
+                            .get::<TextBackgroundColor>(node)
+                            .map(|colour| colour.0),
+                    ));
+                }
+                if let Some(children) = world.get::<Children>(node) {
+                    stack.extend(children.iter().rev());
+                }
+            }
+            (index, found)
+        })
+        .collect()
+}
+
+/// Asserts that every built slot shows its row: its line numbers and
+/// its line's text.
+fn assert_slots_show_their_rows(app: &mut App) {
+    for (index, slot) in slots(app) {
+        let Some(DiffRow::Body { file, row }) = doc(app).row(index)
+        else {
+            continue;
+        };
+        if matches!(row, Row::Gap { .. }) {
+            continue;
+        }
+        let shown = texts(app, slot);
+        let numbers: Vec<String> = [row.old_line(), row.new_line()]
+            .into_iter()
+            .flatten()
+            .map(|line| line.number.to_string())
+            .collect();
+        let gutter: Vec<String> =
+            shown[0].split_whitespace().map(str::to_owned).collect();
+        assert_eq!(
+            gutter, numbers,
+            "row {index} {row:?} shows {shown:?}"
+        );
+        let diff = doc(app).diff(file);
+        let line = match row {
+            Row::Deletion { old } => diff.old_lines().line(old.index),
+            _ => diff
+                .new_lines()
+                .line(row.new_line().expect("a new line").index),
+        };
+        assert_eq!(
+            shown.last().map(String::as_str),
+            Some(line),
+            "row {index} {row:?}"
+        );
+    }
+}
+
+fn numbered_with(count: usize, changed: &[(usize, &str)]) -> String {
+    (1..=count)
+        .map(|line| {
+            let text = changed
+                .iter()
+                .find(|&&(at, _)| at == line)
+                .map_or_else(
+                    || format!("let line_{line} = {line};"),
+                    |(_, text)| (*text).to_owned(),
+                );
+            format!("{text}\n")
+        })
+        .collect()
+}
+
+#[test]
+fn rows_shown_after_a_revert_match_their_rows() {
+    let old = numbered_with(40, &[]);
+    let new = numbered_with(
+        40,
+        &[(5, "let line_5 = 50;"), (30, "let line_30 = 300;")],
+    );
+    let mut app = editing(
+        DiffSource::texts("a.rs", &old, &new),
+        Layout::Stacked,
+    );
+    let addition = row_where(
+        &mut app,
+        0,
+        |row| matches!(row, Row::Addition { new } if new.index == 4),
+    );
+    click_stacked(&mut app, addition, "let line_5 = 50".len());
+    key_with(&mut app, &[], KeyCode::Backspace, Key::Backspace);
+    settle(&mut app);
+    assert_eq!(
+        new_text(&mut app, 0),
+        numbered_with(40, &[(30, "let line_30 = 300;")])
+    );
+    assert_eq!(doc(&mut app).diff(0).hunks().len(), 1);
+    assert_slots_show_their_rows(&mut app);
+}
+
+#[test]
+fn an_edit_redraws_the_word_marks_of_both_rows_of_a_pair() {
+    let old = "let total = sum(a);\n";
+    let new = "let count = sum(b);\n";
+    let edited = "let count = sum(a);\n";
+    let mut app =
+        editing(DiffSource::texts("a.rs", old, new), Layout::Stacked);
+    let addition = row_where(&mut app, 0, |row| {
+        matches!(row, Row::Addition { .. })
+    });
+    click_stacked(&mut app, addition, "let count = sum(b".len());
+    key_with(&mut app, &[], KeyCode::Backspace, Key::Backspace);
+    type_text(&mut app, "a");
+    settle(&mut app);
+    assert_eq!(new_text(&mut app, 0), edited);
+    let mut fresh = editing(
+        DiffSource::texts("a.rs", old, edited),
+        Layout::Stacked,
+    );
+    assert_eq!(drawn(&mut app), drawn(&mut fresh));
 }
