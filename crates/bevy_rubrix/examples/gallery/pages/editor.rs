@@ -1,19 +1,32 @@
 use std::mem;
 use std::path::PathBuf;
 
+use bevy::app::{App, PostUpdate};
 use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::resource::Resource;
+use bevy::ecs::schedule::IntoScheduleConfigs;
+use bevy::ecs::schedule::common_conditions::resource_exists;
 use bevy::ecs::world::{FromWorld, World};
-use bevy::ui::{percent, px};
+use bevy::text::{TextLayoutInfo, TextSpan};
+use bevy::ui::widget::Text;
+use bevy::ui::{ComputedNode, UiGlobalTransform, percent, px};
 use bevy_fynix::tokens::Tone;
-use bevy_fynix::views::{FrameProps, column, label, row};
+use bevy_fynix::views::{
+    FrameProps, VirtualList, column, label, row,
+};
 use bevy_fynix::{AnyView, Signal, ViewExt, derived, resource};
-use bevy_rubrix::{EditDoc, EditView, Lang, Overflow, code_editor};
+use bevy_rubrix::{
+    EditDoc, EditLine, EditSystems, EditView, Lang, Overflow,
+    code_editor,
+};
 
 use super::code::{
     LARGE_RS, LARGE_TS, flip, read, stress, wrap_name,
 };
-use super::{Ask, control, wrapping};
+use super::{
+    Ask, control, descendants_in_order, find_under, wrapping,
+};
 use crate::{Build, PageView};
 
 /// The text the editor page shows, on an entity of its own so a theme
@@ -39,6 +52,15 @@ impl FromWorld for EditorFile {
 
 fn large_rs() -> EditDoc {
     EditDoc::new(Lang::Rust, LARGE_RS)
+}
+
+pub fn plugin(app: &mut App) {
+    app.init_resource::<Typing>().add_systems(
+        PostUpdate,
+        count_typing
+            .after(EditSystems::Draw)
+            .run_if(resource_exists::<EditorFile>),
+    );
 }
 
 pub fn build() -> PageView {
@@ -179,4 +201,233 @@ pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
         ),
         Ask::Ime => return None,
     })
+}
+
+/// The frames in which the doc on show took a change, and how many
+/// of those ended with the primary caret outside the viewport.
+#[derive(Resource, Default)]
+struct Typing {
+    doc: Option<Entity>,
+    seq: u64,
+    edits: u32,
+    hidden: u32,
+}
+
+fn count_typing(world: &mut World) {
+    let doc = world.resource::<EditorFile>().doc;
+    let Some(seq) = world.get::<EditDoc>(doc).map(EditDoc::seq)
+    else {
+        return;
+    };
+    let shown = world
+        .query::<&EditView>()
+        .iter(world)
+        .find(|view| view.doc() == doc)
+        .is_some_and(EditView::caret_shown);
+    let mut typing = world.resource_mut::<Typing>();
+    if typing.doc != Some(doc) {
+        *typing = Typing {
+            doc: Some(doc),
+            seq,
+            ..Typing::default()
+        };
+    } else if seq > typing.seq {
+        typing.seq = seq;
+        typing.edits += 1;
+        typing.hidden += u32::from(!shown);
+    }
+}
+
+pub fn typing(world: &World) -> String {
+    let typing = world.resource::<Typing>();
+    format!("typing edits {} hidden {}", typing.edits, typing.hidden)
+}
+
+/// A built row of the first editable view, in logical pixels.
+struct Shown {
+    line: u32,
+    top: f32,
+    bottom: f32,
+    text: String,
+    number: Option<String>,
+}
+
+fn first_view(world: &mut World) -> Option<(Entity, Entity)> {
+    world
+        .query::<(Entity, &EditView)>()
+        .iter(world)
+        .next()
+        .map(|(view, edit)| (view, edit.doc()))
+}
+
+fn shown_rows(world: &mut World, view: Entity) -> Option<Vec<Shown>> {
+    let list = find_under::<VirtualList>(world, view)?;
+    let node = world.get::<ComputedNode>(list)?;
+    let at = world.get::<UiGlobalTransform>(list)?;
+    let scale = node.inverse_scale_factor();
+    let content = node.content_box();
+    let view_top = (at.translation.y + content.min.y) * scale;
+    let view_bottom = (at.translation.y + content.max.y) * scale;
+    let rows = world
+        .query::<(Entity, &EditLine, &ComputedNode, &UiGlobalTransform)>()
+        .iter(world)
+        .filter(|(_, line, _, _)| line.view == view)
+        .map(|(node, line, size, at)| {
+            let top = (at.translation.y - size.size().y / 2.0) * scale;
+            (node, line.line, top, top + size.size().y * scale)
+        })
+        .filter(|&(_, _, top, bottom)| {
+            bottom > view_top + 0.5 && top < view_bottom - 0.5
+        })
+        .collect::<Vec<_>>();
+    let mut shown = rows
+        .into_iter()
+        .map(|(node, line, top, bottom)| Shown {
+            line,
+            top,
+            bottom,
+            text: text_of(world, node),
+            number: gutter_of(world, node).map(|n| text_of(world, n)),
+        })
+        .collect::<Vec<_>>();
+    shown.sort_by_key(|row| row.line);
+    Some(shown)
+}
+
+fn text_of(world: &World, node: Entity) -> String {
+    let mut text = world
+        .get::<Text>(node)
+        .map_or_else(String::new, |text| text.0.clone());
+    for &span in world.get::<Children>(node).into_iter().flatten() {
+        if let Some(span) = world.get::<TextSpan>(span) {
+            text.push_str(&span.0);
+        }
+    }
+    text
+}
+
+/// The line number beside the row text `node`: the text in the first
+/// child of the nearest ancestor whose first child does not hold
+/// `node`.
+fn gutter_of(world: &World, node: Entity) -> Option<Entity> {
+    let mut inner = node;
+    for _ in 0..4 {
+        let outer = world.get::<ChildOf>(inner)?.parent();
+        let first = *world.get::<Children>(outer)?.first()?;
+        if first != inner {
+            return descendants_in_order(world, first)
+                .into_iter()
+                .find(|&node| world.get::<Text>(node).is_some());
+        }
+        inner = outer;
+    }
+    None
+}
+
+fn expand_tabs(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut column = 0;
+    for c in line.chars() {
+        if c == '\t' {
+            let stop = 4 - column % 4;
+            out.extend(std::iter::repeat_n(' ', stop));
+            column += stop;
+        } else {
+            out.push(c);
+            column += 1;
+        }
+    }
+    out
+}
+
+/// Checks the rows of the first editable view that show: no gap or
+/// overlap between neighbours, no line skipped, each row's text its
+/// line's, and each gutter number its line's.
+pub fn seams(world: &mut World) -> String {
+    let Some((view, doc)) = first_view(world) else {
+        return "seams none".into();
+    };
+    let Some(rows) = shown_rows(world, view) else {
+        return "seams none".into();
+    };
+    let (Some(first), Some(last)) = (rows.first(), rows.last())
+    else {
+        return "seams none".into();
+    };
+    let (mut gaps, mut overlaps, mut missing) = (0, 0, 0);
+    for pair in rows.windows(2) {
+        let (above, below) = (&pair[0], &pair[1]);
+        missing += u32::from(below.line != above.line + 1);
+        let seam = below.top - above.bottom;
+        gaps += u32::from(seam > 0.5);
+        overlaps += u32::from(seam < -0.5);
+    }
+    let edit = world.get::<EditDoc>(doc);
+    let mismatched = rows
+        .iter()
+        .filter(|row| {
+            edit.and_then(|edit| edit.line(row.line as usize))
+                .map(expand_tabs)
+                .as_deref()
+                != Some(row.text.as_str())
+        })
+        .count();
+    let numbers = rows
+        .iter()
+        .find(|row| {
+            row.number.as_deref().map(str::trim)
+                != Some((row.line + 1).to_string().as_str())
+        })
+        .map_or_else(
+            || "ok".into(),
+            |row| format!("jump {}", row.line + 1),
+        );
+    format!(
+        "seams shown {}..={} gaps {gaps} overlaps {overlaps} \
+         missing {missing} mismatched {mismatched} numbers {numbers}",
+        first.line + 1,
+        last.line + 1,
+    )
+}
+
+/// Line `line`'s row of the first editable view, from 1: where the
+/// list puts it and how many visual lines its text takes.
+pub fn row_line(world: &mut World, line: usize) -> String {
+    let span = first_view(world).zip(line.checked_sub(1)).and_then(
+        |((view, _), index)| {
+            let list = find_under::<VirtualList>(world, view)?;
+            let span =
+                world.get::<VirtualList>(list)?.row_span(index)?;
+            Some((view, index, span))
+        },
+    );
+    let Some((view, index, span)) = span else {
+        return format!("row {line} none");
+    };
+    let want = EditLine {
+        view,
+        line: index as u32,
+    };
+    let text = world
+        .query::<(Entity, &EditLine)>()
+        .iter(world)
+        .find(|(_, at)| **at == want)
+        .map(|(node, _)| node);
+    let lines = text
+        .and_then(|text| visual_lines(world, text))
+        .map_or_else(|| "unbuilt".into(), |lines| lines.to_string());
+    format!(
+        "row {line} top {} height {} lines {lines}",
+        span.top, span.height
+    )
+}
+
+/// The row text's laid-out height over its gutter number's, which is
+/// always one line.
+fn visual_lines(world: &World, text: Entity) -> Option<f32> {
+    let height = |node| {
+        world.get::<TextLayoutInfo>(node).map(|info| info.size.y)
+    };
+    let one = height(gutter_of(world, text)?)?;
+    (one > 0.0).then_some((height(text)? / one).round())
 }

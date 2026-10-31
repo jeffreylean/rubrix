@@ -85,7 +85,8 @@ use bevy::window::{
 };
 use bevy_fynix::views::VirtualList;
 use bevy_rubrix::{
-    CodeDoc, CodeLine, CodeSelection, DiffDoc, DiffRow, Layout, Row,
+    CodeDoc, CodeLine, CodeSelection, DiffDoc, DiffRow, EditDoc,
+    EditLine, EditView, Layout, Row,
 };
 use rubrix_highlight::spans;
 
@@ -400,7 +401,7 @@ fn parse_line(text: &str, os: Os) -> Result<Option<Step>, String> {
 
 fn topic_args(name: &str) -> usize {
     match name {
-        "runs" | "text" => 1,
+        "runs" | "text" | "row" => 1,
         _ => 0,
     }
 }
@@ -1550,7 +1551,15 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
             });
             hit.unwrap_or_else(|| "hit none".into())
         }
+        "seams" => pages::editor::seams(world),
+        "typing" => pages::editor::typing(world),
         _ => {
+            if let Some(line) = topic.strip_prefix("row ") {
+                return Some(pages::editor::row_line(
+                    world,
+                    line.parse().ok()?,
+                ));
+            }
             let line = topic.strip_prefix("runs ")?.parse().ok()?;
             runs(world, line)
         }
@@ -1664,23 +1673,62 @@ fn selection(world: &mut World) -> String {
     )
 }
 
+/// Line `line_number`'s runs and shown spans in the first code view,
+/// or in the first editable doc when there is no code view.
 fn runs(world: &mut World, line_number: usize) -> String {
-    let Some((view, row, runs)) = world
+    let Some(row) = line_number.checked_sub(1) else {
+        return format!("runs {line_number} none");
+    };
+    let listed = |lexed: &[bevy_rubrix::Run]| {
+        spans(lexed)
+            .map(|(bytes, kind)| {
+                format!("{}..{} {kind}", bytes.start, bytes.end)
+            })
+            .collect::<Vec<_>>()
+    };
+    let code = world
         .query::<(Entity, &CodeDoc)>()
         .iter(world)
         .next()
-        .and_then(|(view, doc)| {
-            let row = line_number
-                .checked_sub(1)
-                .filter(|&row| row < doc.rows())?;
-            let runs = spans(doc.runs(row))
-                .map(|(bytes, kind)| {
-                    format!("{}..{} {kind}", bytes.start, bytes.end)
+        .map(|(view, doc)| {
+            (view, (row < doc.rows()).then(|| listed(doc.runs(row))))
+        });
+    let (runs, root) = match code {
+        Some((view, runs)) => {
+            let root = world
+                .query::<(Entity, &CodeLine)>()
+                .iter(world)
+                .find(|(_, shown)| **shown == CodeLine { view, row })
+                .map(|(root, _)| root);
+            (runs, root)
+        }
+        None => {
+            let Some((doc, runs)) = world
+                .query::<(Entity, &EditDoc)>()
+                .iter(world)
+                .next()
+                .map(|(entity, doc)| {
+                    let runs = (row < doc.rows())
+                        .then(|| listed(doc.runs(row)));
+                    (entity, runs)
                 })
-                .collect::<Vec<_>>();
-            Some((view, row, runs))
-        })
-    else {
+            else {
+                return format!("runs {line_number} none");
+            };
+            let root = world
+                .query::<(Entity, &EditLine)>()
+                .iter(world)
+                .find(|(_, shown)| {
+                    shown.line as usize == row
+                        && world
+                            .get::<EditView>(shown.view)
+                            .is_some_and(|view| view.doc() == doc)
+                })
+                .map(|(root, _)| root);
+            (runs, root)
+        }
+    };
+    let Some(runs) = runs else {
         return format!("runs {line_number} none");
     };
     let runs = if runs.is_empty() {
@@ -1688,11 +1736,6 @@ fn runs(world: &mut World, line_number: usize) -> String {
     } else {
         runs.join(", ")
     };
-    let root = world
-        .query::<(Entity, &CodeLine)>()
-        .iter(world)
-        .find(|(_, shown)| **shown == CodeLine { view, row })
-        .map(|(root, _)| root);
     let shown = match root {
         Some(root) => {
             let spans = spans_of(world, root)
@@ -2910,5 +2953,35 @@ exit
             last.starts_with("drive: line 3: cannot read"),
             "{last}"
         );
+    }
+
+    #[test]
+    fn the_editor_page_types_at_a_click_and_logs_its_topics() {
+        let mut app = headless(
+            "page editor\nwait 5\nclick 273 177\ntype let x = \
+             1;\nwait 3\nlog text 4\nlog caret\nlog undo\nlog runs \
+             4\nlog seams\nlog row 4\nlog typing\nexit",
+        );
+        run(&mut app);
+        assert_eq!(logged(&app, "text 4 "), ["\"let x = 1;\""]);
+        assert_eq!(
+            logged(&app, "caret "),
+            ["1 primary 1 4:11..4:11 visible true"]
+        );
+        assert_eq!(logged(&app, "undo "), ["1 redo 0"]);
+        let runs = logged(&app, "runs 4: ");
+        assert!(runs[0].starts_with("0..3 keyword"), "{runs:?}");
+        let seams = logged(&app, "seams ");
+        assert!(
+            seams[0].ends_with(
+                "gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok"
+            ),
+            "{seams:?}"
+        );
+        assert_eq!(
+            logged(&app, "row 4 "),
+            ["top 51 height 17 lines 1"]
+        );
+        assert_eq!(logged(&app, "typing "), ["edits 1 hidden 0"]);
     }
 }

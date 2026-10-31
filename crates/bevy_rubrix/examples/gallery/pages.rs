@@ -27,7 +27,7 @@ use crate::{Build, Copied, PageView, Palette};
 mod about;
 mod code;
 mod diff;
-mod editor;
+pub mod editor;
 pub mod hamlet_code;
 pub mod hamlet_diff;
 pub mod hamlet_rich;
@@ -149,6 +149,7 @@ pub fn plugin(app: &mut App) {
     code::plugin(app);
     stream::plugin(app);
     diff::plugin(app);
+    editor::plugin(app);
     hamlet_rich::plugin(app);
     hamlet_code::plugin(app);
     stress::plugin(app);
