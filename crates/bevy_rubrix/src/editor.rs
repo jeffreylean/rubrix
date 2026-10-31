@@ -528,6 +528,9 @@ pub(crate) struct EditInput {
     /// Whether keys or requests acted this frame, so the drawer
     /// keeps the caret in sight from the real layout.
     pub(crate) acted: bool,
+    /// Where the last press landed, in logical window px, and the
+    /// clicks it counted.
+    clicked: Option<(Vec2, u8)>,
 }
 
 pub(crate) struct Pressed {
@@ -664,12 +667,30 @@ fn press(
     if focus.get() != Some(view) {
         focus.set(view, FocusCause::Pressed);
     }
+    let at = press.pointer.position;
+    let count = match input.clicked {
+        Some((last, count)) if press.count > 1 => {
+            if last.distance(at) <= CLICK_SLOP {
+                count + 1
+            } else {
+                1
+            }
+        }
+        _ => press.count,
+    }
+    .min(3);
+    input.clicked = Some((at, count));
     input.pressed.push(Pressed {
-        at: press.pointer.position,
-        count: press.count.min(3),
+        at,
+        count,
         pointer: press.pointer.id,
     });
 }
+
+/// How far, in logical px, a press may land from the one before and
+/// still count toward a double or triple click. Bevy counts every
+/// press on an entity inside its interval, wherever it lands.
+const CLICK_SLOP: f32 = 4.0;
 
 /// Keeps the keys an editor uses from bubbling to the window, where
 /// fynix's shortcuts would run commands bound to the same chords. It

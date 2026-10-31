@@ -642,6 +642,34 @@ fn shift_click_extends_and_clicks_select_words_and_lines() {
 }
 
 #[test]
+fn a_press_away_from_the_last_one_starts_a_new_click() {
+    let mut app = laid_out();
+    let source = "fn main() {\n    self.foo_bar = 1;\n}\n";
+    let (view, entity) =
+        mount_editor(&mut app, Lang::Rust, source, 600.0, 300.0);
+    settle(&mut app);
+    let row = edit_line(&mut app, view, 1);
+    let (first, second) =
+        (point_at(&app, row, 6), point_at(&app, row, 12));
+    press_on(&mut app, row, first, 1);
+    press_on(&mut app, row, second, 2);
+    let line = source.find("    self").expect("a line");
+    assert_eq!(
+        doc(&app, entity).editor().selections().primary(),
+        Selection::caret(line + 12),
+        "Bevy counts the second press as a double click"
+    );
+    press_on(&mut app, row, second, 3);
+    let word = doc(&app, entity).editor().selections().primary();
+    let foo = source.find("foo_bar").expect("foo_bar");
+    assert_eq!(
+        word.range(),
+        foo..foo + "foo_bar".len(),
+        "a press on the same spot does"
+    );
+}
+
+#[test]
 fn a_press_on_the_gutter_puts_the_caret_at_the_line_start() {
     let mut app = laid_out();
     let (view, entity) = mount_editor(
