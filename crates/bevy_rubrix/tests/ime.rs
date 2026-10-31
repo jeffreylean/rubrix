@@ -183,7 +183,8 @@ fn a_preedit_that_wraps_is_underlined_on_each_visual_line() {
     let (mut app, view, _) = focused();
     app.insert_resource(Wrapping(Overflow::Wrap));
     settle(&mut app);
-    send(&mut app, [preedit(&"你好".repeat(20), Some((120, 120)))]);
+    let long = "preedit ".repeat(30);
+    send(&mut app, [preedit(&long, Some((long.len(), long.len())))]);
     settle(&mut app);
     let lines = visual_lines(&mut app, view, 1);
     assert!(lines.len() >= 2, "the preedit wraps: {lines:?}");
