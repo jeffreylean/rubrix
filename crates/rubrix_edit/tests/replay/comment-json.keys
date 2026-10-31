@@ -1,0 +1,8 @@
+# With `lang json`, neither mod+/ nor Shift+Alt+A changes the text or records an undo step.
+lang json
+select 16:1 18:1
+key comment
+key block-comment
+expect line 16     let [_, r, g, b] = rgb.to_be_bytes();
+expect line 17     Color::srgb_u8(r, g, b)
+expect undo-depth 0
