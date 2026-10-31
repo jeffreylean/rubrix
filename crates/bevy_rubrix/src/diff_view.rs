@@ -30,9 +30,8 @@ use rubrix_diff::{
 };
 use rubrix_highlight::{Highlights, Lang, Run, Stream, highlight};
 
-use crate::code_view::{
-    LINE_HEIGHT, Overflow, Shown, digits, filling, line_spans,
-};
+use crate::code_view::Overflow;
+use crate::rows::{LINE_HEIGHT, Shown, digits, filling, line_spans};
 use crate::select::{self, Column, RowText, Selectable, selectable};
 use crate::tokens::{Styles, SyntaxTokens, Tint};
 

@@ -1,0 +1,51 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -2023
+wait 10
+log undo
+expect undo 0 redo 0
+click 1250 194
+log caret
+expect caret 1 primary 1 124:27..124:27 visible true
+type foo
+log text 124
+expect text 124 "    world.spawn(Camera2d);foo"
+log undo
+expect undo 1 redo 0
+key enter
+log text 124
+expect text 124 "    world.spawn(Camera2d);foo"
+log text 125
+expect text 125 "    "
+log undo
+expect undo 2 redo 0
+type bar
+log text 125
+expect text 125 "    bar"
+log undo
+expect undo 3 redo 0
+key mod+z
+log text 124
+expect text 124 "    world.spawn(Camera2d);foo"
+log text 125
+expect text 125 "    "
+log undo
+expect undo 2 redo 1
+key mod+z
+log text 124
+expect text 124 "    world.spawn(Camera2d);foo"
+log text 125
+expect text 125 ""
+log undo
+expect undo 1 redo 2
+key mod+shift+z
+log text 124
+expect text 124 "    world.spawn(Camera2d);foo"
+log text 125
+expect text 125 "    "
+log undo
+expect undo 2 redo 1
+wait 30
+screenshot e2-undo.png
+exit

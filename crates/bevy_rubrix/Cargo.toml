@@ -7,10 +7,15 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-bevy = { workspace = true, features = ["bevy_clipboard"] }
+bevy = { workspace = true, features = [
+    "bevy_clipboard",
+    "bevy_input_focus",
+    "bevy_log",
+] }
 bevy_fynix = { workspace = true, features = ["std"] }
 parley = "=0.11.1"
 rubrix_diff = { path = "../rubrix_diff" }
+rubrix_edit = { path = "../rubrix_edit" }
 rubrix_highlight = { path = "../rubrix_highlight" }
 
 [dev-dependencies]

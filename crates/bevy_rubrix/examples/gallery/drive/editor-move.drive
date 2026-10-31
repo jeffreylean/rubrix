@@ -1,0 +1,35 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -84813
+wait 10
+click 373.8 364
+log caret
+expect caret 1 primary 1 5004:13..5004:13 visible true
+key ctrl+right
+log caret
+expect caret 1 primary 1 5004:15..5004:15 visible true
+key ctrl+left
+log caret
+expect caret 1 primary 1 5004:13..5004:13 visible true
+key home
+log caret
+expect caret 1 primary 1 5004:9..5004:9 visible true
+key home
+log caret
+expect caret 1 primary 1 5004:1..5004:1 visible true
+key end
+log caret
+expect caret 1 primary 1 5004:63..5004:63 visible true
+key pagedown
+log caret
+expect caret 1 primary 1 5042:29..5042:29 visible true
+key pagedown
+log caret
+expect caret 1 primary 1 5080:33..5080:33 visible true
+key pagedown
+log caret
+expect caret 1 primary 1 5118:2..5118:2 visible true
+wait 30
+screenshot e2-move.png
+exit

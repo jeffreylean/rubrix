@@ -1,0 +1,46 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -84813
+wait 10
+log rows
+expect rows total 10373 following
+log seams
+expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok
+click 1250 296
+log caret
+expect caret 1 primary 1 5000:39..5000:39 visible true
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+key enter
+wait 10
+log rows
+expect rows total 10393 following
+log seams
+expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok
+log caret
+expect caret 1 primary 1 5020:1..5020:1 visible true
+log text 5000
+expect text 5000 ") -> Vec<(Entity, Option<Pickable>)> {"
+log text 5021
+expect text 5021 "    let mut was = Vec::new();"
+wait 30
+screenshot e2-enter.png
+exit

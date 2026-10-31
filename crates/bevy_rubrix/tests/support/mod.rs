@@ -38,8 +38,9 @@ use bevy_fynix::views::{
 };
 use bevy_fynix::{FynixPlugin, Theme, mount, resource};
 use bevy_rubrix::{
-    CodeCopied, CodeDoc, CodeLine, CodeSource, Kind, Overflow,
-    RubrixPlugin, SyntaxStyle, SyntaxTokens, code_view, resolve,
+    CodeCopied, CodeDoc, CodeLine, CodeSource, EditDoc, EditLine,
+    EditView, Kind, Lang, Overflow, RubrixPlugin, SyntaxStyle,
+    SyntaxTokens, code_editor, code_view, resolve,
 };
 
 pub const BODY: Color = Color::WHITE;
@@ -430,5 +431,159 @@ pub fn ctrl(app: &mut App, key: KeyCode, letter: &str) {
         Key::Control,
         ButtonState::Released,
     );
+    app.update();
+}
+
+#[derive(Resource)]
+pub struct Editing(pub Entity);
+
+/// Spawns a doc of `text` and mounts an editable view of it.
+pub fn mount_editor(
+    app: &mut App,
+    lang: Lang,
+    text: &str,
+    width: f32,
+    height: f32,
+) -> (Entity, Entity) {
+    let doc = app.world_mut().spawn(EditDoc::new(lang, text)).id();
+    app.insert_resource(Editing(doc))
+        .insert_resource(Wrapping(Overflow::Scroll));
+    mount::<Distinct>(
+        app.world_mut(),
+        column((code_editor(resource::<Editing, _>(|editing| {
+            editing.0
+        }))
+        .overflow(resource::<Wrapping, _>(|wrapping| wrapping.0)),))
+        .width(px(width))
+        .height(px(height)),
+    );
+    app.update();
+    (editor(app), doc)
+}
+
+pub fn editor(app: &mut App) -> Entity {
+    app.world_mut()
+        .query_filtered::<Entity, With<EditView>>()
+        .single(app.world())
+        .expect("one editor")
+}
+
+pub fn edit_lines(app: &mut App, view: Entity) -> Vec<(u32, Entity)> {
+    let mut lines = app
+        .world_mut()
+        .query::<(Entity, &EditLine)>()
+        .iter(app.world())
+        .filter(|(_, line)| line.view == view)
+        .map(|(entity, line)| (line.line, entity))
+        .collect::<Vec<_>>();
+    lines.sort();
+    lines
+}
+
+pub fn edit_line(app: &mut App, view: Entity, line: u32) -> Entity {
+    edit_lines(app, view)
+        .into_iter()
+        .find(|&(shown, _)| shown == line)
+        .unwrap_or_else(|| panic!("line {line} is built"))
+        .1
+}
+
+/// [`point_in`] in logical window px, as a pointer reports it, at any
+/// scale.
+pub fn point_at(app: &App, root: Entity, byte: usize) -> Vec2 {
+    let logical = app
+        .world()
+        .get::<ComputedNode>(root)
+        .expect("a node")
+        .inverse_scale_factor();
+    point_in(app, root, byte) * logical
+}
+
+fn send(
+    app: &mut App,
+    key_code: KeyCode,
+    logical_key: Key,
+    text: Option<&str>,
+    state: ButtonState,
+) {
+    app.world_mut().write_message(KeyboardInput {
+        key_code,
+        logical_key,
+        state,
+        text: text.map(Into::into),
+        repeat: false,
+        window: Entity::PLACEHOLDER,
+    });
+}
+
+fn modifier(key: KeyCode) -> Key {
+    match key {
+        KeyCode::ControlLeft | KeyCode::ControlRight => Key::Control,
+        KeyCode::ShiftLeft | KeyCode::ShiftRight => Key::Shift,
+        KeyCode::AltLeft | KeyCode::AltRight => Key::Alt,
+        _ => Key::Super,
+    }
+}
+
+/// Every char of `text` pressed and released in one frame, as the
+/// gallery's driver types.
+pub fn type_text(app: &mut App, text: &str) {
+    let unknown = KeyCode::Unidentified(
+        bevy::input::keyboard::NativeKeyCode::Unidentified,
+    );
+    for c in text.chars() {
+        let c = c.to_string();
+        for state in [ButtonState::Pressed, ButtonState::Released] {
+            send(
+                app,
+                unknown,
+                Key::Character(c.as_str().into()),
+                Some(&c),
+                state,
+            );
+        }
+    }
+    app.update();
+}
+
+/// `key` pressed with `mods` held in one frame, released in the next.
+pub fn key_with(
+    app: &mut App,
+    mods: &[KeyCode],
+    key: KeyCode,
+    logical: Key,
+) {
+    for &held in mods {
+        send(app, held, modifier(held), None, ButtonState::Pressed);
+    }
+    send(app, key, logical.clone(), None, ButtonState::Pressed);
+    app.update();
+    send(app, key, logical, None, ButtonState::Released);
+    for &held in mods {
+        send(app, held, modifier(held), None, ButtonState::Released);
+    }
+    app.update();
+}
+
+/// A letter chord, such as `chord(app, &[KeyCode::ControlLeft],
+/// KeyCode::KeyV, "v")`.
+pub fn chord(
+    app: &mut App,
+    mods: &[KeyCode],
+    key: KeyCode,
+    letter: &str,
+) {
+    key_with(app, mods, key, Key::Character(letter.into()));
+}
+
+/// Holds or lets go of `key` as key messages, as the editor reads
+/// modifiers.
+pub fn hold_key(app: &mut App, key: KeyCode, held: bool) {
+    let state = if held {
+        ButtonState::Pressed
+    } else {
+        ButtonState::Released
+    };
+    send(app, key, modifier(key), None, state);
     app.update();
 }

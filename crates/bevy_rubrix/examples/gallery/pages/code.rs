@@ -18,7 +18,7 @@ use crate::{PageView, Palette};
 
 pub(super) const LARGE_RS: &str =
     include_str!("../../../../../bench/fixtures/rust/large.rs.txt");
-const LARGE_TS: &str =
+pub(super) const LARGE_TS: &str =
     include_str!("../../../../../bench/fixtures/ts/large.ts.txt");
 
 const STRESS_LINES: usize = 100_000;
@@ -101,21 +101,29 @@ fn controls() -> PageView {
             show(world, "large.rs.txt repeated", source);
         }),
         control(
-            resource::<CodeFile, _>(|file| match file.overflow {
-                Overflow::Scroll => "wrap off".to_owned(),
-                Overflow::Wrap => "wrap on".to_owned(),
-            }),
+            resource::<CodeFile, _>(|file| wrap_name(file.overflow)),
             |world| {
-                let mut file = world.resource_mut::<CodeFile>();
-                file.overflow = match file.overflow {
-                    Overflow::Scroll => Overflow::Wrap,
-                    Overflow::Wrap => Overflow::Scroll,
-                };
+                flip(&mut world.resource_mut::<CodeFile>().overflow)
             },
         ),
     ))
     .gap(8.0);
     wrapping(buttons.boxed())
+}
+
+/// The wrap button's name, which names the state it is in.
+pub(super) fn wrap_name(overflow: Overflow) -> String {
+    match overflow {
+        Overflow::Scroll => "wrap off".to_owned(),
+        Overflow::Wrap => "wrap on".to_owned(),
+    }
+}
+
+pub(super) fn flip(overflow: &mut Overflow) {
+    *overflow = match overflow {
+        Overflow::Scroll => Overflow::Wrap,
+        Overflow::Wrap => Overflow::Scroll,
+    };
 }
 
 fn show(world: &mut World, name: &str, source: CodeSource) {

@@ -30,4 +30,5 @@ The gallery lists its pages on the left. Each page has one file here when it shi
 - [diff.md](diff.md): the `diff` page, a multi-file diff in stacked and split rows.
 - [stream.md](stream.md): the `stream` page, a file streamed into a code view.
 - [select.md](select.md): selecting and copying text in a code view, on the `code` and `stream` pages.
+- [editor.md](editor.md): the `editor` page, a file in an editable code view.
 - [hamlet.md](hamlet.md): the `hamlet_rich`, `hamlet_code`, `hamlet_diff`, and `stress` pages, and the acceptance script.

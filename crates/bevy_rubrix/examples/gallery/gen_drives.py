@@ -3,7 +3,8 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser(
     description="Write every virtual_list drive script but virtual-list.drive, "
-    "every code, stream, select and diff drive script, and the Hamlet ones."
+    "every code, stream, select, diff and editor drive script, and the "
+    "Hamlet ones."
 )
 parser.add_argument("dir", nargs="?", type=Path, default=Path(__file__).parent / "drive")
 out = parser.parse_args().dir
@@ -1197,4 +1198,367 @@ write(
     "wait 30",
     "record stop",
     "exit",
+)
+
+
+ADVANCE = 8.4
+CLICK_INSET = 2
+TEXT_X_100K = TEXT_X + ADVANCE
+PAGE_ROWS = 38
+WRAP_COLUMNS = 113
+TRIPLE_TAKES_BREAK = True
+TOP = "scroll 0 100000000"
+LEFT = "scroll 100000000 0"
+STRESS_LINES = [LARGE_RS_LINES[i % len(LARGE_RS_LINES)] for i in range(100_000)]
+
+
+def editor(name, *steps):
+    write(f"editor-{name}", "page editor", SETTLE, *steps, "exit")
+
+
+def column_x(column, text_x=TEXT_X):
+    return round(text_x + (column - 1) * ADVANCE + CLICK_INSET, 1)
+
+
+class Doc:
+    """The editor's text as the scripts expect it, lines and columns from 1."""
+
+    def __init__(self, lines, top=1, text_x=TEXT_X):
+        self.lines = list(lines) + [""]
+        self.top = top
+        self.text_x = text_x
+        self.scrolled = False
+
+    def line(self, n):
+        return self.lines[n - 1]
+
+    def rows(self):
+        return len(self.lines)
+
+    def y(self, n):
+        assert self.top <= n < self.top + PAGE_ROWS, (n, self.top)
+        return LINE_1 + (n - self.top) * ROW
+
+    def at(self, n, column):
+        return f"{column_x(column, self.text_x)} {self.y(n)}"
+
+    def end(self, n):
+        return f"{LINE_END_X} {self.y(n)}"
+
+    def gutter(self, n):
+        return f"{GUTTER_X} {self.y(n)}"
+
+    def scroll_to(self, n):
+        """Puts line `n` first. The view starts at line 1, column 1, so
+        a view scrolled since goes back there first."""
+        reset = [TOP, LEFT] if self.scrolled else []
+        self.top, self.scrolled = n, True
+        return [CENTER, reset, to_line(n), "wait 10"]
+
+    def insert(self, at, text):
+        n, column = at
+        line = self.line(n)
+        new = (line[: column - 1] + text + line[column - 1 :]).split("\n")
+        self.lines[n - 1 : n] = new
+        return (n + len(new) - 1, len(new[-1]) - len(line) + column)
+
+    def between(self, start, end):
+        (a, ac), (b, bc) = start, end
+        if a == b:
+            return self.line(a)[ac - 1 : bc - 1]
+        middle = self.lines[a : b - 1]
+        return "\n".join([self.line(a)[ac - 1 :], *middle, self.line(b)[: bc - 1]])
+
+    def enter(self, at):
+        n, column = at
+        line = self.line(n)
+        indent = line[: len(line) - len(line.lstrip(" "))][: column - 1]
+        return self.insert(at, "\n" + indent)
+
+    def join(self, n):
+        column = len(self.line(n - 1)) + 1
+        self.lines[n - 2 : n] = [self.line(n - 1) + self.line(n)]
+        return (n - 1, column)
+
+    def home(self, n, column):
+        line = self.line(n)
+        first = len(line) - len(line.lstrip(" ")) + 1
+        return 1 if column == first else first
+
+    def text(self, n):
+        return [f"log text {n}", f"expect text {n} {rust_debug(self.line(n))}"]
+
+
+def rust_debug(text):
+    assert all(c == "\n" or " " <= c <= "~" for c in text), text
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
+def word_char(c):
+    return c.isalnum() or c == "_"
+
+
+def word_right(line, column):
+    i = column - 1
+    while i < len(line) and line[i] == " ":
+        i += 1
+    kind = i < len(line) and word_char(line[i])
+    while i < len(line) and line[i] != " " and word_char(line[i]) == kind:
+        i += 1
+    return i + 1
+
+
+def word_left(line, column):
+    i = column - 1
+    while i > 0 and line[i - 1] == " ":
+        i -= 1
+    kind = i > 0 and word_char(line[i - 1])
+    while i > 0 and line[i - 1] != " " and word_char(line[i - 1]) == kind:
+        i -= 1
+    return i + 1
+
+
+def word_around(line, column):
+    return word_left(line, column + 1), word_right(line, column)
+
+
+def caret(anchor, head=None, count=1, primary=1):
+    head = head or anchor
+    anchor, head = min(anchor, head), max(anchor, head)
+    return [
+        "log caret",
+        f"expect caret {count} primary {primary} "
+        f"{anchor[0]}:{anchor[1]}..{head[0]}:{head[1]} visible true",
+    ]
+
+
+def undo(depth, redo):
+    return ["log undo", f"expect undo {depth} redo {redo}"]
+
+
+def rows_total(doc):
+    return ["log rows", f"expect rows total {doc.rows()} following"]
+
+
+SEAMS_CLEAN = ["log seams", "expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok"]
+
+
+def window(csv, keys):
+    assert len(keys) >= 50, csv
+    return ["frames start", "wait 60", keys, f"frames stop {csv}"]
+
+
+doc = Doc(LARGE_RS_LINES)
+TYPED = "let x = 1;"
+LINE, COLUMN = 120, 5
+steps = [doc.scroll_to(LINE), "log rows", f"expect rows first_visible {LINE - 1} spawned"]
+steps += [f"click {doc.at(LINE, COLUMN)}", caret((LINE, COLUMN))]
+after = doc.insert((LINE, COLUMN), TYPED)
+steps += [f"type {TYPED}", "wait 5", doc.text(LINE), f"log runs {LINE}"]
+let = COLUMN - 1 + TYPED.index("let")
+steps += [[f"log kind {LINE} {byte}", f"expect kind {LINE} {byte} keyword"] for byte in range(let, let + 3)]
+editor("type", steps, caret(after), "wait 30", "screenshot e2-type.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [doc.scroll_to(4990), rows_total(doc), SEAMS_CLEAN]
+at = (5000, len(doc.line(5000)) + 1)
+steps += [f"click {doc.end(5000)}", caret(at)]
+for _ in range(20):
+    at = doc.enter(at)
+    steps.append("key enter")
+steps += ["wait 10", rows_total(doc), SEAMS_CLEAN, caret(at), doc.text(5000), doc.text(5021)]
+editor("enter", steps, "wait 30", "screenshot e2-enter.png")
+
+
+def joins(doc, line, count):
+    """`count` Backspaces at the start of the line on `line`'s screen row.
+    Home after each takes the view back from the end of the joined line,
+    where the Backspace scrolled it sideways, so the next gutter click
+    lands at column 1."""
+    steps = []
+    for _ in range(count):
+        at = doc.join(line)
+        steps += [f"click {doc.gutter(line)}", "key backspace", "key home"]
+    return steps, (at[0], doc.home(at[0], at[1]))
+
+
+doc = Doc(LARGE_RS_LINES)
+steps = [doc.scroll_to(4990), rows_total(doc)]
+joined, at = joins(doc, 5001, 20)
+steps += [joined, "wait 10", rows_total(doc), SEAMS_CLEAN, caret(at), doc.text(5000), doc.text(5001)]
+editor("join", steps, "wait 30", "screenshot e2-join.png")
+
+doc = Doc(LARGE_RS_LINES)
+LINE = 5004
+line = doc.line(LINE)
+steps = [doc.scroll_to(4990)]
+column = line.index("Ok") + 1
+steps += [f"click {doc.at(LINE, column)}", caret((LINE, column))]
+for key, column in [
+    ("ctrl+right", word_right(line, column)),
+    ("ctrl+left", word_left(line, word_right(line, column))),
+]:
+    steps += [f"key {key}", caret((LINE, column))]
+for _ in range(2):
+    column = doc.home(LINE, column)
+    steps += ["key home", caret((LINE, column))]
+goal = len(line) + 1
+steps += ["key end", caret((LINE, goal))]
+at = LINE
+for _ in range(3):
+    at += PAGE_ROWS
+    steps += ["key pagedown", caret((at, min(goal, len(doc.line(at)) + 1)))]
+editor("move", steps, "wait 30", "screenshot e2-move.png")
+
+doc = Doc(LARGE_RS_LINES)
+FROM, ROWS_DOWN = 11, 100
+start, end = (FROM, 1), (FROM + 3, 1)
+steps = [f"click {doc.at(FROM, 1)}", caret(start)]
+for down in range(1, 4):
+    steps += ["key shift+down", caret(start, (FROM + down, 1))]
+copied = doc.between(start, end)
+steps += ["key mod+c", "clipboard", "log copied", f"expect copied {rust_debug(copied)}"]
+steps += [doc.scroll_to(doc.top + ROWS_DOWN)]
+target = FROM + ROWS_DOWN
+steps += [f"click {doc.at(target, 1)}", caret((target, 1))]
+after = doc.insert((target, 1), copied)
+steps += ["key mod+v", "wait 5", [doc.text(n) for n in range(target, target + 4)], caret(after)]
+editor("copy-paste", steps, "wait 30", "screenshot e2-copy-paste.png")
+
+doc = Doc(LARGE_RS_LINES)
+LINE = 124
+steps = [doc.scroll_to(120), undo(0, 0)]
+at = (LINE, len(doc.line(LINE)) + 1)
+steps += [f"click {doc.end(LINE)}", caret(at)]
+versions = [list(doc.lines)]
+at = doc.insert(at, "foo")
+steps += ["type foo", doc.text(LINE), undo(1, 0)]
+versions.append(list(doc.lines))
+at = doc.enter(at)
+steps += ["key enter", doc.text(LINE), doc.text(LINE + 1), undo(2, 0)]
+versions.append(list(doc.lines))
+at = doc.insert(at, "bar")
+steps += ["type bar", doc.text(LINE + 1), undo(3, 0)]
+versions.append(list(doc.lines))
+for key, version, depth in [("mod+z", 2, (2, 1)), ("mod+z", 1, (1, 2)), ("mod+shift+z", 2, (2, 1))]:
+    doc.lines = list(versions[version])
+    steps += [f"key {key}", doc.text(LINE), doc.text(LINE + 1), undo(*depth)]
+editor("undo", steps, "wait 30", "screenshot e2-undo.png")
+
+doc = Doc(LARGE_RS_LINES)
+word = doc.line(13).index("struct") + 1
+start, end = word_around(doc.line(13), word + 2)
+line_end = (13, 1) if TRIPLE_TAKES_BREAK else (12, len(doc.line(12)) + 1)
+editor(
+    "mouse",
+    f"click {doc.at(13, 8)}",
+    caret((13, 8)),
+    f"click {doc.at(13, 12)} shift",
+    caret((13, 8), (13, 12)),
+    f"drag {doc.at(11, 5)} {doc.at(12, 10)}",
+    caret((11, 5), (12, 10)),
+    f"click {doc.at(13, word + 2)} double",
+    caret((13, start), (13, end)),
+    f"click {doc.at(12, 20)} triple",
+    caret((12, 1), line_end),
+    "wait 30",
+    "screenshot e2-mouse.png",
+)
+
+
+def keystrokes(name, lines, rows, text_x, setup, line):
+    doc = Doc(lines, text_x=text_x)
+    steps = [setup, doc.scroll_to(line), rows_total(doc)]
+    steps += [f"expect rows first_visible {line - 1} spawned"]
+    at = (line, len(doc.line(line)) + 1)
+    steps += [f"click {doc.end(line)}", caret(at)]
+    at = doc.insert(at, "x" * 200)
+    steps += [window(f"editor-{name}-type.csv", ["type x"] * 200), doc.text(line), caret(at)]
+    for _ in range(50):
+        at = doc.enter(at)
+    steps += [window(f"editor-{name}-enter.csv", ["key enter"] * 50), rows_total(doc), caret(at)]
+    steps += [doc.scroll_to(line)]
+    joined, at = joins(doc, line + 1, 50)
+    steps += [window(f"editor-{name}-join.csv", joined), rows_total(doc), SEAMS_CLEAN]
+    steps += [doc.text(line), doc.text(line + 1), caret(at)]
+    assert doc.rows() == rows
+    editor(
+        name,
+        steps,
+        "log typing",
+        "expect typing hidden 0",
+        "log caret",
+        "log rows",
+        "wait 30",
+        f"screenshot e2-{name.removeprefix('editor-')}.png",
+    )
+
+
+keystrokes("10k", LARGE_RS_LINES, len(LARGE_RS_LINES) + 1, TEXT_X, [], 5000)
+keystrokes("100k", STRESS_LINES, 100_001, TEXT_X_100K, [STRESS, "wait 60"], 50_000)
+
+doc = Doc(LARGE_RS_LINES)
+LINE = 300
+assert max(map(len, doc.lines[:LINE])) < WRAP_COLUMNS
+WORDS = ["wrap"] * ((5 * WRAP_COLUMNS // 2 - len(doc.line(LINE))) // 5)
+HALF = (3 * WRAP_COLUMNS // 2 - len(doc.line(LINE))) // 5
+top = (LINE - 1) * ROW
+
+
+def wrapped(lines):
+    return [
+        f"log row {LINE}",
+        f"expect row {LINE} top {top} height {lines * ROW} lines {lines}",
+        f"log row {LINE + 1}",
+        f"expect row {LINE + 1} top {top + lines * ROW} height {ROW} lines 1",
+    ]
+
+
+steps = [WRAP, "wait 60", doc.scroll_to(LINE - 10)]
+steps += [f"click {doc.end(LINE)}", caret((LINE, len(doc.line(LINE)) + 1)), wrapped(1)]
+for part, lines in [(WORDS[:HALF], 2), (WORDS[HALF:], 3)]:
+    doc.insert((LINE, len(doc.line(LINE)) + 1), " " + " ".join(part))
+    assert (lines - 1) * WRAP_COLUMNS < len(doc.line(LINE)) < lines * WRAP_COLUMNS
+    steps += ["key space", f"type {' '.join(part)}", "wait 10"]
+    steps += [doc.text(LINE) if lines == 3 else [], wrapped(lines)]
+steps += ["log seams", "expect seams gaps 0 overlaps 0"]
+editor("wrap", steps, "wait 30", "screenshot e2-wrap.png")
+
+
+def accept(name, lines, text_x, setup, line):
+    """Type, move, select, copy, paste and undo on `line`, checking each."""
+    doc = Doc(lines, text_x=text_x)
+    steps = [setup, doc.scroll_to(line - 5)]
+    at = (line, len(doc.line(line)) + 1)
+    steps += [f"click {doc.end(line)}", caret(at)]
+    at = doc.insert(at, "x" * 100)
+    steps += [window(f"editor-acceptance-{name}.csv", ["type x"] * 100), doc.text(line), caret(at), undo(1, 0)]
+    at = (line, doc.home(*at))
+    steps += ["key home", caret(at)]
+    head = at
+    for _ in range(2):
+        head = (head[0] + 1, min(at[1], len(doc.line(head[0] + 1)) + 1))
+        steps += ["key shift+down", caret(at, head)]
+    copied = doc.between(at, head)
+    steps += ["key mod+c", "log copied", f"expect copied {rust_debug(copied)}"]
+    target = line + 10
+    before = list(doc.lines)
+    steps += [f"click {doc.gutter(target)}", caret((target, 1))]
+    after = doc.insert((target, 1), copied)
+    pasted = range(target, target + copied.count("\n") + 2)
+    steps += ["key mod+v", "wait 5", [doc.text(n) for n in pasted], caret(after), undo(2, 0)]
+    doc.lines = before
+    steps += ["key mod+z", "wait 5", [doc.text(n) for n in pasted], undo(1, 1)]
+    return steps
+
+
+editor(
+    "acceptance",
+    accept("10k", LARGE_RS_LINES, TEXT_X, [], 5004),
+    "wait 30",
+    "screenshot e2-acceptance-10k.png",
+    accept("100k", STRESS_LINES, TEXT_X_100K, [STRESS, "wait 60"], 50_004),
+    "wait 30",
+    "screenshot e2-acceptance-100k.png",
 )

@@ -1,0 +1,20 @@
+page editor
+wait 120
+click 331.8 330
+log caret
+expect caret 1 primary 1 13:8..13:8 visible true
+click 365.4 330 shift
+log caret
+expect caret 1 primary 1 13:8..13:12 visible true
+drag 306.6 296 348.6 313
+log caret
+expect caret 1 primary 1 11:5..12:10 visible true
+click 323.4 330 double
+log caret
+expect caret 1 primary 1 13:5..13:11 visible true
+click 432.6 313 triple
+log caret
+expect caret 1 primary 1 12:1..13:1 visible true
+wait 30
+screenshot e2-mouse.png
+exit

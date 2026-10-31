@@ -2,6 +2,10 @@
 //! `RUBRIX_NO_VSYNC=1` presents without vsync, for perf runs, and
 //! `0` presents with it. A scripted run defaults to without, and any
 //! other value exits with code 2.
+//! `RUBRIX_SCALE=<factor>` draws the window at that scale factor
+//! instead of the monitor's, at the same size in logical pixels, so
+//! Linux runs a script at a Mac's Retina scale of 2. Any value that
+//! is not a positive number exits with code 2.
 
 mod drive;
 mod pages;
@@ -13,6 +17,7 @@ use bevy::DefaultPlugins;
 use bevy::app::{App, AppExit, Plugin, PluginGroup, Startup, Update};
 use bevy::asset::{AssetId, Assets};
 use bevy::camera::Camera2d;
+use bevy::clipboard::{ClipboardError, ClipboardRead};
 use bevy::color::{Alpha, Color};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
@@ -24,7 +29,7 @@ use bevy::ecs::schedule::common_conditions::{
 };
 use bevy::ecs::system::{Commands, Query, ResMut};
 use bevy::ecs::world::World;
-use bevy::math::{UVec2, Vec2};
+use bevy::math::Vec2;
 use bevy::text::{
     Font, FontSize, FontSource, FontStyle, FontWeight, TextColor,
     TextFont, TextLayoutInfo, TextSpan,
@@ -51,7 +56,9 @@ use bevy_fynix::{
     AnyView, Bevy, Cx, FynixPlugin, ScopedExt, Theme, ViewExt, keyed,
     mount, resource,
 };
-use bevy_rubrix::RubrixPlugin;
+use bevy_rubrix::{
+    CaretBlink, ClipboardProvider, EditClipboard, RubrixPlugin,
+};
 use pages::PAGES;
 
 const DARK: Palette = Palette { dark: true };
@@ -253,10 +260,36 @@ fn toggle_theme(world: &mut World) {
 #[derive(Resource, Default)]
 pub struct Copied(pub Option<String>);
 
-/// Stands in for the system clipboard, which another gallery may
-/// hold.
+/// The gallery's clipboard text, which copy and cut write and the
+/// `paste` step sets. It stands in for the system clipboard, which
+/// another gallery may hold.
 #[derive(Resource, Default)]
 pub struct Paste(pub Option<String>);
+
+/// The editor's clipboard provider, which keeps its text in
+/// [`Paste`].
+struct GalleryClipboard;
+
+impl ClipboardProvider for GalleryClipboard {
+    fn write(
+        &mut self,
+        world: &mut World,
+        text: &str,
+    ) -> Result<(), ClipboardError> {
+        world.resource_mut::<Paste>().0 = Some(text.to_owned());
+        Ok(())
+    }
+
+    fn read(&mut self, world: &mut World) -> ClipboardRead {
+        ClipboardRead::Ready(
+            world
+                .resource::<Paste>()
+                .0
+                .clone()
+                .ok_or(ClipboardError::ContentNotAvailable),
+        )
+    }
+}
 
 #[derive(Resource)]
 pub struct Ready;
@@ -279,13 +312,21 @@ fn main() -> AppExit {
             return AppExit::from_code(2);
         }
     };
+    let scale =
+        match scale(std::env::var_os("RUBRIX_SCALE").as_deref()) {
+            Ok(scale) => scale,
+            Err(error) => {
+                println!("{error}");
+                return AppExit::from_code(2);
+            }
+        };
     let mut app = App::new();
     app.add_plugins((
         DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "rubrix gallery".into(),
                 name: Some("rubrix-gallery".into()),
-                resolution: WindowResolution::new(WIDTH, HEIGHT),
+                resolution: resolution(scale),
                 present_mode,
                 ..Default::default()
             }),
@@ -304,9 +345,39 @@ fn main() -> AppExit {
         ),
     );
     if let Some(drive) = drive {
-        app.add_plugins(drive);
+        app.insert_resource(CaretBlink { period: None })
+            .add_plugins(drive);
     }
     app.run()
+}
+
+/// The window at [`WIDTH`] by [`HEIGHT`] logical pixels, at `scale`
+/// physical pixels each when it is set.
+fn resolution(scale: Option<f32>) -> WindowResolution {
+    let Some(scale) = scale else {
+        return WindowResolution::new(WIDTH, HEIGHT);
+    };
+    let physical =
+        |logical: u32| (logical as f32 * scale).round() as u32;
+    WindowResolution::new(physical(WIDTH), physical(HEIGHT))
+        .with_scale_factor_override(scale)
+}
+
+fn scale(value: Option<&OsStr>) -> Result<Option<f32>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    value
+        .to_str()
+        .and_then(|text| text.parse::<f32>().ok())
+        .filter(|scale| scale.is_finite() && *scale > 0.0)
+        .map(Some)
+        .ok_or_else(|| {
+            format!(
+                "RUBRIX_SCALE must be a positive number, not \
+                 {value:?}"
+            )
+        })
 }
 
 /// A scripted run presents without vsync unless `RUBRIX_NO_VSYNC=0`
@@ -341,6 +412,7 @@ impl Plugin for ShellPlugin {
             .insert_resource(Selected(0))
             .init_resource::<Copied>()
             .init_resource::<Paste>()
+            .insert_resource(EditClipboard::new(GalleryClipboard))
             .add_plugins(pages::plugin)
             .add_systems(
                 Update,
@@ -410,7 +482,7 @@ fn mount_when_sized(world: &mut World) {
         .query_filtered::<&Window, With<PrimaryWindow>>()
         .iter(world)
         .any(|window| {
-            window.physical_size() == UVec2::new(WIDTH, HEIGHT)
+            window.size() == Vec2::new(WIDTH as f32, HEIGHT as f32)
         });
     if !sized
         && world.resource::<Time<Real>>().elapsed() < WINDOW_WAIT
@@ -508,6 +580,8 @@ fn page() -> AnyView<Bevy, Palette> {
 
 #[cfg(test)]
 mod tests {
+    use bevy::math::UVec2;
+
     use super::*;
 
     fn mode(value: &str) -> Option<&OsStr> {
@@ -540,6 +614,49 @@ mod tests {
             present_mode(false, mode("1")),
             Ok(PresentMode::AutoNoVsync)
         );
+    }
+
+    #[test]
+    fn a_scale_sets_the_physical_size_and_keeps_the_logical_one() {
+        assert_eq!(scale(None), Ok(None));
+        let doubled = resolution(scale(mode("2")).unwrap());
+        assert_eq!(doubled.physical_size(), UVec2::new(2560, 1600));
+        assert_eq!(doubled.size(), Vec2::new(1280.0, 800.0));
+        assert_eq!(
+            resolution(None).physical_size(),
+            UVec2::new(1280, 800)
+        );
+        for value in ["0", "-1", "two", "", "NaN"] {
+            let error = scale(mode(value)).expect_err(value);
+            assert!(
+                error.contains(
+                    "RUBRIX_SCALE must be a positive number"
+                ),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_gallery_clipboard_reads_back_what_it_last_wrote() {
+        let mut world = World::new();
+        world.init_resource::<Paste>();
+        let mut clipboard = GalleryClipboard;
+        assert!(matches!(
+            clipboard.read(&mut world),
+            ClipboardRead::Ready(Err(
+                ClipboardError::ContentNotAvailable
+            ))
+        ));
+        clipboard.write(&mut world, "copied").expect("a write");
+        assert_eq!(
+            world.resource::<Paste>().0.as_deref(),
+            Some("copied")
+        );
+        assert!(matches!(
+            clipboard.read(&mut world),
+            ClipboardRead::Ready(Ok(text)) if text == "copied"
+        ));
     }
 
     #[test]

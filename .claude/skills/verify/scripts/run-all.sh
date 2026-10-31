@@ -11,6 +11,10 @@ rich-wrap.drive            skip-darwin  resize asks Hyprland for the size
 virtual-list-resize.drive  skip-darwin  resize asks Hyprland for the size
 '
 
+again='
+editor-mouse.drive  RUBRIX_SCALE=2  the mouse lane again at a Mac Retina scale
+'
+
 replay_files='
 graphemes.keys  crates/rubrix_edit/tests/replay/graphemes.txt
 '
@@ -65,6 +69,15 @@ for script in "$repo"/crates/bevy_rubrix/examples/gallery/drive/*.drive; do
   "$here/launch.sh" "$script" "$out/${name%.drive}" > "$out/$name.txt" 2>&1 || rc=$?
   judge "$name" "$rc" "$want" "$(checks "$out/$name.txt")"
 done
+
+while read -r name var reason; do
+  [ -n "$name" ] || continue
+  script="$repo/crates/bevy_rubrix/examples/gallery/drive/$name"
+  label="$name@$var"
+  rc=0
+  env "$var" "$here/launch.sh" "$script" "$out/${name%.drive}@$var" > "$out/$label.txt" 2>&1 || rc=$?
+  judge "$label" "$rc" 0 "$(checks "$out/$label.txt")"
+done <<< "$again"
 
 replays="$repo/crates/rubrix_edit/tests/replay"
 if [ -d "$replays" ]; then
