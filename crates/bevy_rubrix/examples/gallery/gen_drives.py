@@ -1736,13 +1736,13 @@ def find_all(text, query, case=False, word=False, regex=False):
     return found
 
 
-def place(text, offset):
+def find_place(text, offset):
     line = text.count("\n", 0, offset) + 1
     return (line, offset - (text.rfind("\n", 0, offset) + 1) + 1)
 
 
 def selected(text, span):
-    return caret(place(text, span[0]), place(text, span[1]))
+    return caret(find_place(text, span[0]), find_place(text, span[1]))
 
 
 def find_log(query, index, count, capped=False, marked=None):
@@ -1758,7 +1758,7 @@ def marked(text, found, first_visible):
     lines = range(first_visible - SPAWNED_ABOVE + 1, first_visible + SPAWNED_BELOW + 2)
     hit = set()
     for s, e in found:
-        a, b = place(text, s)[0], place(text, max(s, e - 1))[0]
+        a, b = find_place(text, s)[0], find_place(text, max(s, e - 1))[0]
         hit.update(n for n in range(a, b + 1) if n in lines)
     return len(hit)
 
@@ -1791,29 +1791,31 @@ find_script("open", steps)
 
 doc = Doc(LARGE_RS_LINES)
 first = THEMES[0]
-line, column = place(LARGE_RS_TEXT, first[0])
+line, column = find_place(LARGE_RS_TEXT, first[0])
 steps = [f"click {doc.at(line, column + 2)}", "key mod+f", "wait 10", GREP_THEME, find_log("theme", 1, len(THEMES))]
 for key, index in [("enter", 2), ("mod+g", 3), ("shift+enter", 2), ("mod+shift+g", 1)]:
     steps += [f"key {key}", "wait 10", find_log("theme", index, len(THEMES)), selected(LARGE_RS_TEXT, THEMES[index - 1])]
 find_script("next", steps, "wait 30", "screenshot e5-next.png")
 
-steps = [f"click {Doc(LARGE_RS_LINES).at(1, 1)}", "key mod+f", "wait 5", "type Theme", "wait 10"]
+OPTIONS_QUERY = "tab."
+steps = [f"click {Doc(LARGE_RS_LINES).at(1, 1)}", "key mod+f", "wait 5", f"type {OPTIONS_QUERY}", "wait 10"]
 options = [
-    ("", {}, "grep -oi Theme"),
-    (MATCH_CASE, {"case": True}, "grep -o Theme"),
-    (WHOLE_WORD, {"case": True, "word": True}, "grep -ow Theme"),
-    (REGEX, {"case": True, "word": True, "regex": True}, "grep -owE Theme"),
+    ("", {}, "grep -oiF"),
+    (MATCH_CASE, {"case": True}, "grep -oF"),
+    (WHOLE_WORD, {"case": True, "word": True}, "grep -owF"),
+    (REGEX, {"case": True, "word": True, "regex": True}, "grep -owE"),
 ]
-for click, flags, grep in options:
-    count = len(find_all(LARGE_RS_TEXT, "Theme", **flags))
-    steps += [click or [], "wait 10", f"# {grep} large.rs.txt | wc -l -> {count}", "log find"]
-    steps += ['expect find open query "Theme"', f"expect find of {count} marked"]
+counts = [len(find_all(LARGE_RS_TEXT, OPTIONS_QUERY, **flags)) for _, flags, _ in options]
+assert len(set(counts)) == len(counts), "each toggle changes the count"
+for (click, _, grep), count in zip(options, counts):
+    steps += [click or [], "wait 10", f"# {grep} '{OPTIONS_QUERY}' large.rs.txt | wc -l -> {count}", "log find"]
+    steps += [f"expect find open query {rust_debug(OPTIONS_QUERY)}", f"expect find of {count} marked"]
 find_script("options", steps, "wait 30", "screenshot e5-options.png")
 
 MULTILINE = r"\{\n\s+let"
 LETS = find_all(LARGE_RS_TEXT, MULTILINE, regex=True)
 first = LETS[0]
-assert place(LARGE_RS_TEXT, first[1])[0] > place(LARGE_RS_TEXT, first[0])[0]
+assert find_place(LARGE_RS_TEXT, first[1])[0] > find_place(LARGE_RS_TEXT, first[0])[0]
 steps = [f"click {Doc(LARGE_RS_LINES).at(1, 1)}", "key mod+f", "wait 5", REGEX, "wait 5", f"type {MULTILINE}", "wait 20"]
 steps += [f"# grep -Pzo '{MULTILINE}' large.rs.txt | grep -c let -> {len(LETS)}"]
 steps += [find_log(MULTILINE, 1, len(LETS)), selected(LARGE_RS_TEXT, first)]
@@ -1827,10 +1829,14 @@ far = (near * ROW + SCROLLED) // ROW
 steps = [doc.scroll_to(MARKS_TOP), f"click {doc.at(MARKS_TOP + 1, 1)}", "key mod+f", "wait 5", "type self", "wait 10"]
 steps += [f"# grep -oi self large.rs.txt | wc -l -> {len(SELFS)}"]
 current = index_at(SELFS, sum(len(l) + 1 for l in LARGE_RS_LINES[:MARKS_TOP]))
-assert place(LARGE_RS_TEXT, SELFS[current][0])[0] < MARKS_TOP + 38
+assert find_place(LARGE_RS_TEXT, SELFS[current][0])[0] < MARKS_TOP + 38
+SPAWNED_ROWS = SPAWNED_ABOVE + SPAWNED_BELOW + 1
 for dy, first_visible in [(-SCROLLED, far), (SCROLLED, near)]:
-    steps += [CENTER, f"scroll 0 {dy}", "wait 20", "log rows", f"expect rows first_visible {first_visible} spawned"]
-    steps += [find_log("self", current + 1, len(SELFS), marked=marked(LARGE_RS_TEXT, SELFS, first_visible))]
+    window = f"{first_visible - SPAWNED_ABOVE}..={first_visible + SPAWNED_BELOW} rows {SPAWNED_ROWS} total"
+    rows_marked = marked(LARGE_RS_TEXT, SELFS, first_visible)
+    assert 0 < rows_marked <= SPAWNED_ROWS
+    steps += [CENTER, f"scroll 0 {dy}", "wait 20", "log rows", f"expect rows first_visible {first_visible} spawned {window}"]
+    steps += [find_log("self", current + 1, len(SELFS), marked=rows_marked), f"expect find marked {rows_marked} final"]
 find_script("marks", steps, "wait 30", "screenshot e5-marks.png")
 
 doc, current, steps = opened_on_theme(284, 24)
@@ -1857,9 +1863,9 @@ start = 290
 offset = sum(len(l) + 1 for l in LARGE_RS_LINES[: start - 1])
 SWAP, FNS = r"(\w+)_(\w+)", "fn"
 text, s, after = regex_replace(LARGE_RS_TEXT, SWAP, "$2_$1", offset)
-swapped = place(text, s)[0]
+swapped = find_place(text, s)[0]
 text, s2, _ = regex_replace(text, FNS, "$&$&", after)
-doubled = place(text, s2)[0]
+doubled = find_place(text, s2)[0]
 lines = text.split("\n")
 steps = [doc.scroll_to(start), f"click {doc.at(start, 1)}", "key mod+alt+f", "wait 5", REGEX, "wait 5"]
 steps += [FIND_FIELD, "key mod+a", f"type {SWAP}", "wait 10", REPLACE_FIELD, "type $2_$1", "key enter", "wait 10"]
@@ -1879,7 +1885,7 @@ find_script("100k", steps, "wait 30", "screenshot e5-100k.png")
 
 ES = find_all(STRESS_TEXT, "e")
 assert len(ES) == MAX_MATCHES
-line, column = place(STRESS_TEXT, ES[0][0])
+line, column = find_place(STRESS_TEXT, ES[0][0])
 typed = STRESS_LINES[line - 1][: column - 1] + "x" + STRESS_LINES[line - 1][column:]
 steps = [STRESS, "wait 60", f"click {TEXT_X_100K + CLICK_INSET} {LINE_1}", "key mod+f", "wait 5", "type e", "wait 60"]
 steps += [find_log("e", 1, MAX_MATCHES, capped=True), f'expect find label "1 of {MAX_MATCHES}+"']

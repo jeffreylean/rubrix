@@ -139,7 +139,8 @@ impl FindBar {
         &self.label
     }
 
-    fn matches(&self) -> &[Range<usize>] {
+    /// The matches found so far, in buffer order.
+    pub fn matches(&self) -> &[Range<usize>] {
         self.search.as_ref().map_or(&[], Search::matches)
     }
 

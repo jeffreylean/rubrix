@@ -19,7 +19,7 @@ use bevy_rubrix::{
     RubrixPlugin, code_editor,
 };
 use rubrix_edit::Buffer;
-use rubrix_edit::find::{Query, Search};
+use rubrix_edit::find::Search;
 use support::diff::Plain;
 use support::{chord, edit_line, editor, lay_out, list};
 
@@ -75,18 +75,20 @@ fn text_of(app: &App, doc: Entity) -> String {
     doc.editor().buffer().to_string()
 }
 
-fn searched(app: &mut App) -> u32 {
-    let mut frames = 0;
+/// Runs frames until the count is final, and returns the count each
+/// frame showed before that.
+fn searched(app: &mut App) -> Vec<usize> {
+    let mut counts = Vec::new();
     while bar(app).settled().is_none() {
+        counts.push(bar(app).count());
         app.update();
-        frames += 1;
-        assert!(frames < 10_000, "the search ends");
+        assert!(counts.len() < 10_000, "the search ends");
     }
     settle(app);
-    frames
+    counts
 }
 
-fn open(app: &mut App) -> u32 {
+fn open(app: &mut App) -> Vec<usize> {
     chord(app, &[KeyCode::ControlLeft], KeyCode::KeyF, "f");
     searched(app)
 }
@@ -165,15 +167,31 @@ fn replace_all_is_one_undo_step() {
 }
 
 #[test]
-fn a_search_of_100k_lines_spans_frames_and_counts_as_one_pass() {
-    let text = "let theme = self.theme();\n".repeat(100_000);
+fn a_sliced_100k_line_search_finds_what_one_pass_finds() {
+    let text =
+        "let theme = self.theme();\nfn other() {}\n".repeat(50_000);
     let (mut app, _, _) = editing(&text);
-    let frames = open(&mut app);
-    let mut one = Search::new(&Query {
-        text: "theme".into(),
-        ..Query::default()
-    });
+    let counts = open(&mut app);
+    let query = bar(&mut app).query().clone();
+    assert_eq!(
+        query.text, "let",
+        "the bar seeds the word at the caret"
+    );
+    let mut one = Search::new(&query);
     one.run(&Buffer::new(&text));
-    assert!(frames > 2, "the search took {frames} frames");
-    assert_eq!(bar(&mut app).count(), one.matches().len());
+    let all = one.matches();
+    assert_eq!(all.len(), 50_000);
+    assert!(!bar(&mut app).is_capped());
+    assert!(
+        counts.iter().any(|&count| 0 < count && count < all.len()),
+        "a slice ended between two matches: {counts:?}"
+    );
+    let found = bar(&mut app).matches();
+    let first_difference =
+        found.iter().zip(all).position(|(found, one)| found != one);
+    assert_eq!(
+        (found.len(), first_difference),
+        (all.len(), None),
+        "the sliced search finds the matches one pass finds"
+    );
 }

@@ -3,31 +3,31 @@ wait 120
 click 273.0 126
 key mod+f
 wait 5
-type Theme
+type tab.
 wait 10
 wait 10
-# grep -oi Theme large.rs.txt | wc -l -> 132
+# grep -oiF 'tab.' large.rs.txt | wc -l -> 39
 log find
-expect find open query "Theme"
-expect find of 132 marked
+expect find open query "tab."
+expect find of 39 marked
 click 873 151
 wait 10
-# grep -o Theme large.rs.txt | wc -l -> 21
+# grep -oF 'tab.' large.rs.txt | wc -l -> 38
 log find
-expect find open query "Theme"
-expect find of 21 marked
+expect find open query "tab."
+expect find of 38 marked
 click 902 151
 wait 10
-# grep -ow Theme large.rs.txt | wc -l -> 21
+# grep -owF 'tab.' large.rs.txt | wc -l -> 8
 log find
-expect find open query "Theme"
-expect find of 21 marked
+expect find open query "tab."
+expect find of 8 marked
 click 930 151
 wait 10
-# grep -owE Theme large.rs.txt | wc -l -> 21
+# grep -owE 'tab.' large.rs.txt | wc -l -> 135
 log find
-expect find open query "Theme"
-expect find of 21 marked
+expect find open query "tab."
+expect find of 135 marked
 wait 30
 screenshot e5-options.png
 exit

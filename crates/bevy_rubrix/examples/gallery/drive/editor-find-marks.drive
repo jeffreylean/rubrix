@@ -13,16 +13,18 @@ move 740 400
 scroll 0 -4000
 wait 20
 log rows
-expect rows first_visible 4177 spawned
+expect rows first_visible 4177 spawned 4153..=4239 rows 87 total
 log find
 expect find open query "self" 50 of 452 marked 25
+expect find marked 25 final
 move 740 400
 scroll 0 4000
 wait 20
 log rows
-expect rows first_visible 3942 spawned
+expect rows first_visible 3942 spawned 3918..=4004 rows 87 total
 log find
 expect find open query "self" 50 of 452 marked 4
+expect find marked 4 final
 wait 30
 screenshot e5-marks.png
 exit
