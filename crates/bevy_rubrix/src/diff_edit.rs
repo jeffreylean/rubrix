@@ -129,11 +129,12 @@ pub struct DiffEditStatus {
 pub(crate) fn fires(
     world: &World,
     doc: &DiffDoc,
-    index: usize,
+    index: impl FnOnce() -> usize,
     stamp: &mut Option<Stamp>,
 ) -> bool {
     let session = &doc.edit;
     let Some(read) = *stamp else {
+        let index = index();
         *stamp = Some(Stamp {
             reshapes: doc.reshapes,
             reads: session.reads,
@@ -145,6 +146,7 @@ pub(crate) fn fires(
     if read.reshapes == doc.reshapes && read.reads == session.reads {
         return false;
     }
+    let index = index();
     let found = row_doc(world, doc, index);
     *stamp = Some(Stamp {
         reshapes: doc.reshapes,

@@ -358,3 +358,28 @@ fn a_new_source_gives_the_read_only_selection_its_keys_back() {
     chord(&mut app, &[KeyCode::ControlLeft], KeyCode::KeyA, "a");
     assert!(copy(&mut app).contains("let keep = 1;"));
 }
+
+#[test]
+fn a_patch_source_stays_read_only() {
+    let patch = "\
+diff --git a/a.rs b/a.rs
+--- a/a.rs
++++ b/a.rs
+@@ -1,3 +1,3 @@
+ fn a() {}
+-let x = 1;
++let x = 2;
+ let tail = 2;
+";
+    let source = DiffSource::patch(patch).expect("the patch parses");
+    let mut app = editing(source, Layout::Stacked);
+    let addition = row_where(&mut app, 0, |row| {
+        matches!(row, Row::Addition { .. })
+    });
+    let before = new_text(&mut app, 0);
+    click_stacked(&mut app, addition, 0);
+    type_text(&mut app, "zz");
+    settle(&mut app);
+    assert_eq!(new_text(&mut app, 0), before);
+    assert!(status(&mut app).is_none());
+}

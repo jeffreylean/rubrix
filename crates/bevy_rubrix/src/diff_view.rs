@@ -1098,7 +1098,7 @@ fn row_signal<V: Default + 'static>(
     .when(move |world| {
         let moved = moved.changed(world);
         let touched = world.get::<DiffDoc>(root).is_some_and(|doc| {
-            diff_edit::fires(world, doc, at.get(world), &mut stamp)
+            diff_edit::fires(world, doc, || at.get(world), &mut stamp)
         });
         moved | touched
     })
