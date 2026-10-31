@@ -306,18 +306,22 @@ fn text_of(world: &World, node: Entity) -> String {
     text
 }
 
-/// The line number beside the row text `node`: the text in the first
-/// child of the nearest ancestor whose first child does not hold
-/// `node`.
+/// The line number beside the row text `node`: the first text under
+/// a sibling of `node` or of its nearest ancestors, which is the
+/// gutter's. A selection layer beside the text holds no text.
 fn gutter_of(world: &World, node: Entity) -> Option<Entity> {
     let mut inner = node;
     for _ in 0..4 {
         let outer = world.get::<ChildOf>(inner)?.parent();
-        let first = *world.get::<Children>(outer)?.first()?;
-        if first != inner {
-            return descendants_in_order(world, first)
-                .into_iter()
-                .find(|&node| world.get::<Text>(node).is_some());
+        let number = world
+            .get::<Children>(outer)?
+            .iter()
+            .copied()
+            .filter(|&kid| kid != inner)
+            .flat_map(|kid| descendants_in_order(world, kid))
+            .find(|&node| world.get::<Text>(node).is_some());
+        if number.is_some() {
+            return number;
         }
         inner = outer;
     }
