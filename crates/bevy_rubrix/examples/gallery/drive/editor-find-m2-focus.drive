@@ -9,7 +9,7 @@ key escape
 wait 5
 log find
 expect find closed
-click 373.8 500
+click 382.2 500
 key mod+f
 wait 10
 key alt+enter
@@ -18,7 +18,7 @@ key escape
 wait 5
 log find
 expect find closed
-click 373.8 500
+click 390.6 500
 key mod+f
 wait 10
 key mod+shift+enter
@@ -27,7 +27,7 @@ key escape
 wait 5
 log find
 expect find closed
-click 373.8 500
+click 399.0 500
 key mod+f
 wait 10
 key shift+alt+enter
@@ -45,7 +45,7 @@ key escape
 wait 5
 log find
 expect find closed
-click 373.8 500
+click 382.2 500
 key mod+alt+f
 wait 10
 key mod+enter
@@ -54,7 +54,7 @@ key escape
 wait 5
 log find
 expect find closed
-click 373.8 500
+click 390.6 500
 key mod+alt+f
 wait 10
 key shift+escape

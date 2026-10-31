@@ -2336,10 +2336,12 @@ collab("100k", steps, "log typing", "log rows", "wait 30", "screenshot e6-100k.p
 doc = Doc(LARGE_RS_LINES)
 TONE = (23, 13)
 steps = []
-for opener, field_keys in [("mod+f", ["mod+enter", "alt+enter", "mod+shift+enter", "shift+alt+enter", "shift+escape"]), ("mod+alt+f", ["mod+enter", "shift+escape"])]:
-    for key in field_keys:
-        steps += [f"click {doc.at(*TONE)}", f"key {opener}", "wait 10", f"key {key}", "wait 5", "key escape", "wait 5"]
-        steps += ["log find", "expect find closed"]
+presses = [("mod+f", key) for key in ["mod+enter", "alt+enter", "mod+shift+enter", "shift+alt+enter", "shift+escape"]]
+presses += [("mod+alt+f", key) for key in ["mod+enter", "shift+escape"]]
+for i, (opener, key) in enumerate(presses):
+    # Each click lands one column on from the last, so no two make a double click.
+    steps += [f"click {doc.at(TONE[0], TONE[1] + i % 4)}", f"key {opener}", "wait 10", f"key {key}", "wait 5", "key escape", "wait 5"]
+    steps += ["log find", "expect find closed"]
 doc.lines[TONE[0] - 1] = doc.line(TONE[0]).replace("Tone", "q", 1)
 steps += ["type q", "wait 5", doc.text(TONE[0])]
 find_script("m2-focus", steps, "wait 30", "screenshot m2fa-focus.png")
