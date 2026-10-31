@@ -98,3 +98,32 @@ Run `editor-10k.drive`, `editor-100k.drive`, `code-large.drive` and `code-100k.d
 - Typing at the end of a long line scrolls the view sideways to keep the caret in view. A gutter click then lands on the text under the gutter, not at column 1, so the join scripts press Home after each Backspace to bring the view back to column 1.
 - A file button or `open` starts a new doc and drops the old one, so its edits and undo history go.
 - The theme toggle builds the view again around the same doc, so the text, the carets and the undo history stay.
+
+## Input method (E3)
+
+While the editor holds the focus, the window takes IME input. A composition shows as underlined text at the primary caret, with the input method's caret inside it, and the buffer and the undo history do not change. A commit goes in at every caret as one undo step. While a composition shows, the editor's keys do nothing, so no key types beside it.
+
+The `ime` steps write the messages winit sends, so the scripts need no input method. `ime enable` and `ime disable` write `Ime::Enabled` and `Ime::Disabled`. `ime preedit <text> <start> <end>` writes a preedit with its cursor in bytes of `<text>`, and `ime preedit` alone writes the empty preedit that ends a composition. `ime commit <text>` writes a commit. On Wayland, winit sends an empty preedit, then the commit, then the next preedit, so the scripts commit in that order.
+
+The page answers G2's `ime` topic. `log ime` prints `ime enabled <bool> position <x> <y> last <message> page <answer>`. `enabled` and `position` are the window's `ime_enabled` and `ime_position`, where the input method puts its candidate box. The page's answer is `preedit "<text>" cursor <a>..<b> caret <x> <y>`, with `cursor none` while the input method hides its cursor, or `preedit none caret <x> <y>`. `caret` is the bottom-left of the primary caret, in logical px, or `none` while its row is not built or is clipped. `position` and `caret` print the same digits when the window follows the caret.
+
+`gen_drives.py` writes the `editor-ime-*.drive` scripts from its E3 block. Line 120 is `        .run();`, and the scripts compose at its column 5. `你好` is two chars and six bytes.
+
+- **Regression (lane 1).** Run `editor-acceptance.drive` at trunk and at head, and `editor-ime-commit.drive` at head. Save the head acceptance shot as `e3-regress.png`. Pass when trunk and head print the same `drive: <n> of <n> checks pass` line and `editor-ime-commit.drive` passes.
+- **Preedit (lane 2).** Run `editor-ime-preedit.drive`. It clicks line 120 at column 5, writes `ime enable`, and writes `ime preedit 你好 6 6`. `log ime` prints `enabled true` and `page preedit "你好" cursor 6..6`, `log text 120` is unchanged, and `log undo` prints `undo 0 redo 0`. `e3-preedit.png` shows `你好` underlined at the caret, with the caret after it.
+- **Commit (lane 3).** Run `editor-ime-commit.drive`. After the preedit it writes an empty preedit, `ime commit 你好`, and an empty preedit. `log text 120` prints `"    你好    .run();"`, the caret is at `120:7`, `log ime` prints `page preedit none`, and the undo depth is 1. `e3-commit.png` shows `你好` with no underline.
+- **Undo (lane 4).** Run `editor-ime-undo.drive`. After the commit, one `mod+z` restores line 120 and the caret at `120:5`, and `mod+shift+z` puts `你好` back with the caret at `120:7`. Save `e3-undo.png`.
+- **Cancel (lane 5).** Run `editor-ime-cancel.drive`. A preedit then an empty preedit, and a preedit then `ime disable`, each leave line 120 unchanged and `log ime` at `page preedit none`. Save `e3-cancel.png`.
+- **Keys (lane 6).** Run `editor-ime-keys.drive`. During a preedit, `type x` and `key backspace` leave line 120 and the undo depth unchanged. After the commit, `type y` makes line 120 `"    你好y    .run();"`. Save `e3-keys.png`.
+- **Position (lane 7).** Run `editor-ime-position.drive`. With line 100 at the top, it clicks line 120 at column 5, presses Down 10 times, and scrolls the view 200 px. After each step `log ime` prints the same `position <x> <y>` and `caret <x> <y>`, which the script computes from the caret's line and column. Save `e3-position.png`.
+- **Focus (lane 8).** Run `editor-ime-focus.drive`. `log ime` prints `enabled true` after a click in the editor, `enabled false` on the `code` page, and `enabled true` after the click back on the `editor` page. Save `e3-focus.png`.
+- **100,000 lines (lane 9).** Run `editor-ime-100k.drive`. It opens the 100,000-line input at line 50,000, grows a 20-char preedit one char a frame five times inside `frames start` and `frames stop editor-ime-100k.csv`, and commits it. `log text 50000` holds the commit once. Save `e3-100k.png`.
+- **Live Pinyin (lane 10).** A hand check at milestone 1, until a session can give the gallery the keyboard focus. Run `fcitx5-remote -s pinyin`, then `launch.sh --ime-live drive/editor-ime-live.drive <out>`, then `fcitx5-remote -s keyboard-us`. The script clicks line 120 at column 5, runs `wtype nihao`, and runs `wtype 1`, which picks Pinyin's first candidate. `log ime` shows a preedit before the commit, and `log text 120` holds `你好` once. Save `e3-live-pinyin.png`. `run-all.sh` skips the script.
+
+Perf: run `editor-ime-100k.drive` at head and `editor-100k.drive` at trunk and at head, with `RUBRIX_NO_VSYNC=1` in `--release`, interleaved, five runs each, alone, with the load under 4. Read `editor-ime-100k.csv` and `editor-100k-type.csv` with `frame-stats.sh`. The preedit frame p95 bar is 3.0 ms, and the typing p95 at head may be at most 10% above trunk.
+
+Gotchas:
+
+- Bevy's `TextInputPlugin` turns the window's IME off in `PreUpdate` of every frame in which no `EditableText` has the focus. The editor turns it on again in `PostUpdate`, so a system between them reads `false`. The driver reads the window in `First`, the value winit saw.
+- Bevy draws a span's underline 0.7 px thick at scale 1 and fills only the pixels whose centres it covers, so the CJK run of a preedit shows none. The editor draws its own bar under the preedit, at least one device pixel thick.
+- `wtype` cannot send a lone space, because the driver trims its text. Lane 10 commits with `1`, Pinyin's first candidate, instead of a space.
