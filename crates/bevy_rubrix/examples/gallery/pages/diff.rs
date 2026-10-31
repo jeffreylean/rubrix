@@ -4,11 +4,12 @@ use bevy::app::App;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::world::World;
 use bevy::ui::{percent, px};
+use bevy::ui_widgets::Button;
 use bevy_fynix::tokens::Tone;
 use bevy_fynix::views::{
-    BehaviorExt, FrameProps, button, column, label, row, tint,
+    BehaviorExt, FrameProps, column, label, row,
 };
-use bevy_fynix::{ScopedExt, ViewExt, resource};
+use bevy_fynix::{ViewExt, resource};
 use bevy_rubrix::{DiffSource, Layout, Overflow, diff_view};
 
 use super::code::read_file;
@@ -209,11 +210,15 @@ fn controls() -> PageView {
     wrapping(buttons.boxed())
 }
 
+/// A label with Bevy's button behaviour, not a fynix `button`. Two
+/// more fynix buttons here added about 0.09 ms to the read-only
+/// `diff-stress.drive` scroll p95. This costs what a plain label
+/// does.
 fn source_link(
     text: &'static str,
     press: impl Fn(&mut World) + Send + Sync + 'static,
 ) -> PageView {
-    button(label(text)).rules(tint).on_activate(press).boxed()
+    label(text).on_activate(press).tagged(Button).boxed()
 }
 
 fn show(world: &mut World, name: &str, source: DiffSource) {
