@@ -234,9 +234,6 @@ pub(crate) struct Scene<'w, 's> {
     keymap: Res<'w, Keymap>,
 }
 
-/// What a transaction edits through: an editable view's rows here, a
-/// diff's new side in E7. Key dispatch, gestures, pastes, requests
-/// and catch-up reach a target only through these.
 pub(crate) trait EditTarget {
     /// Runs `run` with the target's row geometry this frame, or with
     /// a monospace layout without a target.

@@ -540,7 +540,6 @@ pub(crate) struct Pressed {
     pub(crate) pointer: PointerId,
 }
 
-/// A press being dragged.
 #[derive(Clone)]
 pub(crate) struct Drag {
     pub(crate) pointer: PointerId,

@@ -414,7 +414,6 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         self.caret_in(line, &shown, at)
     }
 
-    /// Visual lines in `line`'s row.
     fn visual_lines(&self, buffer: &Buffer, line: u32) -> u32 {
         match self.laid(line) {
             Some(laid) => laid.layout.len().max(1) as u32,

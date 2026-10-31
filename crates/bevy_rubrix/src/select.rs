@@ -352,7 +352,6 @@ pub(crate) fn over(
     })
 }
 
-/// Whether `at` is on the scrollbars of the list on `node`.
 pub(crate) fn on_scrollbars(
     node: &ComputedNode,
     transform: &UiGlobalTransform,

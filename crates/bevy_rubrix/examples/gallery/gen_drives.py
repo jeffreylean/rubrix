@@ -1201,17 +1201,9 @@ write(
 )
 
 
-# The editor page lays out as the code page does, so its rows sit
-# where the code page's do: LINE_1, TEXT_X and GUTTER_X carry over.
 ADVANCE = 8.4
-# A click this far right of a column's left edge lands before that
-# column at scale 1 and at scale 2.
 CLICK_INSET = 2
-# A 100,001-row doc has a six-digit gutter, one advance wider.
 TEXT_X_100K = TEXT_X + ADVANCE
-# Measured live at 1280 by 800: a Page Down moves the 38 rows that
-# show whole, a visual line under wrap on holds 113 chars, and a
-# triple click takes the line break.
 PAGE_ROWS = 38
 WRAP_COLUMNS = 113
 TRIPLE_TAKES_BREAK = True
