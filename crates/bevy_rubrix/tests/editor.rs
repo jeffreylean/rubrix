@@ -14,11 +14,13 @@ use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Query, ResMut};
 use bevy::ecs::world::World;
 use bevy::input::keyboard::{Key, KeyCode};
-use bevy::input_focus::{FocusCause, InputFocus};
+use bevy::input_focus::pointer_focus::PointerFocusPlugin;
+use bevy::input_focus::{FocusCause, InputFocus, InputFocusPlugin};
 use bevy::math::Vec2;
 use bevy::ui::{
     ComputedNode, ScrollPosition, UiGlobalTransform, ZIndex, px,
 };
+use bevy::window::{PrimaryWindow, Window};
 use bevy_fynix::views::parley::{Affinity, Cursor};
 use bevy_fynix::views::{
     FrameProps, VirtualList, column, rich_layout,
@@ -641,6 +643,30 @@ fn shift_click_extends_and_clicks_select_words_and_lines() {
     hold_key(&mut app, KeyCode::ShiftLeft, false);
     let extended = doc(&app, entity).editor().selections().primary();
     assert_eq!((extended.anchor, extended.head), (start, start + 4));
+}
+
+#[test]
+fn a_press_keeps_the_focus_under_bevy_pointer_focus() {
+    let mut app = laid_out();
+    app.add_plugins((InputFocusPlugin, PointerFocusPlugin));
+    app.world_mut().spawn((Window::default(), PrimaryWindow));
+    let (view, entity) =
+        mount_editor(&mut app, Lang::Plain, "abc\n", 600.0, 300.0);
+    settle(&mut app);
+    let row = edit_line(&mut app, view, 0);
+    let at = point_at(&app, row, 3);
+    press_on(&mut app, row, at, 1);
+    assert_eq!(
+        app.world().resource::<InputFocus>().get(),
+        Some(view),
+        "the window's AcquireFocus does not clear the press's focus"
+    );
+    type_text(&mut app, "d");
+    assert_eq!(
+        text(&app, entity),
+        "abcd\n",
+        "so keys reach the view"
+    );
 }
 
 #[test]
