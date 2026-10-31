@@ -1,0 +1,25 @@
+page collab
+wait 120
+click 586 68
+wait 5
+log annotations
+expect annotations annotations 1: 200 review
+move 740 400
+scroll 0 -2363
+wait 10
+click 1250 296
+key enter
+wait 5
+log annotations
+expect annotations annotations 1: 201 review
+key mod+z
+wait 5
+log annotations
+expect annotations annotations 1: 200 review
+move 740 400
+scroll 0 100000000
+scroll 100000000 0
+scroll 0 -3128
+wait 10
+screenshot e6-annotations.png
+exit

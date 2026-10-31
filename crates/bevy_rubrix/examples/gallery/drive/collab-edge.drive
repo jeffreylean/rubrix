@@ -1,0 +1,23 @@
+page collab
+wait 120
+remote Ada 9000:1
+wait 5
+log remote
+expect remote Ada edge bottom at 9000:1
+screenshot e6-edge-bottom.png
+move 740 400
+scroll 0 -152813
+wait 10
+wait 5
+log remote
+expect remote Ada 9000:1 shown
+move 740 400
+scroll 0 100000000
+scroll 100000000 0
+scroll 0 -153323
+wait 10
+wait 5
+log remote
+expect remote Ada edge top at 9000:1
+screenshot e6-edge.png
+exit

@@ -52,3 +52,9 @@ pub use brackets::{
 pub use comment::{Markers, markers};
 pub use lines::TAB;
 pub use occurrence::{column, toggle_caret};
+
+mod ranges;
+mod state;
+
+pub use ranges::{LineAnchors, Ranges};
+pub use state::EditState;

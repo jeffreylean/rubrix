@@ -1,0 +1,19 @@
+page collab
+wait 120
+move 740 400
+scroll 0 -2023
+wait 10
+click 438 68
+wait 5
+log markers
+expect markers markers 3: error 130:9..130:32, warning 131:5..131:8, info 132:9..132:27
+click 273.0 296
+type ab
+click 306.6 313
+key shift+end
+key backspace
+wait 5
+log markers
+expect markers markers 2: error 130:11..130:34, info 132:9..132:27
+screenshot e6-markers.png
+exit

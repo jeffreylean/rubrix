@@ -181,6 +181,11 @@ pub enum Step {
         text: String,
     },
     Exit,
+    Remote {
+        name: String,
+        anchor: (u32, usize),
+        head: Option<(u32, usize)>,
+    },
 }
 
 impl Step {
@@ -211,6 +216,7 @@ impl Step {
             Self::Clipboard => "clipboard",
             Self::Expect { .. } => "expect",
             Self::Exit => "exit",
+            Self::Remote { .. } => "remote",
         }
     }
 }
@@ -395,6 +401,26 @@ fn parse_line(text: &str, os: Os) -> Result<Option<Step>, String> {
         "exit" => {
             exact::<0>(&words, "exit")?;
             Step::Exit
+        }
+        "remote" => {
+            const USAGE: &str =
+                "remote <name> <line>:<col> [<line>:<col>]";
+            let (name, anchor, head) = match words[..] {
+                [name, anchor] => (name, anchor, None),
+                [name, anchor, head] => (name, anchor, Some(head)),
+                _ => return Err(format!("usage: {USAGE}")),
+            };
+            let place = |at: &str| -> Result<(u32, usize), String> {
+                let (line, column) = at
+                    .split_once(':')
+                    .ok_or(format!("usage: {USAGE}"))?;
+                Ok((number(line)?, number(column)?))
+            };
+            Step::Remote {
+                name: name.into(),
+                anchor: place(anchor)?,
+                head: head.map(place).transpose()?,
+            }
         }
         other => return Err(format!("unknown step `{other}`")),
     };
@@ -1180,6 +1206,17 @@ impl Drive {
                 self.recording = None;
                 self.busy = Busy::Exit;
             }
+            Step::Remote {
+                name: who,
+                anchor,
+                head,
+            } => {
+                match pages::collab::remote(world, &who, anchor, head)
+                {
+                    Ok(()) => self.done(name),
+                    Err(error) => self.fail(world, number, &error),
+                }
+            }
         }
     }
 
@@ -1560,6 +1597,10 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
         }
         "seams" => pages::editor::seams(world),
         "typing" => pages::editor::typing(world),
+        "remote" => pages::collab::remote_line(world),
+        "changed" => pages::collab::changed_line(world),
+        "markers" => pages::collab::markers_line(world),
+        "annotations" => pages::collab::annotations_line(world),
         _ => {
             if let Some(line) = topic.strip_prefix("row ") {
                 return Some(pages::editor::row_line(

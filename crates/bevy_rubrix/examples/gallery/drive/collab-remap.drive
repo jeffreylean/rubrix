@@ -1,0 +1,36 @@
+page collab
+wait 120
+move 740 400
+scroll 0 -1598
+wait 10
+remote Ada 120:5
+wait 5
+log remote
+expect remote Ada 120:5 shown
+click 273.0 551
+type xy
+wait 5
+log remote
+expect remote Ada 120:7 shown
+click 323.4 551
+type z
+wait 5
+log remote
+expect remote Ada 120:8 shown
+click 273.0 211
+key enter
+wait 5
+log remote
+expect remote Ada 121:8 shown
+log undo
+expect undo 3 redo 0
+key mod+z
+key mod+z
+key mod+z
+wait 5
+log remote
+expect remote Ada 120:5 shown
+log undo
+expect undo 0 redo 3
+screenshot e6-remap.png
+exit
