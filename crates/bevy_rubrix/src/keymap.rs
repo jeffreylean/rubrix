@@ -357,6 +357,9 @@ pub struct Stroke<'a> {
     pub base: &'a Selections,
     pub from: Hit,
     pub to: Hit,
+    /// The pointer's x in [`Hit::x`]'s units, unsnapped, so past the
+    /// end of a short line it stays where the pointer is.
+    pub pointer: f32,
 }
 
 /// One caret at the press, extended to the pointer.

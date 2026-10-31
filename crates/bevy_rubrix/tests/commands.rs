@@ -11,6 +11,7 @@ use bevy::input_focus::{
     FocusCause, FocusedInput, InputDispatchPlugin, InputFocus,
     InputFocusPlugin,
 };
+use bevy::math::Vec2;
 use bevy::window::{PrimaryWindow, Window};
 use bevy_rubrix::{
     Action, BRACKET, BracketMatch, Brackets, Command, EditDoc,
@@ -193,6 +194,31 @@ fn alt_drag_selects_a_column_over_five_lines() {
         text(&app, entity),
         "lix 1\nlix 2\nlix 3\nlix 4\nlix 5\nline 6\n"
     );
+}
+
+#[test]
+fn alt_drag_past_a_short_line_keeps_the_pointer_column_on_long_lines()
+{
+    let mut app = laid_out();
+    let source = "abcdefgh\nabcdefgh\nab\n";
+    let (view, entity) =
+        mount_editor(&mut app, Lang::Plain, source, 600.0, 300.0);
+    settle(&mut app);
+    let top = edit_line(&mut app, view, 0);
+    let from = point_at(&app, top, 2);
+    let short = edit_line(&mut app, view, 2);
+    let to = Vec2::new(
+        point_at(&app, top, 6).x,
+        point_at(&app, short, 1).y,
+    );
+    hold_key(&mut app, KeyCode::AltLeft, true);
+    hold_on(&mut app, top, from, 1);
+    drag_on(&mut app, top, from, to);
+    drag_end_on(&mut app, top, from, to);
+    hold_key(&mut app, KeyCode::AltLeft, false);
+    focus(&mut app, view);
+    type_text(&mut app, "x");
+    assert_eq!(text(&app, entity), "abxgh\nabxgh\nabx\n");
 }
 
 #[derive(Resource, Default)]

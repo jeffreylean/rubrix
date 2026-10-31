@@ -58,14 +58,16 @@ pub(crate) const ADD_CARET: Gesture = Gesture(|stroke| {
     selections
 });
 
-/// Alt+drag: one selection per line from the press to the pointer.
+/// Alt+drag: one selection per line from the press to the pointer,
+/// each ending at the pointer's column even when the pointer's own
+/// line is shorter.
 pub(crate) const COLUMN: Gesture = Gesture(|stroke| {
     let (from, to) = (stroke.from, stroke.to);
     column(
         stroke.buffer,
         stroke.layout,
         (from.line, from.x),
-        (to.line, to.x),
+        (to.line, stroke.pointer),
     )
 });
 

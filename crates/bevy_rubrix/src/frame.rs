@@ -117,13 +117,14 @@ impl<'w> Tx<'w> {
         );
     }
 
-    /// Runs `gesture` from `from` to `to`, and sets its selections
-    /// when they moved.
+    /// Runs `gesture` from `from` to `to`, with the pointer at x
+    /// `pointer`, and sets its selections when they moved.
     fn stroke(
         &mut self,
         gesture: Gesture,
         from: Hit,
         to: Hit,
+        pointer: f32,
         base: &Selections,
     ) {
         self.transact(&mut |editor, layout| {
@@ -133,6 +134,7 @@ impl<'w> Tx<'w> {
                 base,
                 from,
                 to,
+                pointer,
             });
             if !selections.iter().eq(editor.selections().iter()) {
                 editor.set_selections(selections);
@@ -261,13 +263,13 @@ pub(crate) trait EditTarget {
         rows: usize,
     );
 
-    /// The text a pointer at `at` presses.
+    /// The text a pointer at `at` presses, and the pointer's own x.
     fn hit(
         scene: &Scene,
         target: Entity,
         buffer: &Buffer,
         at: Vec2,
-    ) -> Option<(Hit, Over)>;
+    ) -> Option<(Hit, f32, Over)>;
 
     /// The list to scroll, and where, to keep the caret at `head` in
     /// sight.
@@ -346,7 +348,7 @@ impl EditTarget for EditView {
         target: Entity,
         buffer: &Buffer,
         at: Vec2,
-    ) -> Option<(Hit, Over)> {
+    ) -> Option<(Hit, f32, Over)> {
         geometry(scene, target)?.hit(buffer, at)
     }
 
@@ -606,7 +608,7 @@ fn strokes(
                     press.count,
                 );
                 parts.docs.get(doc).ok().and_then(|(_, held)| {
-                    let (hit, _) = EditView::hit(
+                    let (hit, pointer, _) = EditView::hit(
                         &parts.scene,
                         view,
                         held.editor().buffer(),
@@ -615,15 +617,16 @@ fn strokes(
                     Some((
                         gesture,
                         hit,
+                        pointer,
                         held.editor().selections().clone(),
                     ))
                 })
             };
-            let Some((gesture, hit, base)) = found else {
+            let Some((gesture, hit, pointer, base)) = found else {
                 continue;
             };
             Tx::new(world, &mut frame.parts, doc, Some(view))
-                .stroke(gesture, hit, hit, &base);
+                .stroke(gesture, hit, hit, pointer, &base);
             pressed_views.push(view);
             if let Some(mut input) = world.get_mut::<EditInput>(view)
             {
@@ -652,13 +655,13 @@ fn strokes(
                         return Some(Err(()));
                     };
                     let (_, held) = parts.docs.get(doc).ok()?;
-                    let (hit, over) = EditView::hit(
+                    let (hit, pointer, over) = EditView::hit(
                         scene,
                         view,
                         held.editor().buffer(),
                         at,
                     )?;
-                    Some(Ok((drag, hit, over, edit.list())))
+                    Some(Ok((drag, hit, pointer, over, edit.list())))
                 },
             )
         };
@@ -670,9 +673,15 @@ fn strokes(
                     input.bypass_change_detection().drag = None;
                 }
             }
-            Some(Ok((drag, hit, over, area))) => {
+            Some(Ok((drag, hit, pointer, over, area))) => {
                 Tx::new(world, &mut frame.parts, doc, Some(view))
-                    .stroke(drag.gesture, drag.from, hit, &drag.base);
+                    .stroke(
+                        drag.gesture,
+                        drag.from,
+                        hit,
+                        pointer,
+                        &drag.base,
+                    );
                 if over.past != 0.0
                     && let Some(mut list) = area.and_then(|area| {
                         world.get_mut::<VirtualList>(area)

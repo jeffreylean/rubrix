@@ -455,14 +455,15 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
     }
 
     /// The text at `at`, logical window px, as a pointer would press
-    /// it, and where it is against the list. `None` on a scrollbar or
-    /// off the list. A press left of a row's visible text, on the
-    /// gutter, lands at the line's start.
+    /// it, the pointer's own x in [`Hit::x`]'s units, unsnapped, and
+    /// where it is against the list. `None` on a scrollbar or off the
+    /// list. A press left of a row's visible text, on the gutter,
+    /// lands at the line's start.
     pub(crate) fn hit(
         &self,
         buffer: &Buffer,
         at: Vec2,
-    ) -> Option<(Hit, Over)> {
+    ) -> Option<(Hit, f32, Over)> {
         let camera = self.parts.cameras.iter().next()?;
         let (node, transform, scroll) =
             self.parts.areas.get(self.area).ok()?;
@@ -474,15 +475,13 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         )?;
         let line = (over.row as u32).min(buffer.line_count() - 1);
         let start = buffer.line_start(line);
-        let offset = self.laid(line).map_or(start, |laid| {
-            let Some(local) = rich_point(
+        let pointed = self.laid(line).and_then(|laid| {
+            let local = rich_point(
                 laid.node,
                 laid.transform,
                 camera,
                 over.inside,
-            ) else {
-                return start;
-            };
+            )?;
             let viewport = camera
                 .physical_viewport_rect()
                 .map_or(Vec2::ZERO, |viewport| {
@@ -495,15 +494,20 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
                 .clip
                 .is_some_and(|clip| !clip.contains_point(physical))
             {
-                return start;
+                return None;
             }
             let drawn =
                 Cursor::from_point(laid.layout, local.x, local.y)
                     .index();
-            start + self.shown(buffer, line).source(drawn)
+            Some((
+                start + self.shown(buffer, line).source(drawn),
+                local.x * laid.node.inverse_scale_factor(),
+            ))
         });
+        let offset = pointed.map_or(start, |(offset, _)| offset);
         let x = self.caret(buffer, offset).x;
-        Some((Hit { line, offset, x }, over))
+        let pointer = pointed.map_or(x, |(_, pointer)| pointer);
+        Some((Hit { line, offset, x }, pointer, over))
     }
 
     /// Where to scroll so the caret at `head` shows: its visual line
