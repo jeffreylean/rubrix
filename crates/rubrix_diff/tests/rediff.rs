@@ -7,43 +7,16 @@ use rubrix_diff::{
     Row, RowSplice, Rows, Side, diff_texts, realign, rows,
 };
 
+#[path = "../../bevy_rubrix/examples/gallery/fixtures/diff/\
+          large_pairs.rs"]
+mod large_pairs;
+
+use large_pairs::{hundred_k_pair, with_review_edits};
+
 const CONTEXT: u32 = 3;
 const LAYOUTS: [Layout; 2] = [Layout::Stacked, Layout::Split];
 const LARGE: &str =
     include_str!("../../../bench/fixtures/rust/large.rs.txt");
-
-fn with_review_edits(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for (at, line) in text.lines().enumerate() {
-        match at {
-            119 => out.push_str(&line.replace("theme", "palette")),
-            2000..2006 => continue,
-            5000 => {
-                out.push_str("// Added by the pair's edit.\n");
-                out.push_str("const PAIRED: bool = true;\n");
-                out.push_str(line);
-            }
-            8000 => out.push_str(&format!("{line} // changed")),
-            _ => out.push_str(line),
-        }
-        out.push('\n');
-    }
-    out
-}
-
-fn hundred_k_pair() -> (String, String) {
-    let old = LARGE.repeat(10);
-    let mut new = String::with_capacity(old.len() + old.len() / 400);
-    for (at, line) in old.split_inclusive('\n').enumerate() {
-        if at % 100 == 0 {
-            new.push_str(line.strip_suffix('\n').unwrap_or(line));
-            new.push_str(" // edit\n");
-        } else {
-            new.push_str(line);
-        }
-    }
-    (old, new)
-}
 
 fn numbered(count: u32) -> Vec<String> {
     (0..count).map(|n| format!("line {n}\n")).collect()
@@ -639,7 +612,7 @@ fn an_edit_that_changes_nothing_in_equal_texts_leaves_no_rows() {
 fn rediff_timing() {
     let pairs = [
         ("10k", (LARGE.to_owned(), with_review_edits(LARGE))),
-        ("100k", hundred_k_pair()),
+        ("100k", hundred_k_pair(LARGE)),
     ];
     for (name, (old, new)) in pairs {
         let mut diff = diff_texts(&old, &new, CONTEXT);
