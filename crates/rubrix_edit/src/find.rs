@@ -200,7 +200,7 @@ impl Search {
             if !range.is_empty()
                 && (!self.whole_word
                     || whole_word(&self.text, &range))
-                && on_cluster_boundaries(buffer, &range)
+                && on_cluster_boundaries(buffer, &self.text, &range)
             {
                 at = range.end;
                 self.matches.push(range);
@@ -451,10 +451,22 @@ fn most_breaks(hir: &Hir) -> Option<u32> {
 
 fn on_cluster_boundaries(
     buffer: &Buffer,
+    text: &str,
     range: &Range<usize>,
 ) -> bool {
-    snap(buffer, range.start) == range.start
-        && snap(buffer, range.end) == range.end
+    let bytes = text.as_bytes();
+    let on_boundary = |at: usize| {
+        match (at.checked_sub(1).map(|i| bytes[i]), bytes.get(at)) {
+            // Between two ASCII bytes, only `\r\n` stays one cluster.
+            (Some(before), Some(&after))
+                if before.is_ascii() && after.is_ascii() =>
+            {
+                (before, after) != (b'\r', b'\n')
+            }
+            _ => snap(buffer, at) == at,
+        }
+    };
+    on_boundary(range.start) && on_boundary(range.end)
 }
 
 fn whole_word(text: &str, range: &Range<usize>) -> bool {
