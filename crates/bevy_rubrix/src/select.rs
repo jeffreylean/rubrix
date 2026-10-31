@@ -317,6 +317,14 @@ pub(crate) struct Over {
     pub(crate) inside: Vec2,
     /// Logical px past the top (negative) or bottom edge.
     pub(crate) past: f32,
+    /// Whether the pointer is on one of the list's scrollbars.
+    pub(crate) bar: bool,
+    /// Logical px past the left (negative) or right edge of the
+    /// text that shows, for a view that scrolls its text sideways.
+    pub(crate) past_x: f32,
+    /// Logical px from the text's left to the caret the pointer
+    /// places, which a sideways step reveals beyond.
+    pub(crate) caret_x: f32,
     view: f32,
     scroll: f32,
 }
@@ -332,9 +340,12 @@ pub(crate) fn over(
 ) -> Option<Over> {
     let local = rich_point(node, transform, camera, at)?;
     let logical = node.inverse_scale_factor();
-    let size = (node.content_box().size() - node.scrollbar_size)
-        .max(Vec2::ONE);
+    let content = node.content_box().size();
+    let size = (content - node.scrollbar_size).max(Vec2::ONE);
     let held = local.clamp(Vec2::ZERO, size - 1.0);
+    let bar = local.cmpge(Vec2::ZERO).all()
+        && local.cmplt(content).all()
+        && (local.x >= size.x || local.y >= size.y);
     let view = size.y * logical;
     let past = if local.y < 0.0 {
         local.y * logical
@@ -347,20 +358,11 @@ pub(crate) fn over(
         across: held.x / size.x,
         inside: at + (held - local) * logical,
         past,
+        bar,
+        past_x: 0.0,
+        caret_x: 0.0,
         view,
         scroll: scroll.y,
-    })
-}
-
-pub(crate) fn on_scrollbars(
-    node: &ComputedNode,
-    transform: &UiGlobalTransform,
-    camera: &Camera,
-    at: Vec2,
-) -> bool {
-    rich_point(node, transform, camera, at).is_some_and(|local| {
-        let rows = node.content_box().size() - node.scrollbar_size;
-        local.x >= rows.x || local.y >= rows.y
     })
 }
 
@@ -407,17 +409,6 @@ impl<D: Selectable> Hits<'_, '_, D> {
         let (state, node, transform, scroll) =
             self.lists.get(list).ok()?;
         over(state, node, transform, camera, scroll, at)
-    }
-
-    fn on_scrollbars(&self, list: Entity, at: Vec2) -> bool {
-        let Some(camera) = self.cameras.iter().next() else {
-            return false;
-        };
-        self.lists.get(list).ok().is_some_and(
-            |(_, node, transform, _)| {
-                on_scrollbars(node, transform, camera, at)
-            },
-        )
     }
 
     fn byte(
@@ -487,10 +478,8 @@ fn press<D: Selectable>(
     let Some(list) = doc.list() else {
         return;
     };
-    if hits.on_scrollbars(list, at) {
-        return;
-    }
-    let Some(over) = hits.over(list, at) else {
+    let Some(over) = hits.over(list, at).filter(|over| !over.bar)
+    else {
         return;
     };
     if focus.get() != Some(view) {
@@ -564,8 +553,26 @@ pub(crate) fn follow_drags<D: Selectable>(
     }
 }
 
-/// Steps `list` toward a pointer held past its top or bottom edge.
+/// Steps `list` toward a pointer held past an edge: up or down a row
+/// past its top or bottom, and sideways past the text's left or
+/// right.
 pub(crate) fn reveal_past(list: &mut VirtualList, over: &Over) {
+    let at_start = over.past_x < 0.0 && over.caret_x <= 0.0;
+    if over.past_x != 0.0 && !at_start {
+        let step = over.past_x.abs().min(MAX_STEP);
+        let x = over.caret_x;
+        list.scroll_x_into_view(if over.past_x < 0.0 {
+            x - step..x
+        } else {
+            x..x + step
+        });
+    }
+    if over.past != 0.0 {
+        rows_past(list, over);
+    }
+}
+
+fn rows_past(list: &mut VirtualList, over: &Over) {
     let step = over.past.abs().min(MAX_STEP);
     let target = if over.past > 0.0 {
         let last = list.count().checked_sub(1);

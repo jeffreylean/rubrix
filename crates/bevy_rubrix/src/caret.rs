@@ -459,46 +459,52 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
     }
 
     /// The text at `at`, logical window px, as a pointer would press
-    /// it, and where it is against the list. `None` on a scrollbar or
-    /// off the list. A press left of a row's visible text, on the
-    /// gutter, lands at the line's start.
+    /// it, or as a pointer `held` since a press drags it, and where
+    /// it is against the list. `None` off the list. A press left of a
+    /// row's visible text, on the gutter, lands at the line's start.
+    /// A held pointer left of the text's column, on the gutter or
+    /// past it, or right of the rows lands on the text at that edge,
+    /// and `Over::past_x` says how far past it is.
     pub(crate) fn hit(
         &self,
         buffer: &Buffer,
         at: Vec2,
+        held: bool,
     ) -> Option<(Hit, Over)> {
         let camera = self.parts.cameras.iter().next()?;
         let (node, transform, scroll) =
             self.parts.areas.get(self.area).ok()?;
-        if select::on_scrollbars(node, transform, camera, at) {
-            return None;
-        }
-        let over = select::over(
+        let mut over = select::over(
             self.list, node, transform, camera, scroll, at,
         )?;
         let line = (over.row as u32).min(buffer.line_count() - 1);
         let start = buffer.line_start(line);
         let pointed = self.laid(line).and_then(|laid| {
-            let local = rich_point(
-                laid.node,
-                laid.transform,
-                camera,
-                over.inside,
-            )?;
+            let scale = camera.target_scaling_factor().unwrap_or(1.0);
             let viewport = camera
                 .physical_viewport_rect()
                 .map_or(Vec2::ZERO, |viewport| {
                     viewport.min.as_vec2()
                 });
-            let physical = over.inside
-                * camera.target_scaling_factor().unwrap_or(1.0)
-                - viewport;
-            if laid
-                .clip
-                .is_some_and(|clip| !clip.contains_point(physical))
-            {
+            let mut point = over.inside;
+            if held {
+                let text = laid.transform.translation.x
+                    + laid.node.content_box().min.x
+                    + scroll.x * scale;
+                let rows = transform.translation.x
+                    + node.content_box().max.x
+                    - node.scrollbar_size.x;
+                let raw = at.x * scale - viewport.x;
+                let x = raw.min(rows - 1.0).max(text);
+                over.past_x = (raw - x) / scale;
+                point.x = (x + viewport.x) / scale;
+            } else if laid.clip.is_some_and(|clip| {
+                !clip.contains_point(point * scale - viewport)
+            }) {
                 return None;
             }
+            let local =
+                rich_point(laid.node, laid.transform, camera, point)?;
             let drawn =
                 Cursor::from_point(laid.layout, local.x, local.y)
                     .index();
@@ -510,6 +516,7 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         let offset = pointed.map_or(start, |(offset, _)| offset);
         let x = self.caret(buffer, offset).x;
         let pointer = pointed.map_or(x, |(_, pointer)| pointer);
+        over.caret_x = x;
         Some((
             Hit {
                 line,
