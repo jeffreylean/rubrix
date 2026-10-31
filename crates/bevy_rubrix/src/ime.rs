@@ -97,7 +97,9 @@ pub(crate) fn plugin(app: &mut App) {
 /// Takes this frame's IME messages into the focused view, in order:
 /// a preedit replaces the composition, a commit goes to the doc as a
 /// request, and the IME turning on or off ends the composition. A
-/// view that lost the focus loses its composition.
+/// view that lost the focus loses its composition. A composition that
+/// starts or changes is an edit the user sees, so it brings the
+/// caret into view as an edit does.
 fn read(
     mut ime: MessageReader<Ime>,
     focus: Option<Res<InputFocus>>,
@@ -147,6 +149,11 @@ fn read(
     match now {
         Some(preedit) => {
             commands.entity(view).insert((preedit, Composing));
+            requests.write(EditRequest {
+                doc: edit.doc(),
+                view: Some(view),
+                request: Request::new(|tx| tx.keep_in_sight()),
+            });
         }
         None => {
             commands.entity(view).remove::<(Preedit, Composing)>();
@@ -195,7 +202,8 @@ fn place(
 }
 
 /// Keeps the window's IME on while an editable view holds the focus,
-/// with the candidate box at the bottom-left of the primary caret.
+/// with the candidate box at the bottom-left of the primary caret, or
+/// at the top-left of the view's rows while the caret has no rect.
 ///
 /// Bevy's `TextInputPlugin` turns the IME off in `PreUpdate` whenever
 /// no `EditableText` has the focus, and winit reads the window in
@@ -205,6 +213,7 @@ fn place(
 fn enable(
     focus: Option<Res<InputFocus>>,
     views: Query<&EditView>,
+    areas: Query<(&ComputedNode, &UiGlobalTransform)>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     ui_scale: Option<Res<UiScale>>,
 ) {
@@ -220,12 +229,20 @@ fn enable(
     if !window.ime_enabled {
         window.ime_enabled = true;
     }
-    let ui_scale = ui_scale.map_or(1.0, |scale| scale.0);
-    if let Some(caret) = edit.caret_rect() {
-        let at = Vec2::new(caret.min.x, caret.max.y) * ui_scale;
-        if window.ime_position != at {
-            window.ime_position = at;
+    let at = match edit.caret_rect() {
+        Some(caret) => Vec2::new(caret.min.x, caret.max.y),
+        None => {
+            let Some((node, area)) =
+                edit.list().and_then(|list| areas.get(list).ok())
+            else {
+                return;
+            };
+            (area.translation + node.content_box().min)
+                * node.inverse_scale_factor()
         }
+    } * ui_scale.map_or(1.0, |scale| scale.0);
+    if window.ime_position != at {
+        window.ime_position = at;
     }
 }
 
@@ -371,6 +388,12 @@ type RowText = Row<'static>;
 /// The bars under the drawn bytes `drawn` of a row, in device pixels
 /// from the window's corner, each on the pixel row nearest the font's
 /// underline. A bar the row's clip hides is left out.
+///
+/// The run blocks of a row's visual lines overlap when the line is
+/// shorter than the font, so a bar takes the run that holds its
+/// line's centre. A fallback font, such as a colour emoji font, can
+/// put its underline below the line, where the row clips it, so such
+/// a bar sits 2 px above the line's bottom instead.
 fn bar_rects(
     (_, node, at, block, text, info, clip): Row,
     drawn: core::ops::Range<usize>,
@@ -379,20 +402,23 @@ fn bar_rects(
     let corner = at.translation + node.content_box().min;
     select::rects(&layout, drawn, 1.0, Color::NONE)
         .filter_map(|([x0, y0, x1, y1], _)| {
+            let centre = (y0 + y1) / 2.0;
             let run = info.run_geometry.iter().find(|run| {
                 run.bounds.min.x <= x0
                     && x0 < run.bounds.max.x
-                    && run.bounds.min.y < y1
-                    && y0 < run.bounds.max.y
+                    && run.bounds.min.y <= centre
+                    && centre < run.bounds.max.y
             });
-            let (middle, thickness) =
-                run.map_or((y1 - 2.0, 1.0), |run| {
+            let (middle, thickness) = run
+                .map(|run| {
                     (
                         run.underline_y
                             + run.underline_thickness / 2.0,
                         run.underline_thickness,
                     )
-                });
+                })
+                .filter(|&(middle, _)| y0 <= middle && middle < y1)
+                .unwrap_or((y1 - 2.0, 1.0));
             let top = (corner.y + middle).floor();
             let rect = Rect::new(
                 (corner.x + x0).round(),

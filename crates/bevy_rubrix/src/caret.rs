@@ -37,7 +37,7 @@ use crate::code_view::Overflow;
 use crate::damage::{End, Shift, row_edits};
 use crate::editor::{EditDoc, EditInput, EditLine, EditView};
 use crate::keymap::content;
-use crate::marks::{MarkKind, Marks};
+use crate::marks::{Mark, MarkKind, Marks};
 use crate::rows::{ADVANCE, LINE_HEIGHT, Shown, inserts};
 use crate::select::{self, Layer, Over, SelectionRects};
 
@@ -459,46 +459,51 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
     }
 
     /// The text at `at`, logical window px, as a pointer would press
-    /// it, and where it is against the list. `None` on a scrollbar or
-    /// off the list. A press left of a row's visible text, on the
-    /// gutter, lands at the line's start.
+    /// it, or as a pointer `held` since a press drags it, and where
+    /// it is against the list. `None` off the list. A press left of a
+    /// row's visible text, on the gutter, lands at the line's start.
+    /// A held pointer left of the text's column, on the gutter or
+    /// past it, or right of the rows lands on the text at that edge,
+    /// and `Over::past_x` says how far past it is.
     pub(crate) fn hit(
         &self,
         buffer: &Buffer,
         at: Vec2,
+        held: bool,
     ) -> Option<(Hit, Over)> {
         let camera = self.parts.cameras.iter().next()?;
         let (node, transform, scroll) =
             self.parts.areas.get(self.area).ok()?;
-        if select::on_scrollbars(node, transform, camera, at) {
-            return None;
-        }
-        let over = select::over(
+        let mut over = select::over(
             self.list, node, transform, camera, scroll, at,
         )?;
         let line = (over.row as u32).min(buffer.line_count() - 1);
         let start = buffer.line_start(line);
         let pointed = self.laid(line).and_then(|laid| {
-            let local = rich_point(
-                laid.node,
-                laid.transform,
-                camera,
-                over.inside,
-            )?;
+            let scale = camera.target_scaling_factor().unwrap_or(1.0);
             let viewport = camera
                 .physical_viewport_rect()
                 .map_or(Vec2::ZERO, |viewport| {
                     viewport.min.as_vec2()
                 });
-            let physical = over.inside
-                * camera.target_scaling_factor().unwrap_or(1.0)
-                - viewport;
-            if laid
-                .clip
-                .is_some_and(|clip| !clip.contains_point(physical))
-            {
+            let mut point = over.inside;
+            if held {
+                let text = laid.transform.translation.x
+                    + laid.node.content_box().min.x
+                    + scroll.x * scale;
+                let rows = transform.translation.x
+                    + node.content_box().max.x;
+                let raw = at.x * scale - viewport.x;
+                let x = raw.min(rows - 1.0).max(text);
+                over.past_x = (raw - x) / scale;
+                point.x = (x + viewport.x) / scale;
+            } else if laid.clip.is_some_and(|clip| {
+                !clip.contains_point(point * scale - viewport)
+            }) {
                 return None;
             }
+            let local =
+                rich_point(laid.node, laid.transform, camera, point)?;
             let drawn =
                 Cursor::from_point(laid.layout, local.x, local.y)
                     .index();
@@ -510,6 +515,7 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         let offset = pointed.map_or(start, |(offset, _)| offset);
         let x = self.caret(buffer, offset).x;
         let pointer = pointed.map_or(x, |(_, pointer)| pointer);
+        over.caret_x = x;
         Some((
             Hit {
                 line,
@@ -521,15 +527,23 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         ))
     }
 
-    /// Where to scroll so the caret at `head` shows: its visual line
-    /// in a laid-out row, or the whole row by its estimate.
+    /// Where to scroll so the primary caret at `head` shows: its
+    /// visual line in a laid-out row, or the whole row by its
+    /// estimate. While an input method composes at `head`, the caret
+    /// sits at the composition's cursor.
     pub(crate) fn reveal(
         &self,
         buffer: &Buffer,
         head: usize,
     ) -> Reveal {
         let line = buffer.line_of(head);
-        let caret = self.caret(buffer, head);
+        let shown = self.shown(buffer, line);
+        let rel = head - buffer.line_start(line);
+        let marks =
+            self.marks.into_iter().flat_map(|marks| marks.on(line));
+        let into = composing(marks, rel).flatten().unwrap_or(0);
+        let caret =
+            self.caret_in(line, &shown, shown.shown(rel) + into);
         let y = if self.laid(line).is_some() {
             caret.top..caret.top + caret.height
         } else {
@@ -550,8 +564,7 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
 
     fn view_height(&self) -> f32 {
         self.parts.areas.get(self.area).map_or(0.0, |(node, ..)| {
-            (node.content_box().height() - node.scrollbar_size.y)
-                * node.inverse_scale_factor()
+            node.content_box().height() * node.inverse_scale_factor()
         })
     }
 }
@@ -723,6 +736,21 @@ type Overlays<'w, 's> = Query<
     Without<CaretBar>,
 >;
 
+/// The caret of the composition inserted at `rel` among `marks`:
+/// `Some(Some(into))` puts it `into` bytes into the preedit,
+/// `Some(None)` hides it, and `None` means no composition is there.
+fn composing<'m>(
+    mut marks: impl Iterator<Item = &'m Mark>,
+    rel: usize,
+) -> Option<Option<usize>> {
+    marks.find_map(|mark| match &mark.kind {
+        MarkKind::Insert { at, caret, .. } if *at == rel => {
+            Some(*caret)
+        }
+        _ => None,
+    })
+}
+
 /// Draws every editable view's selections and carets from this
 /// frame's layout, after `UiSystems::PostLayout`.
 ///
@@ -865,19 +893,11 @@ pub(crate) fn draw(
             };
             let rel = head - buffer.line_start(line);
             let mut at = geometry.shown(buffer, line).shown(rel);
+            let mut drawn = true;
             if selection == primary {
-                let insert =
-                    marks.on(line).find_map(|mark| {
-                        match &mark.kind {
-                            MarkKind::Insert {
-                                at, caret, ..
-                            } if *at == rel => Some(*caret),
-                            _ => None,
-                        }
-                    });
-                match insert {
+                match composing(marks.on(line), rel) {
                     Some(Some(into)) => at += into,
-                    Some(None) => continue,
+                    Some(None) => drawn = false,
                     None => {}
                 }
             }
@@ -902,6 +922,15 @@ pub(crate) fn draw(
                 .clip
                 .is_some_and(|clip| !clip.contains_point(middle))
             {
+                continue;
+            }
+            if selection == primary {
+                caret = Some(Rect::from_corners(
+                    corner * logical,
+                    (corner + size) * logical,
+                ));
+            }
+            if !drawn {
                 continue;
             }
             let placed = Node {
@@ -934,12 +963,6 @@ pub(crate) fn draw(
                     ));
                 }
             }
-            if selection == primary {
-                caret = Some(Rect::from_corners(
-                    corner * logical,
-                    (corner + size) * logical,
-                ));
-            }
             used += 1;
         }
         for &kid in kids.iter().skip(used) {
@@ -959,8 +982,7 @@ pub(crate) fn draw(
                 let logical = node.inverse_scale_factor();
                 let box_ = node.content_box();
                 let min = (at.translation + box_.min) * logical;
-                let max = min
-                    + (box_.size() - node.scrollbar_size) * logical;
+                let max = min + box_.size() * logical;
                 let centre = caret.center();
                 centre.cmpge(min).all() && centre.cmple(max).all()
             })

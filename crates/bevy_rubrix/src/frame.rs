@@ -107,6 +107,12 @@ impl<'w> Tx<'w> {
         });
     }
 
+    /// Keeps the view's primary caret in sight after this frame, as
+    /// an edit does, though nothing in the doc changed.
+    pub(crate) fn keep_in_sight(&mut self) {
+        self.acted = true;
+    }
+
     /// Copies `text` from the view, or the doc without one, to the
     /// app's clipboard.
     pub fn copy(&mut self, text: String) {
@@ -262,12 +268,13 @@ pub(crate) trait EditTarget {
         rows: usize,
     );
 
-    /// The text a pointer at `at` presses.
+    /// The text a pointer at `at` presses, or drags while `held`.
     fn hit(
         scene: &Scene,
         target: Entity,
         buffer: &Buffer,
         at: Vec2,
+        held: bool,
     ) -> Option<(Hit, Over)>;
 
     /// The list to scroll, and where, to keep the caret at `head` in
@@ -347,8 +354,9 @@ impl EditTarget for EditView {
         target: Entity,
         buffer: &Buffer,
         at: Vec2,
+        held: bool,
     ) -> Option<(Hit, Over)> {
-        geometry(scene, target)?.hit(buffer, at)
+        geometry(scene, target)?.hit(buffer, at, held)
     }
 
     fn reveal(
@@ -612,7 +620,9 @@ fn strokes(
                         view,
                         held.editor().buffer(),
                         press.at,
-                    )?;
+                        false,
+                    )
+                    .filter(|(_, over)| !over.bar)?;
                     Some((
                         gesture,
                         hit,
@@ -658,6 +668,7 @@ fn strokes(
                         view,
                         held.editor().buffer(),
                         at,
+                        true,
                     )?;
                     Some(Ok((drag, hit, over, edit.list())))
                 },
@@ -674,7 +685,7 @@ fn strokes(
             Some(Ok((drag, hit, over, area))) => {
                 Tx::new(world, &mut frame.parts, doc, Some(view))
                     .stroke(drag.gesture, drag.from, hit, &drag.base);
-                if over.past != 0.0
+                if (over.past != 0.0 || over.past_x != 0.0)
                     && let Some(mut list) = area.and_then(|area| {
                         world.get_mut::<VirtualList>(area)
                     })
