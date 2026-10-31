@@ -1,16 +1,10 @@
-//! The edited copies of `bench/fixtures/rust/large.rs.txt` that the
-//! gallery's `pair`, `pairs` and `100k pair` sources show and
-//! `rubrix_diff`'s `tests/rediff.rs` re-diffs. `gen_drives.py` models
-//! the diffs they make as `LARGE_RS_EDITS` and `edit_suffix`.
+//! `gen_drives.py` mirrors these edits as `LARGE_RS_EDITS` and
+//! `edit_suffix`.
 
-/// `text` with the pair's edits: one changed line (old line 120),
-/// six removed (2,001 to 2,006), two added (before 5,001) and one
-/// changed (8,001).
 pub fn with_review_edits(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for (at, line) in text.lines().enumerate() {
         match at {
-            119 => out.push_str(&line.replace("theme", "palette")),
             2000..2006 => continue,
             5000 => {
                 out.push_str("// Added by the pair's edit.\n");
@@ -25,8 +19,6 @@ pub fn with_review_edits(text: &str) -> String {
     out
 }
 
-/// `text` ten times, and a copy that ends every hundredth line with
-/// ` // edit`.
 pub fn hundred_k_pair(text: &str) -> (String, String) {
     let old = text.repeat(10);
     let mut new = String::with_capacity(old.len() + old.len() / 400);

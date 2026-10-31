@@ -217,8 +217,6 @@ impl SourceFile {
     }
 }
 
-/// The digits of the widest line number `diff`'s rows show. O(rows)
-/// for a partial diff, O(1) otherwise.
 pub(crate) fn number_width(diff: &FileDiff) -> usize {
     digits(last_number(diff) as usize)
 }

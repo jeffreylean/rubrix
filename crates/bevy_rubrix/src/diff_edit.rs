@@ -74,11 +74,9 @@ fn editing(docs: Query<&DiffDoc>) -> bool {
     docs.iter().any(|doc| doc.edit.on)
 }
 
-/// Editing is on, or was, and left live files whose rows still read
-/// their runs from the file's `EditDoc`.
 fn shows_edits(docs: Query<&DiffDoc>) -> bool {
     docs.iter()
-        .any(|doc| doc.edit.on || !doc.edit.damage.is_empty())
+        .any(|doc| doc.edit.on || doc.edit.has_live_docs())
 }
 
 #[derive(Default)]
@@ -95,6 +93,13 @@ pub(crate) struct Session {
     rediff: Option<(usize, Duration)>,
     colour: Color,
     bar: Option<Entity>,
+}
+
+impl Session {
+    /// `damage` holds a row per live file's doc after each catch-up.
+    fn has_live_docs(&self) -> bool {
+        !self.damage.is_empty()
+    }
 }
 
 struct Redraw {
@@ -675,20 +680,21 @@ fn keep_top(world: &mut World, list: Entity, index: usize, top: f32) {
     }
 }
 
-/// Lexes each live file's stale lines up to its window, as E2's
-/// views do: `max(first shown line, caret line) + 2 * BUILT_MAX`.
 fn catch_up(world: &mut World, root: Entity) {
     let Some(doc) = world.get::<DiffDoc>(root) else {
         return;
     };
-    let first = doc
+    let first_list_row = doc
         .list()
         .and_then(|list| world.get::<VirtualList>(list))
         .map_or(0, VirtualList::first_visible);
     let docs: Vec<(Entity, u32)> = (0..doc.files().len())
         .filter_map(|file| {
             let live = doc.files()[file].live.as_ref()?;
-            Some((live.doc, first_shown_line(doc, file, first)))
+            Some((
+                live.doc,
+                first_shown_line(doc, file, first_list_row),
+            ))
         })
         .collect();
     let mut moved = false;
@@ -720,13 +726,15 @@ fn catch_up(world: &mut World, root: Entity) {
     }
 }
 
-/// The new-side line of file `file`'s first row at or below list row
-/// `first`, or 0 when none of the next rows shows one.
-fn first_shown_line(doc: &DiffDoc, file: usize, first: usize) -> u32 {
+fn first_shown_line(
+    doc: &DiffDoc,
+    file: usize,
+    list_row: usize,
+) -> u32 {
     if doc.is_collapsed(file) {
         return 0;
     }
-    let at = first.saturating_sub(doc.body_start(file)) as u32;
+    let at = list_row.saturating_sub(doc.body_start(file)) as u32;
     doc.files()[file]
         .rows
         .range(at..at.saturating_add(2 * BUILT_MAX))
