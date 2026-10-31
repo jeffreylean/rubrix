@@ -32,3 +32,4 @@ The gallery lists its pages on the left. Each page has one file here when it shi
 - [select.md](select.md): selecting and copying text in a code view, on the `code` and `stream` pages.
 - [editor.md](editor.md): the `editor` page, a file in an editable code view.
 - [hamlet.md](hamlet.md): the `hamlet_rich`, `hamlet_code`, `hamlet_diff`, and `stress` pages, and the acceptance script.
+- [collab.md](collab.md): the `collab` page, remote carets, markers, line annotations, edit state across a respawn, and an app clipboard on an editable view.

@@ -7,9 +7,11 @@ mod damage;
 mod diff_view;
 mod editor;
 mod frame;
+mod hooks;
 mod keymap;
 mod marks;
 mod numbers;
+mod remote;
 mod rows;
 mod select;
 mod tokens;
@@ -43,14 +45,22 @@ pub use editor::{
     EditSystems, EditView, EditorChanged, Request, code_editor,
 };
 pub use frame::Tx;
+pub use hooks::{
+    EditKey, EditStates, FollowPlugin, Follows, LineAnnotations,
+    Markers, Severity,
+};
 pub use keymap::{
     Action, ChordError, Gesture, Keymap, Mods, Platform, Stroke,
 };
 pub use marks::{Mark, MarkKind, MarkLayer, Marks};
 pub use numbers::LineNumber;
+pub use remote::{
+    Edge, Placed, RemoteCaret, RemoteCarets, RemoteView,
+};
 pub use rubrix_diff::{Layout, Row, Side};
 pub use rubrix_edit::{
-    Buffer, Command, Editor, History, Motion, Selection, Selections,
+    Buffer, Command, EditState, Editor, History, LineAnchors, Motion,
+    Ranges, Selection, Selections,
 };
 pub use rubrix_highlight::{Kind, Lang, Run};
 pub use select::{CodeCopied, CodeSelection};
@@ -80,6 +90,13 @@ impl Plugin for RubrixPlugin {
             .add_message::<KeyboardFocusLost>()
             .add_message::<EditRequest>()
             .add_message::<EditorChanged>()
+            .init_resource::<EditStates>()
+            .add_observer(hooks::save_state)
+            .add_observer(hooks::restore_state)
+            .add_plugins((
+                FollowPlugin::<RemoteCarets>::default(),
+                FollowPlugin::<Markers>::default(),
+            ))
             .add_systems(
                 Startup,
                 (load_code_font, diff_view::load_hatch),
@@ -115,6 +132,12 @@ impl Plugin for RubrixPlugin {
                     .after(PickingSystems::Last),
             )
             .add_systems(
+                PreUpdate,
+                hooks::draw_markers
+                    .after(EditSystems::Apply)
+                    .run_if(any_with_component::<Markers>),
+            )
+            .add_systems(
                 Update,
                 (select::keys::<CodeDoc>, select::keys::<DiffDoc>),
             )
@@ -132,6 +155,9 @@ impl Plugin for RubrixPlugin {
                     caret::draw
                         .in_set(EditSystems::Draw)
                         .run_if(any_with_component::<EditView>),
+                    remote::draw
+                        .in_set(EditSystems::Draw)
+                        .run_if(any_with_component::<RemoteCarets>),
                 )
                     .after(UiSystems::PostLayout),
             );

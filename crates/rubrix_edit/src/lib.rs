@@ -32,3 +32,9 @@ pub use command::{Command, Editor};
 pub use history::History;
 pub use motion::{Layout, Monospace, Motion, graphemes, word_at};
 pub use selection::{Selection, Selections};
+
+mod ranges;
+mod state;
+
+pub use ranges::{LineAnchors, Ranges};
+pub use state::EditState;

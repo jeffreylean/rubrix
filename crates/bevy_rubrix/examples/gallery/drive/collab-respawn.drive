@@ -1,0 +1,35 @@
+page collab
+wait 120
+move 740 400
+scroll 0 -1853
+wait 10
+click 1250 296
+type abc
+key enter
+wait 5
+log text 120
+expect text 120 "        .run();abc"
+log text 121
+expect text 121 "        "
+log undo
+expect undo 2 redo 0
+click 882 68
+wait 30
+log text 120
+expect text 120 "        .run();abc"
+log text 121
+expect text 121 "        "
+log undo
+expect undo 2 redo 0
+click 273.0 194
+key mod+z
+key mod+z
+wait 5
+log text 120
+expect text 120 "        .run();"
+log text 121
+expect text 121 "}"
+log undo
+expect undo 0 redo 2
+screenshot e6-respawn.png
+exit

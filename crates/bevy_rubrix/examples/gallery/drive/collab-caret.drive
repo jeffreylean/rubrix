@@ -1,0 +1,24 @@
+page collab
+wait 120
+move 740 400
+scroll 0 -1938
+wait 10
+remote Ada 120:5
+remote Bo 123:3 123:12
+wait 5
+log remote
+expect remote Ada 120:5 shown
+expect remote Bo 123:3..123:12 shown
+screenshot e6-caret.png
+remote Ada 120:5 120:12
+wait 5
+log remote
+expect remote Ada 120:5..120:12 shown
+screenshot e6-tint.png
+click 273.0 211
+type ab
+wait 5
+log remote
+expect remote Ada 120:7..120:14 shown
+screenshot e6-tint-pushed.png
+exit
