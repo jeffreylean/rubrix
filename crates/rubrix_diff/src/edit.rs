@@ -50,20 +50,20 @@ impl FileDiff {
         expansion: &mut Expansion,
     ) -> Rediff {
         assert!(!self.is_partial(), "edit_new needs a full diff");
-        let len = self.new.len();
+        let len_before = self.new.len();
         assert!(
-            lines.start <= lines.end && lines.end <= len,
-            "lines {lines:?} pass the new side's {len} lines"
+            lines.start <= lines.end && lines.end <= len_before,
+            "lines {lines:?} pass the new side's {len_before} lines"
         );
         assert!(
             text.is_empty()
                 || text.ends_with('\n')
-                || lines.end == len,
+                || lines.end == len_before,
             "only the side's last line may lack its newline"
         );
         assert!(
             text.is_empty()
-                || lines.start < len
+                || lines.start < len_before
                 || !self.new.missing_newline(),
             "text cannot follow a last line without a newline"
         );
@@ -72,7 +72,7 @@ impl FileDiff {
         let context =
             context.min(self.old_lines().len().max(self.new.len()));
         let (touched, groups) =
-            self.rediff_window(&lines, len, delta, context);
+            self.rediff_window(&lines, len_before, delta, context);
         let region = {
             let all = &self.hunks;
             let start = touched
@@ -118,22 +118,17 @@ impl FileDiff {
         }
     }
 
-    /// Diffs the window around `lines`, an edit that moved the lines
-    /// below it by `delta`, and returns the hunks it covers and the
-    /// grouped ops that replace them. Hunk positions are still the
-    /// ones from before the edit, as are `lines` and `len`, the new
-    /// side's old line count.
     fn rediff_window(
         &self,
         lines: &Range<u32>,
-        len: u32,
+        len_before: u32,
         delta: i64,
         context: u32,
     ) -> (Range<usize>, Vec<Vec<DiffOp>>) {
         let hunks = &self.hunks;
         let reach = context.saturating_mul(2).saturating_add(1);
         let mut window = lines.start.saturating_sub(reach)
-            ..lines.end.saturating_add(reach).min(len);
+            ..lines.end.saturating_add(reach).min(len_before);
         loop {
             let touched = touching(hunks, &window);
             if !touched.is_empty() {
@@ -142,8 +137,8 @@ impl FileDiff {
                 window.start = window.start.min(first.new_offset());
                 window.end = window.end.max(last.new_end());
             }
-            let old = to_old(hunks, touched.start, window.start)
-                ..to_old(hunks, touched.end, window.end);
+            let old = to_old_above(hunks, touched.start, window.start)
+                ..to_old_above(hunks, touched.end, window.end);
             let new =
                 window.start..(i64::from(window.end) + delta) as u32;
             let ops = similar::capture_diff(
@@ -174,7 +169,7 @@ impl FileDiff {
                     || above.is_some_and(|h| {
                         near(first - change_end(h))
                     }));
-            let grow_down = window.end < len
+            let grow_down = window.end < len_before
                 && (old.end - last < context
                     || below.is_some_and(|h| {
                         near(change_start(h) - last)
@@ -187,13 +182,12 @@ impl FileDiff {
             }
             if grow_down {
                 window.end =
-                    window.end.saturating_add(reach).min(len);
+                    window.end.saturating_add(reach).min(len_before);
             }
         }
     }
 }
 
-/// The hunks whose new lines overlap or border `window`.
 fn touching(hunks: &[Hunk], window: &Range<u32>) -> Range<usize> {
     let start =
         hunks.partition_point(|hunk| hunk.new_end() < window.start);
@@ -202,9 +196,7 @@ fn touching(hunks: &[Hunk], window: &Range<u32>) -> Range<usize> {
     start..end
 }
 
-/// The old line beside new line `at`, which sits in the gap above
-/// hunk `hunk`.
-fn to_old(hunks: &[Hunk], hunk: usize, at: u32) -> u32 {
+fn to_old_above(hunks: &[Hunk], hunk: usize, at: u32) -> u32 {
     let offset = hunk.checked_sub(1).map_or(0, |h| {
         let above = &hunks[h];
         i64::from(above.new_end()) - i64::from(above.old_end())
@@ -227,7 +219,6 @@ fn is_change(block: &Block) -> bool {
     matches!(block, Block::Change { .. })
 }
 
-/// A side's lines with their terminators, by index, for `similar`.
 struct Raw<'a>(&'a Lines);
 
 impl Index<usize> for Raw<'_> {

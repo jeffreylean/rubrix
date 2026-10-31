@@ -1,14 +1,3 @@
-//! Editing the new side of a diff view.
-//!
-//! Each file a [`diff_view`](crate::diff_view) can edit gets an
-//! [`EditDoc`] of its own when editing turns on, so undo is per file.
-//! A press on a new-side line places that doc's caret, and keys
-//! reach the doc as [`EditRequest`]s, through the same transaction a
-//! code editor's keys take. After that transaction, each change's
-//! line edits re-diff only the hunks within reach
-//! ([`FileDiff::edit_new`]), patch the file's rows in place
-//! ([`Rows::patch`]) and splice the list, in the same `PreUpdate`.
-
 use core::ops::Range;
 use core::time::Duration;
 use std::time::Instant;
@@ -83,45 +72,34 @@ pub(crate) fn plugin(app: &mut App) {
     );
 }
 
-/// A view's editing state, inside its [`DiffDoc`].
 #[derive(Default)]
 pub(crate) struct Session {
     on: bool,
-    /// The file whose new side holds the caret, while a new-side
-    /// press put it there.
     pub(crate) active: Option<usize>,
-    /// Where the last press landed across the list, 0 to 1, until
-    /// the frame reads it after the read-only press has run.
     pressed: Option<f32>,
-    /// Counts the edits and catch-ups the rows read again for.
-    seq: u64,
-    /// `seq` as this frame began, and as the frame before it began.
-    began: u64,
-    since: u64,
-    /// Rows of a file an edit changed under slots that keep their
-    /// index: `(seq, file, rows)`. A row inserted can take the slot
-    /// of a row removed at its index, a re-diffed hunk's rows change
-    /// their word marks, and a line count change renumbers every row
-    /// below it.
-    redrawn: Vec<(u64, usize, Range<u32>)>,
-    /// Each live doc's damage generation the rows last saw.
+    reads: u64,
+    reads_this_frame: u64,
+    reads_last_frame: u64,
+    redrawn: Vec<Redraw>,
     damage: Vec<(Entity, u64)>,
-    /// The primary caret the last frame kept in sight.
-    head: Option<(usize, usize)>,
-    /// The file and the time of the last re-diff.
+    in_sight: Option<(usize, usize)>,
     rediff: Option<(usize, Duration)>,
     bar: Option<Entity>,
 }
 
-/// What a row read last, for [`fires`].
+struct Redraw {
+    reads: u64,
+    file: usize,
+    rows: Range<u32>,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct Stamp {
-    shape: u64,
-    seq: u64,
+    reshapes: u64,
+    reads: u64,
     damage: u64,
 }
 
-/// The caret bar of a diff view.
 #[derive(Component)]
 pub(crate) struct DiffCaret;
 
@@ -146,10 +124,6 @@ pub struct DiffEditStatus {
     pub line: u32,
 }
 
-/// Whether a row reads again: on its first read, when the rows
-/// changed shape, when it skipped a frame of edits, when an edit
-/// changed it under its slot, or when its file's doc damaged its new
-/// line.
 pub(crate) fn fires(
     world: &World,
     doc: &DiffDoc,
@@ -159,33 +133,37 @@ pub(crate) fn fires(
     let session = &doc.edit;
     let Some(read) = *stamp else {
         *stamp = Some(Stamp {
-            shape: doc.shape,
-            seq: session.seq,
+            reshapes: doc.reshapes,
+            reads: session.reads,
             damage: row_doc(world, doc, index)
                 .map_or(0, |(_, editor, _)| editor.damage().seq()),
         });
         return true;
     };
-    if read.shape == doc.shape && read.seq == session.seq {
+    if read.reshapes == doc.reshapes && read.reads == session.reads {
         return false;
     }
     let found = row_doc(world, doc, index);
     *stamp = Some(Stamp {
-        shape: doc.shape,
-        seq: session.seq,
+        reshapes: doc.reshapes,
+        reads: session.reads,
         damage: found
             .as_ref()
             .map_or(0, |(_, editor, _)| editor.damage().seq()),
     });
-    if read.shape != doc.shape || read.seq < session.since {
+    if read.reshapes != doc.reshapes
+        || read.reads < session.reads_last_frame
+    {
         return true;
     }
     let Some((file, editor, row)) = found else {
         return false;
     };
     let at = (index - doc.body_start(file)) as u32;
-    let redrawn = session.redrawn.iter().any(|(seq, of, rows)| {
-        *seq > read.seq && *of == file && rows.contains(&at)
+    let redrawn = session.redrawn.iter().any(|redraw| {
+        redraw.reads > read.reads
+            && redraw.file == file
+            && redraw.rows.contains(&at)
     });
     redrawn
         || row.new_line().is_some_and(|line| {
@@ -193,7 +171,6 @@ pub(crate) fn fires(
         })
 }
 
-/// The edited file a row belongs to, its doc and the row.
 fn row_doc<'w>(
     world: &'w World,
     doc: &DiffDoc,
@@ -206,7 +183,6 @@ fn row_doc<'w>(
     Some((file, world.get::<EditDoc>(live.doc)?, row))
 }
 
-/// Watches a diff view's presses and keys, and gives it a caret bar.
 pub(crate) fn attach(view: &mut EntityWorldMut, colour: Color) {
     let root = view.id();
     view.observe(pressed).observe(keep_keys);
@@ -232,7 +208,6 @@ pub(crate) fn attach(view: &mut EntityWorldMut, colour: Color) {
     }
 }
 
-/// Turns editing on or off. Edits made so far stay shown either way.
 pub(crate) fn set(world: &mut World, root: Entity, on: bool) {
     let Some(mut doc) = world.get_mut::<DiffDoc>(root) else {
         return;
@@ -245,8 +220,6 @@ pub(crate) fn set(world: &mut World, root: Entity, on: bool) {
     }
 }
 
-/// Despawns the docs of a source that was replaced, and gives the
-/// new source's files docs while editing is on.
 pub(crate) fn restart(
     world: &mut World,
     root: Entity,
@@ -257,7 +230,7 @@ pub(crate) fn restart(
     }
     if let Some(mut doc) = world.get_mut::<DiffDoc>(root) {
         doc.edit.damage.clear();
-        doc.edit.head = None;
+        doc.edit.in_sight = None;
         doc.edit.rediff = None;
         if doc.edit.on {
             begin(world, root);
@@ -265,7 +238,6 @@ pub(crate) fn restart(
     }
 }
 
-/// Despawns a removed view's docs.
 pub(crate) fn drop_docs(
     mut world: DeferredWorld,
     context: HookContext,
@@ -285,8 +257,6 @@ pub(crate) fn drop_docs(
     }
 }
 
-/// Whether file `file`'s new side can be edited: a full diff, as a
-/// pair of texts gives, whose new side was not deleted.
 fn editable(diff: &FileDiff) -> bool {
     !diff.is_partial()
         && !matches!(
@@ -295,8 +265,6 @@ fn editable(diff: &FileDiff) -> bool {
         )
 }
 
-/// Gives each editable file without one a doc of its own, holding the
-/// source's new side.
 fn begin(world: &mut World, root: Entity) {
     let Some(doc) = world.get::<DiffDoc>(root) else {
         return;
@@ -305,7 +273,7 @@ fn begin(world: &mut World, root: Entity) {
         (0..doc.files().len())
             .filter(|&file| doc.files()[file].live.is_none())
             .filter_map(|file| {
-                let (diff, lang) = doc.source_new(file);
+                let (diff, lang) = doc.source_diff(file);
                 editable(diff).then(|| {
                     let text = diff.new_lines().text();
                     (file, diff.clone(), EditDoc::new(lang, text))
@@ -321,7 +289,6 @@ fn begin(world: &mut World, root: Entity) {
     }
 }
 
-/// Gives the read-only selection its keys back.
 fn leave(world: &mut World, root: Entity) {
     let Some(mut doc) = world.get_mut::<DiffDoc>(root) else {
         return;
@@ -331,8 +298,6 @@ fn leave(world: &mut World, root: Entity) {
     }
 }
 
-/// Notes a primary press for [`keys`] to read once the read-only
-/// press has picked its row and byte.
 fn pressed(
     press: On<PointerPress>,
     mut docs: Query<&mut DiffDoc>,
@@ -364,8 +329,6 @@ fn pressed(
     doc.bypass_change_detection().edit.pressed = across;
 }
 
-/// Keeps the keys an active diff editor takes from bubbling to the
-/// window's shortcuts.
 fn keep_keys(
     mut event: On<FocusedInput<KeyboardInput>>,
     docs: Query<&DiffDoc>,
@@ -385,8 +348,6 @@ fn keep_keys(
     }
 }
 
-/// The new line a press on row `index` in `column` lands on, and its
-/// file, when that file is being edited.
 fn new_line(
     doc: &DiffDoc,
     index: usize,
@@ -410,9 +371,6 @@ fn new_line(
     Some((file, line.index))
 }
 
-/// Turns presses on new-side lines into carets, and keys sent to a
-/// view whose new side holds the caret into requests, before the
-/// editor's frame applies them.
 pub(crate) fn keys(
     keys: Res<Keys>,
     keymap: Res<Keymap>,
@@ -489,8 +447,6 @@ pub(crate) fn keys(
     }
 }
 
-/// A bound key's action through the doc's transaction, as the code
-/// editor runs it.
 fn request(action: Action) -> Request {
     match action {
         Action::Command(command) => Request::command(command),
@@ -504,9 +460,6 @@ fn request(action: Action) -> Request {
     }
 }
 
-/// Moves each edited file's diff, rows and list through the changes
-/// its doc took this frame, lexes what its rows may show, and keeps
-/// its caret in sight.
 pub(crate) fn apply(
     world: &mut World,
     mut cursor: Local<MessageCursor<EditorChanged>>,
@@ -525,10 +478,10 @@ pub(crate) fn apply(
         };
         {
             let session = &mut doc.bypass_change_detection().edit;
-            session.since = session.began;
-            session.began = session.seq;
-            let since = session.since;
-            session.redrawn.retain(|&(seq, ..)| seq > since);
+            session.reads_last_frame = session.reads_this_frame;
+            session.reads_this_frame = session.reads;
+            let since = session.reads_last_frame;
+            session.redrawn.retain(|redraw| redraw.reads > since);
         }
         for change in &changes {
             let file = world.get::<DiffDoc>(root).and_then(|doc| {
@@ -547,8 +500,6 @@ pub(crate) fn apply(
     }
 }
 
-/// One change of file `file`'s doc: each line edit re-diffs, patches
-/// the rows and splices the list, in order.
 fn rediff(
     world: &mut World,
     root: Entity,
@@ -620,10 +571,14 @@ fn rediff(
     }
     let took = started.elapsed();
     let session = &mut doc.edit;
-    session.seq += 1;
+    session.reads += 1;
     session.rediff = Some((file, took));
     if let Some(rows) = redrawn.filter(|rows| !rows.is_empty()) {
-        session.redrawn.push((session.seq, file, rows));
+        session.redrawn.push(Redraw {
+            reads: session.reads,
+            file,
+            rows,
+        });
     }
     let moved = splices
         .iter()
@@ -631,7 +586,7 @@ fn rediff(
     let after = anchor.and_then(|line| {
         doc.files()[file].rows.find(Anchor::New(line))
     });
-    doc.count();
+    doc.place_files();
     let Some(list) = list.filter(|_| !collapsed && moved) else {
         return;
     };
@@ -649,9 +604,6 @@ fn rediff(
     }
 }
 
-/// The rows of a file that one patch changed under their slots: those
-/// it inserted, those of the hunks it re-diffed, and, when the edit
-/// changed the line count, every row below them.
 fn changed_rows(
     rows: &Rows,
     rediff: &Rediff,
@@ -673,7 +625,6 @@ fn changed_rows(
     changed
 }
 
-/// How far below the view's top row `index` starts, when it shows.
 fn screen_top(
     world: &World,
     list: Entity,
@@ -689,8 +640,6 @@ fn screen_top(
     (top + span.height > 0.0 && top < height).then_some(top)
 }
 
-/// Scrolls so that row `index` starts `top` below the view's top
-/// again.
 fn keep_top(world: &mut World, list: Entity, index: usize, top: f32) {
     let Some(span) = world
         .get::<VirtualList>(list)
@@ -706,8 +655,6 @@ fn keep_top(world: &mut World, list: Entity, index: usize, top: f32) {
     }
 }
 
-/// Lexes the stale lines the active file's rows may show, and has the
-/// rows of every doc whose damage moved read again.
 fn catch_up(world: &mut World, root: Entity) {
     let Some(doc) = world.get::<DiffDoc>(root) else {
         return;
@@ -747,11 +694,10 @@ fn catch_up(world: &mut World, root: Entity) {
     }
     session.damage = seen;
     if moved {
-        session.seq += 1;
+        session.reads += 1;
     }
 }
 
-/// Scrolls the active file's caret into sight when it moved.
 fn reveal(world: &mut World, root: Entity) {
     let Some(doc) = world.get::<DiffDoc>(root) else {
         return;
@@ -766,7 +712,7 @@ fn reveal(world: &mut World, root: Entity) {
         return;
     };
     let head = editor.editor().selections().primary().head;
-    if doc.edit.head == Some((file, head)) {
+    if doc.edit.in_sight == Some((file, head)) {
         return;
     }
     let line = editor.editor().buffer().line_of(head);
@@ -776,7 +722,8 @@ fn reveal(world: &mut World, root: Entity) {
         .map(|row| doc.body_start(file) + row as usize);
     let list = doc.list();
     if let Some(mut doc) = world.get_mut::<DiffDoc>(root) {
-        doc.bypass_change_detection().edit.head = Some((file, head));
+        doc.bypass_change_detection().edit.in_sight =
+            Some((file, head));
     }
     let (Some(row), Some(list)) = (row, list) else {
         return;
@@ -801,8 +748,6 @@ type Texts<'a> = (
 type Bar<'a> =
     (&'a mut Node, &'a mut UiGlobalTransform, &'a mut Visibility);
 
-/// Draws each view's primary caret on its row's new-side text, while
-/// the view holds the input focus and its new side holds the caret.
 pub(crate) fn draw(
     views: Query<(
         Entity,
@@ -849,8 +794,6 @@ pub(crate) fn draw(
     }
 }
 
-/// The physical corner and size of view `root`'s primary caret, when
-/// its row's text is laid out and shows.
 fn caret(
     doc: &DiffDoc,
     docs: &Query<&EditDoc>,

@@ -59,7 +59,6 @@ fn editing(source: DiffSource, layout: Layout) -> App {
     app
 }
 
-/// The first row of file `file` that `pick` accepts.
 fn row_where(
     app: &mut App,
     file: usize,
@@ -91,7 +90,6 @@ fn status(app: &mut App) -> Option<DiffEditStatus> {
     doc.edit_status(world)
 }
 
-/// Presses at byte `byte` of the stacked line text of row `index`.
 fn click_stacked(app: &mut App, index: usize, byte: usize) {
     let text = line_text(app, index);
     let at = point_in(app, text, byte);
@@ -201,8 +199,6 @@ fn an_enter_inside_a_hunk_moves_the_new_numbers_below_and_keeps_the_old()
     assert_slots_show_their_rows(&mut app);
 }
 
-/// Each built slot's text runs, with their colours and backgrounds,
-/// by row index.
 fn drawn(app: &mut App) -> Vec<(usize, Vec<String>)> {
     slots(app)
         .into_iter()
@@ -239,8 +235,6 @@ fn drawn(app: &mut App) -> Vec<(usize, Vec<String>)> {
         .collect()
 }
 
-/// Asserts that every built slot shows its row: its line numbers and
-/// its line's text.
 fn assert_slots_show_their_rows(app: &mut App) {
     for (index, slot) in slots(app) {
         let Some(DiffRow::Body { file, row }) = doc(app).row(index)

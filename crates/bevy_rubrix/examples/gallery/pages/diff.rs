@@ -42,8 +42,6 @@ macro_rules! fixture_pair {
     };
 }
 
-/// The text-pair fixtures `pairs` shows after `large.rs`, as
-/// `(path, old, new)`.
 const FIXTURE_PAIRS: [(&str, &str, &str); 8] = [
     fixture_pair!("merge", ".rs"),
     fixture_pair!("retype", ".rs"),
@@ -206,9 +204,6 @@ fn controls() -> PageView {
     wrapping(buttons.boxed())
 }
 
-/// A source button in the title row. The control row holds seven
-/// buttons in one line, and an eighth would wrap it and move the
-/// view.
 fn source_link(
     text: &'static str,
     press: impl Fn(&mut World) + Send + Sync + 'static,
@@ -241,9 +236,6 @@ fn with_review_edits(text: &str) -> String {
     out
 }
 
-/// `large.rs.txt` ten times, and the same with ` // edit` after
-/// every line whose 0-based index is a multiple of 100, as
-/// `hundred_k_pair` in `rubrix_diff`'s `tests/rediff.rs` makes it.
 fn hundred_k_pair() -> (String, String) {
     let old = LARGE_RS.repeat(10);
     let mut new = String::with_capacity(old.len() + old.len() / 400);

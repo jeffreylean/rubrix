@@ -1821,10 +1821,6 @@ fn spans_of(
         .collect()
 }
 
-/// The editing state of the first diff view, as
-/// [`DiffDoc::edit_status`] gives it, with the caret's line from 1,
-/// then how many built stacked line rows its gutter numbers were
-/// checked on and how many show numbers other than the row's.
 fn diff_edit(world: &mut World) -> String {
     let mut docs = world.query::<(Entity, &DiffDoc)>();
     let Some((view, status)) =
@@ -1859,8 +1855,6 @@ fn diff_edit(world: &mut World) -> String {
     )
 }
 
-/// The stacked line rows of diff view `view` that the list has built,
-/// and how many of them show gutter numbers other than their row's.
 fn stale_gutters(world: &mut World, view: Entity) -> (usize, usize) {
     let slots = world
         .query::<(Entity, &bevy_rubrix::DiffRowAt)>()

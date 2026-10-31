@@ -337,8 +337,6 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// Pushes hunks `hunks` with the gap above each and, in a full
-    /// diff with hunks, the gap below the last of them.
     fn region(&mut self, diff: &FileDiff, hunks: Range<u32>) {
         let all = diff.hunks();
         let above =
@@ -664,9 +662,10 @@ impl Rows {
             (runs(&old, self.layout), runs(new, self.layout));
         let (both, layout) = ((&old[..], &new[..]), self.layout);
         let limit = removed.min(inserted);
-        let lead = common(both, layout, false, limit, |a, b| a == b);
+        let lead =
+            common(both, layout, End::Front, limit, |a, b| a == b);
         let trail =
-            common(both, layout, true, limit - lead, |a, b| {
+            common(both, layout, End::Back, limit - lead, |a, b| {
                 shifted(a, lines, hunks) == Some(b)
             });
         RowSplice {
@@ -732,8 +731,12 @@ fn row_at(segment: &Segment, at: u32, layout: Layout) -> Row {
     }
 }
 
-/// Rows `at..at + len` of a segment, which step one line a row on
-/// every side they show.
+#[derive(Clone, Copy)]
+enum End {
+    Front,
+    Back,
+}
+
 #[derive(Clone, Copy)]
 struct Run<'a> {
     segment: &'a Segment,
@@ -742,9 +745,11 @@ struct Run<'a> {
 }
 
 impl Run<'_> {
-    /// The run's `k`th row, from its last row when `back`.
-    fn row(self, k: u32, back: bool, layout: Layout) -> Row {
-        let at = if back { self.len - 1 - k } else { k };
+    fn row(self, k: u32, from: End, layout: Layout) -> Row {
+        let at = match from {
+            End::Front => k,
+            End::Back => self.len - 1 - k,
+        };
         row_at(self.segment, self.at + at, layout)
     }
 }
@@ -773,21 +778,17 @@ fn runs(segments: &[Segment], layout: Layout) -> Vec<Run<'_>> {
     runs
 }
 
-/// How many rows, at most `limit`, `old` and `new` share by `same`
-/// from their starts, or from their ends when `back`. Two runs whose
-/// first rows are the same share rows for as long as both last.
 fn common(
     (old, new): (&[Run<'_>], &[Run<'_>]),
     layout: Layout,
-    back: bool,
+    from: End,
     limit: u32,
     same: impl Fn(Row, Row) -> bool,
 ) -> u32 {
     let nth = |runs: &[Run<'_>], i: usize| {
-        let i = if back {
-            runs.len().checked_sub(i + 1)?
-        } else {
-            i
+        let i = match from {
+            End::Front => i,
+            End::Back => runs.len().checked_sub(i + 1)?,
         };
         (i < runs.len()).then_some(i)
     };
@@ -796,8 +797,8 @@ fn common(
     while let (Some(a), Some(b)) = (nth(old, i), nth(new, j)) {
         let (a, b) = (old[a], new[b]);
         let rows = (
-            a.row(in_old, back, layout),
-            b.row(in_new, back, layout),
+            a.row(in_old, from, layout),
+            b.row(in_new, from, layout),
         );
         if shared == limit || !same(rows.0, rows.1) {
             break;
@@ -817,8 +818,6 @@ fn common(
     shared
 }
 
-/// `row` with its new line and gap key moved by an edit, or `None`
-/// when they would leave the file.
 fn shifted(row: Row, lines: i64, hunks: i64) -> Option<Row> {
     let by = |at: u32, d: i64| u32::try_from(i64::from(at) + d).ok();
     let line = |line: LineRef| {

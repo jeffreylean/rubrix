@@ -324,9 +324,9 @@ impl DiffView {
     /// Whether a press on a new-side line puts a caret there that
     /// edits the file. Each file's new side is an [`EditDoc`] of its
     /// own, so undo is per file, and each keystroke re-diffs only the
-    /// hunk it touches. Off when unset. Old-side lines stay
-    /// read-only, selectable and copyable, and so does every line of
-    /// a file from a patch, of a deleted file, and of a compact view.
+    /// hunks near it. Off when unset. Old-side lines stay read-only,
+    /// selectable and copyable, and so does every line of a file from
+    /// a patch, of a deleted or binary file, and of a compact view.
     pub fn edit(mut self, on: impl Into<Prop<bool>>) -> Self {
         self.edit = on.into();
         self
@@ -364,9 +364,7 @@ pub struct DiffDoc {
     revision: u64,
     list: Option<Entity>,
     pending_scroll: Option<usize>,
-    /// Counts each change of the rows' shape that every row reads
-    /// again for.
-    pub(crate) shape: u64,
+    pub(crate) reshapes: u64,
     pub(crate) edit: diff_edit::Session,
 }
 
@@ -374,28 +372,20 @@ pub(crate) struct FileRows {
     pub(crate) rows: Rows,
     pub(crate) expansion: Expansion,
     collapsed: bool,
-    /// The file's diff while its new side is edited, which leaves
-    /// the source's as it was.
     pub(crate) live: Option<Live>,
 }
 
 impl FileRows {
-    /// The live diff while the new side is edited, else `source`.
     fn diff<'a>(&'a self, source: &'a FileDiff) -> &'a FileDiff {
         self.live.as_ref().map_or(source, |live| &live.diff)
     }
 }
 
-/// An edited file: its diff, kept in step with the new side's text in
-/// `doc`, an [`EditDoc`] entity of its own.
 pub(crate) struct Live {
     pub(crate) diff: FileDiff,
     pub(crate) doc: Entity,
 }
 
-/// A file's diff and the runs of each side: the source's, or for an
-/// edited file its live diff and, read through the world, the new
-/// side's runs from its doc.
 #[derive(Clone, Copy)]
 struct FileRef<'a> {
     source: &'a SourceFile,
@@ -458,7 +448,7 @@ impl DiffDoc {
             revision: 0,
             list: None,
             pending_scroll: None,
-            shape: 0,
+            reshapes: 0,
             edit: diff_edit::Session::default(),
         }
     }
@@ -551,8 +541,6 @@ impl DiffDoc {
         self.index();
     }
 
-    /// Shows `source`, and returns the docs of the files that were
-    /// edited, for the caller to despawn.
     fn show(&mut self, source: DiffSource) -> Vec<Entity> {
         let layout = self.layout();
         let docs = self
@@ -608,14 +596,11 @@ impl DiffDoc {
 
     fn index(&mut self) {
         self.revision += 1;
-        self.shape += 1;
-        self.count();
+        self.reshapes += 1;
+        self.place_files();
     }
 
-    /// Places each file's rows after the rows before it, as an edit
-    /// leaves them, without dropping the selection or reading every
-    /// row again.
-    pub(crate) fn count(&mut self) {
+    pub(crate) fn place_files(&mut self) {
         self.header_rows.clear();
         let mut at = 0;
         for file in &self.files {
@@ -699,7 +684,6 @@ impl DiffDoc {
         &mut self.files[file]
     }
 
-    /// The first row of file `file`'s body.
     pub(crate) fn body_start(&self, file: usize) -> usize {
         self.header_rows[file] + 1
     }
@@ -708,9 +692,7 @@ impl DiffDoc {
         self.list
     }
 
-    /// File `file`'s new side as the source holds it, and its
-    /// language, for an editor to start from.
-    pub(crate) fn source_new(
+    pub(crate) fn source_diff(
         &self,
         file: usize,
     ) -> (&FileDiff, Lang) {
@@ -735,8 +717,6 @@ impl DiffDoc {
         }
     }
 
-    /// [`DiffDoc::body`] with an edited file's new runs, read from
-    /// its doc in `world`.
     fn body_in<'w>(
         &'w self,
         world: &'w World,
@@ -1020,12 +1000,12 @@ where
         cx.effect(root, self.row_colours, |world, root, &on| {
             let mut doc = doc_mut(world, root);
             doc.row_colours = on;
-            doc.shape += 1;
+            doc.reshapes += 1;
         });
         cx.effect(root, self.overflow, |world, root, &overflow| {
             let mut doc = doc_mut(world, root);
             doc.overflow = overflow;
-            doc.shape += 1;
+            doc.reshapes += 1;
         });
         cx.effect(root, self.edit, |world, root, &on| {
             diff_edit::set(world, root, on);
@@ -1101,10 +1081,6 @@ where
     })
 }
 
-/// A row's read, again when its slot moves, when the rows change
-/// shape, or when an edit touched what it shows
-/// ([`diff_edit::Stamp`]). A plain change to the [`DiffDoc`], such as
-/// a new row count, reads no row again.
 fn row_signal<V: Default + 'static>(
     root: Entity,
     slot: RowSlot,

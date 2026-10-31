@@ -116,9 +116,6 @@ impl Lines {
         self.ends.push(self.text.len() as u32);
     }
 
-    /// Puts the lines of `text` in place of lines `lines` and returns
-    /// how many there are. `text` lacks a final `\n` only at the
-    /// side's end, so every line keeps its terminator.
     pub(crate) fn splice(
         &mut self,
         lines: Range<u32>,
@@ -326,8 +323,6 @@ impl Hunk {
             .map_or(0, |block| block.new_range().start)
     }
 
-    /// Moves the hunk's new side `by` lines down, or up when
-    /// negative.
     pub(crate) fn shift_new(&mut self, by: i64) {
         let moved = |at: &mut u32| {
             *at = u32::try_from(i64::from(*at) + by)
@@ -634,7 +629,6 @@ impl FileDiff {
         Ok(())
     }
 
-    /// [`FileDiff::split_changes`] over hunks `hunks` alone.
     pub(crate) fn split_changes_in(
         &mut self,
         hunks: Range<usize>,

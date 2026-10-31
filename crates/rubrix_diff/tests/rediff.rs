@@ -12,8 +12,6 @@ const LAYOUTS: [Layout; 2] = [Layout::Stacked, Layout::Split];
 const LARGE: &str =
     include_str!("../../../bench/fixtures/rust/large.rs.txt");
 
-/// The gallery's 10k pair edit, copied from
-/// `crates/bevy_rubrix/examples/gallery/pages/diff.rs`.
 fn with_review_edits(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for (at, line) in text.lines().enumerate() {
@@ -33,9 +31,6 @@ fn with_review_edits(text: &str) -> String {
     out
 }
 
-/// The gallery's `100k pair`: `large.rs.txt` ten times, and the same
-/// with ` // edit` after every line whose 0-based index is a
-/// multiple of 100.
 fn hundred_k_pair() -> (String, String) {
     let old = LARGE.repeat(10);
     let mut new = String::with_capacity(old.len() + old.len() / 400);
@@ -54,7 +49,6 @@ fn numbered(count: u32) -> Vec<String> {
     (0..count).map(|n| format!("line {n}\n")).collect()
 }
 
-/// `count` numbered lines, and the same with lines `changed` edited.
 fn pair(count: u32, changed: &[u32]) -> (String, String) {
     let old = numbered(count);
     let mut new = old.clone();
@@ -64,8 +58,6 @@ fn pair(count: u32, changed: &[u32]) -> (String, String) {
     (old.concat(), new.concat())
 }
 
-/// Lines in the editor's buffer: one more than the side's when the
-/// text ends in `\n` or is empty.
 fn buffer_len(lines: &Lines) -> u32 {
     let text = lines.text();
     lines.len() + u32::from(text.is_empty() || text.ends_with('\n'))
@@ -100,9 +92,6 @@ fn context_lens(hunk: &Hunk) -> (u32, u32) {
     (len(&blocks[0]), len(&blocks[blocks.len() - 1]))
 }
 
-/// The hunks turn the old side into the new one, each holds a
-/// change with full context, and no two come within twice the
-/// context of each other.
 fn check_hunks(diff: &FileDiff) {
     let (old, new) = (diff.old_lines(), diff.new_lines());
     let mut out = String::with_capacity(new.text().len());
@@ -158,8 +147,6 @@ type Plain = (
     Option<(i64, u32, bool, bool)>,
 );
 
-/// A row as plain numbers, its new line and gap key moved by an
-/// edit's line and hunk deltas.
 fn plain(row: Row, lines: i64, hunks: i64) -> Plain {
     let line = |line: Option<LineRef>, by: i64| {
         line.map(|line| {
@@ -181,7 +168,6 @@ fn plain(row: Row, lines: i64, hunks: i64) -> Plain {
     (discriminant(&row), line(row.old_line(), 0), new, gap)
 }
 
-/// `splice` turns `before` into `after`, and no smaller splice does.
 fn check_splice(
     before: &Rows,
     after: &Rows,
@@ -232,8 +218,6 @@ fn shown_old_lines(table: &Rows, count: u32) -> Vec<bool> {
     shown
 }
 
-/// A diff and its rows in both layouts, moved through each edit the
-/// way the view moves them.
 struct Doc {
     diff: FileDiff,
     expansion: Expansion,
@@ -279,8 +263,6 @@ impl Doc {
         rediff
     }
 
-    /// Replaces buffer lines `lines` with `with`, as the view maps a
-    /// buffer edit to [`FileDiff::edit_new`].
     fn replace(
         &mut self,
         lines: Range<u32>,
@@ -374,7 +356,6 @@ impl Rng {
     }
 }
 
-/// A buffer line, in or near a hunk three times out of four.
 fn target(doc: &Doc, rng: &mut Rng) -> u32 {
     let count = buffer_len(doc.diff.new_lines());
     let hunks = doc.diff.hunks();
@@ -390,7 +371,6 @@ fn target(doc: &Doc, rng: &mut Rng) -> u32 {
     start + rng.below(end - start)
 }
 
-/// Puts one change block's old lines back, or one of its lines.
 fn revert(doc: &mut Doc, rng: &mut Rng) -> bool {
     let (old, new) = (doc.diff.old_lines(), doc.diff.new_lines());
     let blocks: Vec<Block> = doc

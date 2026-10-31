@@ -49,8 +49,6 @@ pub struct Expansion {
 struct Reveal {
     top: u32,
     bottom: u32,
-    /// Shown runs between the ends, as sorted, disjoint offsets
-    /// into the gap.
     middle: Vec<Range<u32>>,
 }
 
@@ -85,9 +83,6 @@ impl Expansion {
         }
     }
 
-    /// The shown runs of the gap above hunk `hunk`, `size` lines
-    /// long, as offsets into it: in order, disjoint and non-empty,
-    /// though one may end where the next starts.
     pub(crate) fn shown(
         &self,
         hunk: u32,
@@ -109,11 +104,6 @@ impl Expansion {
             .filter(|run| !run.is_empty())
     }
 
-    /// Moves the gaps around hunks `replaced`, which `edit_new` put
-    /// `new` in place of, so that every line shown before stays
-    /// shown. `region` is the old lines from the end of the hunk
-    /// before them to the start of the hunk after them, which both
-    /// lists tile with their gaps; the old side never moves.
     pub(crate) fn remap(
         &mut self,
         first: u32,
@@ -183,8 +173,6 @@ impl Expansion {
     }
 }
 
-/// The old lines of the gaps that `hunks` leave in `region`: one
-/// before each hunk and one after the last.
 fn gaps<'a>(
     region: &Range<u32>,
     hunks: &'a [Hunk],
@@ -199,7 +187,6 @@ fn gaps<'a>(
     })
 }
 
-/// Each hunk's old lines, then `None` for the gap after the last.
 fn old_ranges(
     hunks: &[Hunk],
 ) -> impl Iterator<Item = Option<Range<u32>>> + '_ {

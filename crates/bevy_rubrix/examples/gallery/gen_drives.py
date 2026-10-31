@@ -1732,9 +1732,6 @@ CONTEXT = 3
 
 
 class Pair:
-    """A text pair as the diff view shows it: `changes` are `(old_at, removed,
-    added)` on 0-based old lines, in order, and `revealed` the gaps, counted
-    from 0, whose lines all show. A gap of one line shows that line."""
 
     def __init__(self, name, old_lines, changes, revealed=(), split=False):
         self.name, self.old_count, self.changes = name, old_lines, changes
@@ -1752,7 +1749,6 @@ class Pair:
         return hunks
 
     def header(self, old_line):
-        """The `@@` header of the hunk that holds 1-based old line `old_line`."""
         shift = 0
         for start, end, grown in self.hunks():
             if start < old_line <= end:
@@ -1762,8 +1758,6 @@ class Pair:
             shift += grown
 
     def rows(self, file):
-        """`(file, kind, ...)` per row: `header`, `gap <hidden>`, or `line
-        <old> <new>` with 1-based numbers and None for a missing side."""
         rows = [(file, "header", self.name)]
         old = shift = gap = 0
 
@@ -1834,11 +1828,6 @@ def row_of(rows, file, old=None, new=None):
 
 
 def reach(rows, index, lead=LEAD):
-    """Scrolls from the top to put row `index` about `lead` below the view's
-    top, checks the first row on view, and gives the row's middle on screen.
-    The list places a row it never built at one row's height, so the scroll
-    lands by those estimates, and the rows from the first on view down take
-    their own heights once built."""
     end = top(rows, index) + tall(rows[index])
     if end <= VIEW_SHOWN:
         return [], LIST_TOP + top(rows, index) + tall(rows[index]) // 2
@@ -1869,7 +1858,6 @@ def diff_rows(rows, shape="stacked"):
 
 
 def copy_line(text):
-    """Copies the caret's line from its first non-blank to the caret."""
     return ["key shift+home", "key mod+c", "log copied", f"expect copied {rust_debug(text.lstrip())}"]
 
 
