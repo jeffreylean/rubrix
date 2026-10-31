@@ -1,7 +1,3 @@
-//! Other users and an app's hooks on an editable view: remote carets,
-//! markers, line annotations, edit state kept across a respawn, and a
-//! clipboard of the page's own.
-
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::mem;
 
@@ -38,7 +34,6 @@ use super::code::{LARGE_RS, stress};
 use super::{Ask, control, wrapping};
 use crate::{Build, PageView, Paste};
 
-/// The doc the page shows, kept across theme rebuilds.
 #[derive(Resource)]
 pub struct CollabFile {
     doc: Entity,
@@ -64,7 +59,6 @@ impl CollabFile {
     }
 }
 
-/// A gutter badge.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Badge(&'static str);
 
@@ -162,7 +156,10 @@ fn controls() -> PageView {
                     .into_iter()
                     .zip(129..)
                     .map(|(severity, line)| {
-                        (trimmed(editor.buffer(), line), severity)
+                        (
+                            without_indent(editor.buffer(), line),
+                            severity,
+                        )
                     }),
             );
             world.entity_mut(doc).insert(Markers(markers));
@@ -188,7 +185,10 @@ fn controls() -> PageView {
                 Severity::Hint,
             ];
             let markers = Ranges::new((0..1_000).map(|i| {
-                (trimmed(buffer, i as u32 * step), severities[i % 4])
+                (
+                    without_indent(buffer, i as u32 * step),
+                    severities[i % 4],
+                )
             }));
             world.entity_mut(doc).insert(Markers(markers));
         }),
@@ -197,7 +197,6 @@ fn controls() -> PageView {
     wrapping(buttons.boxed())
 }
 
-/// A control wide enough for `1,000 markers` on one line.
 fn wide_control(
     text: &'static str,
     press: impl Fn(&mut World) + Send + Sync + 'static,
@@ -209,22 +208,22 @@ fn wide_control(
         .boxed()
 }
 
-/// The doc on show and its editor.
 fn on_show(world: &World) -> (Entity, &Editor) {
     let doc = world.resource::<CollabFile>().doc;
     let edit = world.get::<EditDoc>(doc).expect("the page's doc");
     (doc, edit.editor())
 }
 
-/// Line `line`'s text without its indent.
-fn trimmed(buffer: &Buffer, line: u32) -> core::ops::Range<usize> {
+fn without_indent(
+    buffer: &Buffer,
+    line: u32,
+) -> core::ops::Range<usize> {
     let (start, end) =
         (buffer.line_start(line), buffer.line_end(line));
     let text = buffer.slice(start..end);
     start + text.len() - text.trim_start().len()..end
 }
 
-/// Fifty carets from the primary caret to the end of its line.
 fn fifty_carets(world: &mut World) {
     let (doc, editor) = on_show(world);
     let head = editor.selections().primary().head;
@@ -244,9 +243,6 @@ fn fifty_carets(world: &mut World) {
     world.entity_mut(doc).insert(RemoteCarets(carets));
 }
 
-/// Despawns the doc, which keeps its edit state under its key, and
-/// spawns one with the same key from the original text, which takes
-/// that state back. Carets, markers and annotations come along.
 fn respawn(world: &mut World) {
     let file = world.resource::<CollabFile>();
     let (old, big) = (file.doc, file.big);
@@ -264,15 +260,13 @@ fn respawn(world: &mut World) {
     world.resource_mut::<CollabFile>().doc = doc;
 }
 
-/// A colour picked from `name`, the same each run.
 fn color_of(name: &str) -> Color {
     let mut hash = DefaultHasher::new();
     name.hash(&mut hash);
     Color::hsl((hash.finish() % 360) as f32, 0.75, 0.55)
 }
 
-/// 1-based line and column, columns in chars, to a byte offset.
-fn offset(
+fn offset_of_place(
     buffer: &Buffer,
     (line, column): (u32, usize),
 ) -> Result<usize, String> {
@@ -301,8 +295,6 @@ fn place(buffer: &Buffer, at: usize) -> String {
     format!("{}:{}", line + 1, column + 1)
 }
 
-/// The `remote` step: sets the caret labelled `name`, a range from
-/// `anchor` to `head` when given.
 pub fn remote(
     world: &mut World,
     name: &str,
@@ -313,9 +305,10 @@ pub fn remote(
         return Err("the remote step needs page collab".into());
     }
     let (doc, editor) = on_show(world);
-    let anchor = offset(editor.buffer(), anchor)?;
-    let head = head
-        .map_or(Ok(anchor), |head| offset(editor.buffer(), head))?;
+    let anchor = offset_of_place(editor.buffer(), anchor)?;
+    let head = head.map_or(Ok(anchor), |head| {
+        offset_of_place(editor.buffer(), head)
+    })?;
     let caret = RemoteCaret {
         anchor,
         head,
@@ -333,8 +326,6 @@ pub fn remote(
     Ok(())
 }
 
-/// `remote <n>: <label> <anchor>[..<head>] shown|edge top|edge
-/// bottom, ...`
 pub fn remote_line(world: &mut World) -> String {
     let Some(doc) =
         world.get_resource::<CollabFile>().map(|file| file.doc)
@@ -384,13 +375,11 @@ pub fn remote_line(world: &mut World) -> String {
     format!("remote {}: {}", each.len(), each.join(", "))
 }
 
-/// The changes the doc on show took since it was spawned, and whether
-/// each one's revision was one past the last.
 #[derive(Resource, Default)]
 struct Changes {
     doc: Option<Entity>,
     count: usize,
-    rising: bool,
+    consecutive: bool,
     last: u64,
 }
 
@@ -402,7 +391,7 @@ fn count_changes(
     if changes.doc != Some(file.doc) {
         *changes = Changes {
             doc: Some(file.doc),
-            rising: true,
+            consecutive: true,
             ..Changes::default()
         };
     }
@@ -410,7 +399,7 @@ fn count_changes(
         changed.read().filter(|changed| changed.doc == file.doc)
     {
         if changes.count > 0 && changed.seq != changes.last + 1 {
-            changes.rising = false;
+            changes.consecutive = false;
         }
         changes.count += 1;
         changes.last = changed.seq;
@@ -421,11 +410,10 @@ pub fn changed_line(world: &World) -> String {
     let changes = world.resource::<Changes>();
     format!(
         "changed {} rising {} last {}",
-        changes.count, changes.rising, changes.last
+        changes.count, changes.consecutive, changes.last
     )
 }
 
-/// `markers <n>: <severity> <from>..<to>, ...`, the first ten.
 pub fn markers_line(world: &World) -> String {
     let Some(doc) =
         world.get_resource::<CollabFile>().map(|file| file.doc)
@@ -454,7 +442,6 @@ pub fn markers_line(world: &World) -> String {
     format!("markers {}: {}", markers.0.len(), each.join(", "))
 }
 
-/// `annotations <n>: <line> <badge>, ...`
 pub fn annotations_line(world: &World) -> String {
     let Some(doc) =
         world.get_resource::<CollabFile>().map(|file| file.doc)
@@ -475,7 +462,6 @@ pub fn annotations_line(world: &World) -> String {
     format!("annotations {}: {}", each.len(), each.join(", "))
 }
 
-/// Paints the gutter number of each annotated line.
 fn badges(
     file: Res<CollabFile>,
     docs: Query<(&EditDoc, &LineAnnotations<Badge>)>,
@@ -507,7 +493,6 @@ fn badges(
     }
 }
 
-/// The page's answers, lines and columns from 1.
 pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
     let doc = world.get_resource::<CollabFile>()?.doc;
     let shown = world
@@ -554,7 +539,6 @@ pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
 #[derive(Component)]
 struct CollabRoot;
 
-/// The clipboard the gallery had before the page took it.
 #[derive(Resource)]
 struct Previous(EditClipboard);
 
@@ -571,12 +555,8 @@ fn give_back_clipboard(
     });
 }
 
-/// Where the page's clipboard says its text came from.
 const SOURCE: &str = "collab: ";
 
-/// The page's clipboard: the gallery's [`Paste`] text, tagged with
-/// this provider as its source once it serves it. The shared Wayland
-/// clipboard stays untouched.
 struct CollabClipboard;
 
 impl ClipboardProvider for CollabClipboard {

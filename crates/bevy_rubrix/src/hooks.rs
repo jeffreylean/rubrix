@@ -1,7 +1,3 @@
-//! What an app hangs on an [`EditDoc`]'s entity to follow its text:
-//! markers, line annotations, and the edit state kept under a key
-//! while the doc is gone.
-
 use core::marker::PhantomData;
 use std::collections::VecDeque;
 
@@ -108,14 +104,8 @@ impl Follows for Markers {
 
 const MARKERS: MarkLayer = MarkLayer("markers");
 
-/// The lines above a view's first visible line whose markers it
-/// draws, so a short scroll up finds them drawn.
-const MARKED_ABOVE: u32 = 64;
+const OVERSCAN_ABOVE: u32 = 64;
 
-/// Puts each view's markers near its viewport in the view's `markers`
-/// layer of [`Marks`], one underline per line a marker covers, and
-/// sets the layer only when it changed, since a set rebuilds every
-/// row that layer marks.
 pub(crate) fn draw_markers(
     mut views: Query<(&EditView, &mut Marks)>,
     docs: Query<(&EditDoc, Option<&Markers>)>,
@@ -130,7 +120,7 @@ pub(crate) fn draw_markers(
             .and_then(|list| lists.get(list).ok())
             .map_or(0, |list| list.first_visible() as u32);
         let wanted = markers.map_or_else(Vec::new, |markers| {
-            near(doc, markers, first.saturating_sub(MARKED_ABOVE))
+            near(doc, markers, first.saturating_sub(OVERSCAN_ABOVE))
         });
         if marks.layer(MARKERS) != wanted.as_slice() {
             marks.set(MARKERS, wanted);
@@ -138,7 +128,6 @@ pub(crate) fn draw_markers(
     }
 }
 
-/// The underlines of `markers` on lines `from..from + BUILT_MAX`.
 fn near(doc: &EditDoc, markers: &Markers, from: u32) -> Vec<Mark> {
     let buffer = doc.editor().buffer();
     let last = buffer.line_count() - 1;
@@ -201,11 +190,9 @@ impl<T: Send + Sync + 'static> Follows for LineAnnotations<T> {
 pub struct EditKey(pub String);
 
 /// The edit states of keyed docs that were despawned, at most
-/// [`EditStates::MAX`], the oldest dropped first, as Pierre's
-/// `EditStateManager` keeps them.
+/// [`EditStates::MAX`], the oldest dropped first.
 #[derive(Resource, Default)]
 pub struct EditStates {
-    /// Oldest first, one per key.
     saved: VecDeque<(EditKey, EditState)>,
 }
 

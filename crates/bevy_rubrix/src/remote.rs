@@ -1,6 +1,3 @@
-//! Other users' carets on an editable view: drawn, never moved by
-//! this user.
-
 use core::ops::Range;
 
 use bevy::color::{Alpha, Color, Luminance};
@@ -78,10 +75,7 @@ pub enum Edge {
 #[derive(Component)]
 pub struct RemoteView {
     list: Entity,
-    /// In the list, so it scrolls with the rows: bars, labels,
-    /// tints.
     layer: Entity,
-    /// Over the view: edge markers.
     edges: Entity,
     rects: Vec<Entity>,
     tags: Vec<Entity>,
@@ -95,20 +89,17 @@ impl RemoteView {
     }
 }
 
-/// A bar or a tint.
 #[derive(Component)]
 pub(crate) struct RemoteRect;
 
-/// A label or an edge marker.
 #[derive(Component)]
 pub(crate) struct RemoteTag;
 
 #[derive(Component)]
 pub(crate) struct RemoteEdges;
 
-/// Logical px.
-const LABEL_SIZE: f32 = 11.0;
-const LABEL_PAD: f32 = 3.0;
+const LABEL_SIZE_PX: f32 = 11.0;
+const LABEL_PAD_PX: f32 = 3.0;
 const TINT: f32 = 0.32;
 
 type TextParts = (
@@ -138,21 +129,18 @@ type Tags<'w, 's> = Query<
     With<RemoteTag>,
 >;
 
-/// What one frame draws in a view: rects and tags in order, each
-/// reusing the pooled node at its index.
 #[derive(Default)]
 struct Scene {
-    /// Content px of the list: left, top, width, height.
     rects: Vec<([f32; 4], Color)>,
-    /// In the list's content px, or the edge overlay's px.
-    tags: Vec<(Vec2, String, Color, bool)>,
+    tags: Vec<(Vec2, String, Color, TagIn)>,
 }
 
-/// Draws every editable view's remote carets from this frame's
-/// layout, after `UiSystems::PostLayout`. Pieces lay out in the next
-/// layout, as the selection rects do: the bars, labels and tints sit
-/// in the list's content, so a scroll moves them with the rows in the
-/// same layout.
+#[derive(Clone, Copy, PartialEq)]
+enum TagIn {
+    List,
+    Edges,
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "one drawer over disjoint queries"
@@ -221,7 +209,9 @@ pub(crate) fn draw(
         };
         let origin = |text: Entity| {
             texts.get(text).ok().map(|(node, at, ..)| {
-                frame.content(at.translation + node.content_box().min)
+                frame.content_from_physical(
+                    at.translation + node.content_box().min,
+                )
             })
         };
         let any_origin =
@@ -247,7 +237,7 @@ pub(crate) fn draw(
                     scene.rects.push((bar, caret.color));
                     let height = label_height();
                     let above = bar[1] - height;
-                    let top = if above < frame.scroll.y {
+                    let top = if above < frame.scroll_logical.y {
                         bar[1] + bar[3]
                     } else {
                         above
@@ -256,13 +246,17 @@ pub(crate) fn draw(
                         Vec2::new(bar[0], top),
                         caret.label.clone(),
                         caret.color,
-                        false,
+                        TagIn::List,
                     ));
-                    placed.push(Placed::Bar(frame.window(bar)));
+                    placed.push(Placed::Bar(
+                        frame.window_from_content(bar),
+                    ));
                 }
                 None => {
                     let edge = match bar {
-                        Some(bar) if bar[1] >= frame.scroll.y => {
+                        Some(bar)
+                            if bar[1] >= frame.scroll_logical.y =>
+                        {
                             Edge::Bottom
                         }
                         Some(_) => Edge::Top,
@@ -278,17 +272,21 @@ pub(crate) fn draw(
                         Edge::Bottom => format!("↓ {}", caret.label),
                     };
                     let x = any_origin.map_or(0.0, |at| {
-                        at.x + shape.x - frame.scroll.x
+                        at.x + shape.x - frame.scroll_logical.x
                     });
                     let slot = &mut free[edge as usize];
-                    let left = x
-                        .max(*slot)
-                        .min(frame.edges.x - label_width(&text));
-                    *slot = left + label_width(&text) + LABEL_PAD;
+                    let left = x.max(*slot).min(
+                        frame.overlay_logical.x
+                            - monospace_label_width(&text),
+                    );
+                    *slot = left
+                        + monospace_label_width(&text)
+                        + LABEL_PAD_PX;
                     let top = match edge {
-                        Edge::Top => frame.list_top,
+                        Edge::Top => frame.list_top_logical,
                         Edge::Bottom => {
-                            frame.list_top + frame.size.y
+                            frame.list_top_logical
+                                + frame.viewport_logical.y
                                 - label_height()
                         }
                     };
@@ -296,7 +294,7 @@ pub(crate) fn draw(
                         Vec2::new(left.max(0.0), top),
                         text,
                         caret.color,
-                        true,
+                        TagIn::Edges,
                     ));
                     placed.push(Placed::Edge(edge));
                 }
@@ -327,8 +325,6 @@ pub(crate) fn draw(
     }
 }
 
-/// Spawns a view's layer in `list` and its edge overlay, and the
-/// [`RemoteView`] that names them.
 fn attach(commands: &mut Commands, view: Entity, list: Entity) {
     let layer = commands
         .spawn((
@@ -370,18 +366,13 @@ fn attach(commands: &mut Commands, view: Entity, list: Entity) {
     });
 }
 
-/// A list's place in the window and its edge overlay's, this frame.
 struct Frame {
-    /// Physical px of the list's content box's top left.
-    min: Vec2,
+    min_physical: Vec2,
     logical: f32,
-    /// Logical px the list is scrolled by.
-    scroll: Vec2,
-    /// The viewport's logical size, scrollbars left out.
-    size: Vec2,
-    /// The overlay's logical size, and the list's top in it.
-    edges: Vec2,
-    list_top: f32,
+    scroll_logical: Vec2,
+    viewport_logical: Vec2,
+    overlay_logical: Vec2,
+    list_top_logical: f32,
 }
 
 impl Frame {
@@ -405,33 +396,38 @@ impl Frame {
             },
         );
         Frame {
-            min,
+            min_physical: min,
             logical,
-            scroll: node.scroll_position * logical,
-            size: (content.size() - node.scrollbar_size) * logical,
-            edges,
-            list_top,
+            scroll_logical: node.scroll_position * logical,
+            viewport_logical: (content.size() - node.scrollbar_size)
+                * logical,
+            overlay_logical: edges,
+            list_top_logical: list_top,
         }
     }
 
-    /// Physical window px to the list's content px.
-    fn content(&self, physical: Vec2) -> Vec2 {
-        (physical - self.min) * self.logical + self.scroll
+    fn content_from_physical(&self, physical: Vec2) -> Vec2 {
+        (physical - self.min_physical) * self.logical
+            + self.scroll_logical
     }
 
     fn shows(&self, y: f32) -> bool {
-        (self.scroll.y..=self.scroll.y + self.size.y).contains(&y)
+        (self.scroll_logical.y
+            ..=self.scroll_logical.y + self.viewport_logical.y)
+            .contains(&y)
     }
 
-    /// A rect in content px, in logical window px.
-    fn window(&self, [left, top, width, height]: [f32; 4]) -> Rect {
-        let min = self.min * self.logical - self.scroll
+    fn window_from_content(
+        &self,
+        [left, top, width, height]: [f32; 4],
+    ) -> Rect {
+        let min = self.min_physical * self.logical
+            - self.scroll_logical
             + Vec2::new(left, top);
         Rect::from_corners(min, min + Vec2::new(width, height))
     }
 }
 
-/// Tints `range`'s bytes on each built row it covers.
 #[expect(clippy::too_many_arguments, reason = "one row walk")]
 fn tint(
     scene: &mut Scene,
@@ -461,8 +457,9 @@ fn tint(
         }
         let shown = Shown::with(line_text, &inserts(marks.on(line)));
         let drawn = shown.shown(bytes.start)..shown.shown(bytes.end);
-        let origin =
-            frame.content(at.translation + node.content_box().min);
+        let origin = frame.content_from_physical(
+            at.translation + node.content_box().min,
+        );
         let parley = drawn_layout(block, layout, node);
         let logical = node.inverse_scale_factor();
         scene.rects.extend(
@@ -484,16 +481,14 @@ fn tint(
 }
 
 fn label_height() -> f32 {
-    (LABEL_SIZE * LINE_HEIGHT).ceil()
+    (LABEL_SIZE_PX * LINE_HEIGHT).ceil()
 }
 
-/// A label's width in the code font, whose glyphs all advance alike.
-fn label_width(text: &str) -> f32 {
-    text.chars().count() as f32 * LABEL_SIZE * crate::rows::ADVANCE
-        + 2.0 * LABEL_PAD
+fn monospace_label_width(text: &str) -> f32 {
+    text.chars().count() as f32 * LABEL_SIZE_PX * crate::rows::ADVANCE
+        + 2.0 * LABEL_PAD_PX
 }
 
-/// Black or white, whichever reads on `background`.
 fn ink(background: Color) -> Color {
     if background.luminance() > 0.5 {
         Color::BLACK
@@ -502,8 +497,6 @@ fn ink(background: Color) -> Color {
     }
 }
 
-/// Writes the scene into the view's pooled nodes, spawning the ones
-/// it lacks and hiding the rest.
 fn paint(
     remote: &mut RemoteView,
     scene: &Scene,
@@ -553,16 +546,20 @@ fn paint(
             hide(node);
         }
     }
-    for (i, (at, label, color, edge)) in scene.tags.iter().enumerate()
+    for (i, (at, label, color, tag_in)) in
+        scene.tags.iter().enumerate()
     {
         let placed = Node {
             position_type: PositionType::Absolute,
             left: px(at.x),
             top: px(at.y),
-            padding: UiRect::horizontal(px(LABEL_PAD)),
+            padding: UiRect::horizontal(px(LABEL_PAD_PX)),
             ..Node::default()
         };
-        let parent = if *edge { remote.edges } else { remote.layer };
+        let parent = match tag_in {
+            TagIn::List => remote.layer,
+            TagIn::Edges => remote.edges,
+        };
         match remote
             .tags
             .get(i)
@@ -598,7 +595,7 @@ fn paint(
                         Text::new(label.clone()),
                         TextFont {
                             font: crate::CODE_FONT.into(),
-                            font_size: FontSize::Px(LABEL_SIZE),
+                            font_size: FontSize::Px(LABEL_SIZE_PX),
                             ..TextFont::default()
                         },
                         TextColor(ink(*color)),

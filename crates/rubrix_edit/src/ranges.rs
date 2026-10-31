@@ -14,7 +14,6 @@ use crate::change::{Assoc, Change, Replacement};
 /// typed at it pushes right.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ranges<T> {
-    /// Sorted by start.
     items: Vec<(Range<usize>, T)>,
 }
 
@@ -80,33 +79,22 @@ impl<T> Default for Ranges<T> {
 /// line, so undo and redo restore payloads as they restore the text.
 #[derive(Clone, Debug)]
 pub struct LineAnchors<T> {
-    /// Sorted by offset. An anchor is the offset of the first byte
-    /// of its line's text: the line's start, unless a join moved
-    /// that text onto the end of the line above.
-    items: Vec<(usize, T)>,
-    /// Oldest first, at most [`LineAnchors::MAX_DROPPED`].
+    text_starts: Vec<(usize, T)>,
     dropped: Vec<Dropped<T>>,
 }
 
-/// Payloads whose lines one replacement of a change deleted.
 #[derive(Clone, Debug)]
 struct Dropped<T> {
-    /// The replacement's new text, in the text as it is now: where a
-    /// change that puts `text` back would replace.
-    at: Range<usize>,
-    /// The text the replacement removed.
-    text: String,
-    /// Each payload with its anchor's offset in `text`.
-    items: Vec<(usize, T)>,
+    put_back_at: Range<usize>,
+    removed: String,
+    in_removed: Vec<(usize, T)>,
 }
 
-/// One replacement of a change, with where its new text starts after
-/// the change.
 struct Rep<'a> {
     range: Range<usize>,
     old: &'a str,
     new: &'a str,
-    after: usize,
+    new_start: usize,
 }
 
 fn reps(change: &Change) -> Vec<Rep<'_>> {
@@ -114,25 +102,21 @@ fn reps(change: &Change) -> Vec<Rep<'_>> {
     change
         .replacements()
         .map(|Replacement { range, old, new }| {
-            let after = range.start.wrapping_add_signed(delta);
+            let new_start = range.start.wrapping_add_signed(delta);
             delta += new.len() as isize - old.len() as isize;
             Rep {
                 range,
                 old,
                 new,
-                after,
+                new_start,
             }
         })
         .collect()
 }
 
-/// Where an anchor goes through a change.
 enum Moved {
     To(usize),
-    /// Rep `rep` deleted the anchor's line.
-    Dropped {
-        rep: usize,
-    },
+    Dropped { rep: usize },
 }
 
 fn move_anchor(change: &Change, reps: &[Rep], at: usize) -> Moved {
@@ -146,13 +130,13 @@ fn move_anchor(change: &Change, reps: &[Rep], at: usize) -> Moved {
             .iter()
             .take_while(|rep| rep.range.start == at)
             .enumerate();
-        let mut to = reps[start].after;
+        let mut to = reps[start].new_start;
         for (i, rep) in group {
             if rep.old.contains('\n') {
                 return Moved::Dropped { rep: start + i };
             }
             if let Some(last) = rep.new.rfind('\n') {
-                to = rep.after + last + 1;
+                to = rep.new_start + last + 1;
             }
         }
         return Moved::To(to);
@@ -162,7 +146,7 @@ fn move_anchor(change: &Change, reps: &[Rep], at: usize) -> Moved {
             if rep.old[at - rep.range.start..].contains('\n') {
                 Moved::Dropped { rep: first }
             } else {
-                Moved::To(rep.after + rep.new.len())
+                Moved::To(rep.new_start + rep.new.len())
             }
         }
         _ => Moved::To(change.map(at, Assoc::After)),
@@ -190,17 +174,17 @@ impl<T> LineAnchors<T> {
             .collect();
         items.sort_by_key(|(at, _)| *at);
         LineAnchors {
-            items,
+            text_starts: items,
             dropped: Vec::new(),
         }
     }
 
     pub fn len(&self) -> usize {
-        self.items.len()
+        self.text_starts.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
+        self.text_starts.is_empty()
     }
 
     /// Each payload with its line in `buffer`, the text the anchors
@@ -209,7 +193,7 @@ impl<T> LineAnchors<T> {
         &'a self,
         buffer: &'a Buffer,
     ) -> impl ExactSizeIterator<Item = (u32, &'a T)> + 'a {
-        self.items
+        self.text_starts
             .iter()
             .map(|(at, item)| (buffer.line_of(*at), item))
     }
@@ -224,22 +208,24 @@ impl<T> LineAnchors<T> {
         let reps = reps(change);
         let mut back = Vec::new();
         self.dropped.retain_mut(|dropped| {
-            let put = reps.iter().find(|rep| rep.range == dropped.at);
+            let put = reps
+                .iter()
+                .find(|rep| rep.range == dropped.put_back_at);
             let Some((rep, found)) = put.and_then(|rep| {
-                Some((rep, rep.new.find(dropped.text.as_str())?))
+                Some((rep, rep.new.find(dropped.removed.as_str())?))
             }) else {
                 return true;
             };
-            let base = rep.after + found;
+            let base = rep.new_start + found;
             back.extend(
-                core::mem::take(&mut dropped.items)
+                core::mem::take(&mut dropped.in_removed)
                     .into_iter()
                     .map(|(rel, item)| (base + rel, item)),
             );
             false
         });
         self.dropped.retain_mut(|dropped| {
-            let at = &dropped.at;
+            let at = &dropped.put_back_at;
             let touched = reps.iter().any(|rep| {
                 if at.is_empty() {
                     rep.range.start < at.start
@@ -252,7 +238,7 @@ impl<T> LineAnchors<T> {
             if touched {
                 return false;
             }
-            dropped.at = if at.is_empty() {
+            dropped.put_back_at = if at.is_empty() {
                 let to = change.map(at.start, Assoc::After);
                 to..to
             } else {
@@ -262,8 +248,8 @@ impl<T> LineAnchors<T> {
             true
         });
         let mut gone: Vec<(usize, Dropped<T>)> = Vec::new();
-        let mut kept = Vec::with_capacity(self.items.len());
-        for (at, item) in core::mem::take(&mut self.items) {
+        let mut kept = Vec::with_capacity(self.text_starts.len());
+        for (at, item) in core::mem::take(&mut self.text_starts) {
             match move_anchor(change, &reps, at) {
                 Moved::To(to) => kept.push((to, item)),
                 Moved::Dropped { rep: i } => {
@@ -271,15 +257,15 @@ impl<T> LineAnchors<T> {
                     let rel = at - rep.range.start;
                     match gone.iter_mut().find(|(j, _)| *j == i) {
                         Some((_, dropped)) => {
-                            dropped.items.push((rel, item))
+                            dropped.in_removed.push((rel, item))
                         }
                         None => gone.push((
                             i,
                             Dropped {
-                                at: rep.after
-                                    ..rep.after + rep.new.len(),
-                                text: rep.old.into(),
-                                items: Vec::from([(rel, item)]),
+                                put_back_at: rep.new_start
+                                    ..rep.new_start + rep.new.len(),
+                                removed: rep.old.into(),
+                                in_removed: Vec::from([(rel, item)]),
                             },
                         )),
                     }
@@ -293,14 +279,14 @@ impl<T> LineAnchors<T> {
         self.dropped.drain(..excess);
         kept.extend(back);
         kept.sort_by_key(|(at, _)| *at);
-        self.items = kept;
+        self.text_starts = kept;
     }
 }
 
 impl<T> Default for LineAnchors<T> {
     fn default() -> LineAnchors<T> {
         LineAnchors {
-            items: Vec::new(),
+            text_starts: Vec::new(),
             dropped: Vec::new(),
         }
     }

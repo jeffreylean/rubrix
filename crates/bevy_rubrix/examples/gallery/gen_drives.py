@@ -1707,10 +1707,9 @@ write(
     "screenshot e3-live-pinyin.png",
     "exit",
 )
-# E6: the collab page. Its buttons sit where the editor page's do, with
-# a sixth, wider one after them.
 TOGGLE_100K, MARKERS, ANNOTATE, FIFTY_CARETS, RESPAWN = BUTTONS
 THOUSAND_MARKERS = "click 1041 68"
+PAST_DOUBLE_CLICK = "wait 60"
 
 
 def collab(name, *steps):
@@ -1731,8 +1730,6 @@ def trimmed(doc, n):
 
 
 doc = Doc(LARGE_RS_LINES)
-# The plan names Bo's range 122:3..122:12, but line 122 of
-# large.rs.txt is empty, so Bo takes the same columns on line 123.
 ada, bo = (120, 5), ((123, 3), (123, 12))
 tinted = ((120, 5), (120, 12))
 collab(
@@ -1865,9 +1862,7 @@ line_end = len(doc.line(LINE)) + 1
 carets = [start[1] + (line_end - start[1]) * i // 49 for i in range(50)]
 steps = [TOGGLE_100K, "wait 60", doc.scroll_to(LINE), rows_total(doc)]
 steps += [f"click {doc.at(*start)}", caret(start), FIFTY_CARETS, THOUSAND_MARKERS, "wait 5"]
-# Wait out the double-click time, so the second click on the same
-# place puts a caret instead of selecting a word.
-steps += ["wait 60", f"click {doc.at(*start)}", caret(start)]
+steps += [PAST_DOUBLE_CLICK, f"click {doc.at(*start)}", caret(start)]
 steps += [remote("remote 50: ", *(f"u{i + 1} {LINE}:{column} shown" for i, column in enumerate(carets)))]
 steps += ["log markers", "expect markers markers 1000: "]
 steps += [window("collab-100k-type.csv", ["type x"] * 200)]
