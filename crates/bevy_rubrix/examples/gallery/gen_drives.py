@@ -1501,15 +1501,28 @@ keystrokes("100k", STRESS_LINES, 100_001, TEXT_X_100K, [STRESS, "wait 60"], 50_0
 doc = Doc(LARGE_RS_LINES)
 LINE = 300
 assert max(map(len, doc.lines[:LINE])) < WRAP_COLUMNS
-WORDS = " ".join(["wrap"] * ((5 * WRAP_COLUMNS // 2 - len(doc.line(LINE))) // 5))
-steps = [WRAP, "wait 60", doc.scroll_to(LINE - 10)]
-steps += [f"click {doc.end(LINE)}", caret((LINE, len(doc.line(LINE)) + 1))]
-doc.insert((LINE, len(doc.line(LINE)) + 1), " " + WORDS)
-assert 2 * WRAP_COLUMNS < len(doc.line(LINE)) < 3 * WRAP_COLUMNS
+WORDS = ["wrap"] * ((5 * WRAP_COLUMNS // 2 - len(doc.line(LINE))) // 5)
+HALF = (3 * WRAP_COLUMNS // 2 - len(doc.line(LINE))) // 5
 top = (LINE - 1) * ROW
-steps += ["key space", f"type {WORDS}", "wait 10", doc.text(LINE)]
-steps += [f"log row {LINE}", f"expect row {LINE} top {top} height {3 * ROW} lines 3"]
-steps += [f"log row {LINE + 1}", f"expect row {LINE + 1} top {top + 3 * ROW} height {ROW} lines 1"]
+
+
+def wrapped(lines):
+    """Line 300 takes `lines` visual lines, its top stays, and line 301 starts below them."""
+    return [
+        f"log row {LINE}",
+        f"expect row {LINE} top {top} height {lines * ROW} lines {lines}",
+        f"log row {LINE + 1}",
+        f"expect row {LINE + 1} top {top + lines * ROW} height {ROW} lines 1",
+    ]
+
+
+steps = [WRAP, "wait 60", doc.scroll_to(LINE - 10)]
+steps += [f"click {doc.end(LINE)}", caret((LINE, len(doc.line(LINE)) + 1)), wrapped(1)]
+for part, lines in [(WORDS[:HALF], 2), (WORDS[HALF:], 3)]:
+    doc.insert((LINE, len(doc.line(LINE)) + 1), " " + " ".join(part))
+    assert (lines - 1) * WRAP_COLUMNS < len(doc.line(LINE)) < lines * WRAP_COLUMNS
+    steps += ["key space", f"type {' '.join(part)}", "wait 10"]
+    steps += [doc.text(LINE) if lines == 3 else [], wrapped(lines)]
 steps += ["log seams", "expect seams gaps 0 overlaps 0"]
 editor("wrap", steps, "wait 30", "screenshot e2-wrap.png")
 
