@@ -1,0 +1,68 @@
+page editor
+wait 120
+click 373.8 500
+click 1250 534 shift
+log caret
+expect caret 1 primary 1 23:13..25:42 visible true
+key tab
+wait 5
+log text 23
+expect text 23 "                Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "                Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "                Tone::Faint => hex(0x727072),"
+log caret
+expect caret 1 primary 1 23:17..25:46 visible true
+log undo
+expect undo 1 redo 0
+key shift+tab
+wait 5
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "            Tone::Faint => hex(0x727072),"
+log caret
+expect caret 1 primary 1 23:13..25:42 visible true
+log undo
+expect undo 2 redo 0
+key mod+]
+wait 5
+log text 23
+expect text 23 "                Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "                Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "                Tone::Faint => hex(0x727072),"
+log caret
+expect caret 1 primary 1 23:17..25:46 visible true
+log undo
+expect undo 3 redo 0
+key mod+[
+wait 5
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "            Tone::Faint => hex(0x727072),"
+log caret
+expect caret 1 primary 1 23:13..25:42 visible true
+log undo
+expect undo 4 redo 0
+click 340.2 568
+log caret
+expect caret 1 primary 1 27:9..27:9 visible true
+key backspace
+wait 5
+log text 27
+expect text 27 "        Tone::OnAccent => hex(0x2D2A2E),"
+log caret
+expect caret 1 primary 1 27:5..27:5 visible true
+log undo
+expect undo 5 redo 0
+wait 30
+screenshot e4-indent.png
+exit

@@ -1,0 +1,16 @@
+page editor
+wait 120
+click 1250 466
+log caret
+expect caret 1 primary 1 21:42..21:42 visible true bracket 30:5
+move 740 400
+scroll 0 -161483
+wait 10
+click 491.4 228
+log kind 9506 25
+expect kind 9506 25 string
+log caret
+expect caret 1 primary 1 9506:27..9506:27 visible true bracket none
+wait 30
+screenshot e4-brackets.png
+exit

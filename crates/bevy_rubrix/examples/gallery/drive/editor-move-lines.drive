@@ -1,0 +1,169 @@
+page editor
+wait 120
+click 373.8 500
+click 432.6 517 shift
+log caret
+expect caret 1 primary 1 23:13..24:20 visible true
+key alt+down
+wait 5
+log text 21
+expect text 21 "    fn tone(&self, tone: Tone) -> Color {"
+log text 22
+expect text 22 "        match tone {"
+log text 23
+expect text 23 "            Tone::Faint => hex(0x727072),"
+log text 24
+expect text 24 "            Tone::Body => hex(0xFCFCFA),"
+log text 25
+expect text 25 "            Tone::Dim => hex(0x939293),"
+log text 26
+expect text 26 "            Tone::Accent => hex(0xFFD866),"
+log text 27
+expect text 27 "            Tone::OnAccent => hex(0x2D2A2E),"
+log caret
+expect caret 1 primary 1 24:13..25:20 visible true
+log undo
+expect undo 1 redo 0
+key mod+z
+wait 5
+log text 21
+expect text 21 "    fn tone(&self, tone: Tone) -> Color {"
+log text 22
+expect text 22 "        match tone {"
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "            Tone::Faint => hex(0x727072),"
+log text 26
+expect text 26 "            Tone::Accent => hex(0xFFD866),"
+log text 27
+expect text 27 "            Tone::OnAccent => hex(0x2D2A2E),"
+log caret
+expect caret 1 primary 1 23:13..24:20 visible true
+log undo
+expect undo 0 redo 1
+key alt+up
+wait 5
+log text 21
+expect text 21 "    fn tone(&self, tone: Tone) -> Color {"
+log text 22
+expect text 22 "            Tone::Body => hex(0xFCFCFA),"
+log text 23
+expect text 23 "            Tone::Dim => hex(0x939293),"
+log text 24
+expect text 24 "        match tone {"
+log text 25
+expect text 25 "            Tone::Faint => hex(0x727072),"
+log text 26
+expect text 26 "            Tone::Accent => hex(0xFFD866),"
+log text 27
+expect text 27 "            Tone::OnAccent => hex(0x2D2A2E),"
+log caret
+expect caret 1 primary 1 22:13..23:20 visible true
+log undo
+expect undo 1 redo 0
+key mod+z
+wait 5
+log text 21
+expect text 21 "    fn tone(&self, tone: Tone) -> Color {"
+log text 22
+expect text 22 "        match tone {"
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "            Tone::Faint => hex(0x727072),"
+log text 26
+expect text 26 "            Tone::Accent => hex(0xFFD866),"
+log text 27
+expect text 27 "            Tone::OnAccent => hex(0x2D2A2E),"
+log caret
+expect caret 1 primary 1 23:13..24:20 visible true
+log undo
+expect undo 0 redo 1
+key shift+alt+down
+wait 5
+log text 21
+expect text 21 "    fn tone(&self, tone: Tone) -> Color {"
+log text 22
+expect text 22 "        match tone {"
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "            Tone::Body => hex(0xFCFCFA),"
+log text 26
+expect text 26 "            Tone::Dim => hex(0x939293),"
+log text 27
+expect text 27 "            Tone::Faint => hex(0x727072),"
+log caret
+expect caret 1 primary 1 25:13..26:20 visible true
+log undo
+expect undo 1 redo 0
+key mod+z
+wait 5
+log text 21
+expect text 21 "    fn tone(&self, tone: Tone) -> Color {"
+log text 22
+expect text 22 "        match tone {"
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "            Tone::Faint => hex(0x727072),"
+log text 26
+expect text 26 "            Tone::Accent => hex(0xFFD866),"
+log text 27
+expect text 27 "            Tone::OnAccent => hex(0x2D2A2E),"
+log caret
+expect caret 1 primary 1 23:13..24:20 visible true
+log undo
+expect undo 0 redo 1
+key mod+enter
+wait 5
+log text 21
+expect text 21 "    fn tone(&self, tone: Tone) -> Color {"
+log text 22
+expect text 22 "        match tone {"
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "            "
+log text 26
+expect text 26 "            Tone::Faint => hex(0x727072),"
+log text 27
+expect text 27 "            Tone::Accent => hex(0xFFD866),"
+log caret
+expect caret 1 primary 1 25:13..25:13 visible true
+log undo
+expect undo 1 redo 0
+key mod+z
+wait 5
+log text 21
+expect text 21 "    fn tone(&self, tone: Tone) -> Color {"
+log text 22
+expect text 22 "        match tone {"
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "            Tone::Faint => hex(0x727072),"
+log text 26
+expect text 26 "            Tone::Accent => hex(0xFFD866),"
+log text 27
+expect text 27 "            Tone::OnAccent => hex(0x2D2A2E),"
+log caret
+expect caret 1 primary 1 23:13..24:20 visible true
+log undo
+expect undo 0 redo 1
+wait 30
+screenshot e4-move-lines.png
+exit

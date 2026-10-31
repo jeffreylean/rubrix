@@ -1,0 +1,20 @@
+page editor
+wait 120
+click 373.8 500
+log caret
+expect caret 1 primary 1 23:13..23:13 visible true
+click 373.8 517 mod
+log caret
+expect caret 2 primary 2 23:13..23:13 24:13..24:13
+click 373.8 534 mod
+log caret
+expect caret 3 primary 3 23:13..23:13 24:13..24:13 25:13..25:13
+click 373.8 551 mod
+log caret
+expect caret 4 primary 4 23:13..23:13 24:13..24:13 25:13..25:13 26:13..26:13
+click 373.8 517 mod
+log caret
+expect caret 3 primary 3 23:13..23:13 25:13..25:13 26:13..26:13
+wait 30
+screenshot e4-mod-click.png
+exit
