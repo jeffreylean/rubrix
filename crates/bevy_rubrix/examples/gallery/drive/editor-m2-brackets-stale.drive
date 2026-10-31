@@ -1,0 +1,33 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -70074
+wait 10
+click 1250 143
+log caret
+expect caret 1 primary 1 4124:16..4124:16 visible true bracket 4576:1
+log kind 4576 0
+expect kind 4576 0 punctuation.bracket
+click 273.0 160
+type /*
+wait 5
+log text 4125
+expect text 4125 "/*    pub fn new() -> Self {"
+click 1250 143
+log caret
+expect caret 1 primary 1 4124:16..4124:16 visible true bracket none
+log kind 4576 0
+expect kind 4576 0 comment
+click 289.8 160
+type */
+wait 5
+log text 4125
+expect text 4125 "/**/    pub fn new() -> Self {"
+click 1250 143
+log caret
+expect caret 1 primary 1 4124:16..4124:16 visible true bracket 4576:1
+log kind 4576 0
+expect kind 4576 0 punctuation.bracket
+wait 30
+screenshot m2-brackets-stale.png
+exit

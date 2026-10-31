@@ -152,33 +152,41 @@ pub fn toggle_caret(
     toggled
 }
 
-/// A column selection dragged from `from` to `to`, each a line and an
-/// x in `layout`'s units: one selection per line between them, from
-/// the boundary nearest `from`'s x to the one nearest `to`'s x, the
-/// line of `to` holding the primary.
+/// A column selection dragged from `from` to `to`, each an offset on
+/// the visual row under it and an x in `layout`'s units: one
+/// selection per line between them, from the boundary nearest
+/// `from`'s x to the one nearest `to`'s x, the line of `to` holding
+/// the primary. The lines of `from` and `to` take both x's on the row
+/// under that end, and the lines between take them on their first
+/// row.
 ///
 /// # Panics
 ///
-/// Panics if a line is not a line of the text.
+/// Panics if an offset is past the end of the text.
 pub fn column(
     buffer: &Buffer,
     layout: &dyn Layout,
-    from: (u32, f32),
-    to: (u32, f32),
+    from: (usize, f32),
+    to: (usize, f32),
 ) -> Selections {
     let on = |line: u32| {
-        let start = buffer.line_start(line);
+        let row = [from.0, to.0]
+            .into_iter()
+            .find(|&at| buffer.line_of(at) == line)
+            .unwrap_or_else(|| buffer.line_start(line));
         let at =
-            |x| layout.vertical(buffer, start, 0, x).unwrap_or(start);
+            |x| layout.vertical(buffer, row, 0, x).unwrap_or(row);
         Selection {
             anchor: at(from.1),
             head: at(to.1),
         }
     };
-    let step = if to.0 < from.0 { -1 } else { 1 };
-    let mut selections = Selections::new(on(from.0));
-    let mut line = from.0;
-    while line != to.0 {
+    let (first, last) =
+        (buffer.line_of(from.0), buffer.line_of(to.0));
+    let step = if last < first { -1 } else { 1 };
+    let mut selections = Selections::new(on(first));
+    let mut line = first;
+    while line != last {
         line = line.wrapping_add_signed(step);
         selections.add(on(line));
     }

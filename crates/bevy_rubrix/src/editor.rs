@@ -49,7 +49,7 @@ use crate::tokens::{Styles, SyntaxTokens};
 use crate::{numbers, select};
 
 /// The most lines a catch-up lexes in one frame.
-const CATCH_UP: u32 = 20_000;
+pub(crate) const CATCH_UP: u32 = 20_000;
 
 /// The steps of an editor's frame, for features and apps to order
 /// against.
@@ -157,6 +157,11 @@ impl EditDoc {
             return &[];
         }
         self.highlights.stored_runs(line as u32)
+    }
+
+    pub(crate) fn current_runs(&self, line: u32) -> Option<&[Run]> {
+        let stale = self.highlights.stale_from().unwrap_or(u32::MAX);
+        (line < stale).then(|| self.runs(line as usize))
     }
 
     /// How many changes the doc has taken, undo and redo included.

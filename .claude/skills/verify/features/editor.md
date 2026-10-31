@@ -70,6 +70,15 @@ Most lanes edit lines 23 to 27 of `large.rs.txt`, the `Tone::` arms. Each starts
 - **Surround (lane 9).** Run `editor-surround.drive`. It double clicks `Body` on line 23, then types `(`, `[`, `{`, `"`, `'` and a backtick, with `mod+z` after each. Each pair wraps `Body`, which stays selected at `23:20..23:24`, and each undo puts back the text and `23:19..23:23`. Save `e4-surround.png`.
 - **Brackets (lane 10).** Run `editor-brackets.drive`. A click after the `{` that ends line 21 prints `bracket 30:5`, the `}` that closes `fn tone`. Then it clicks after the `(` in `"(none)"` on line 9,506. `expect kind 9506 25 string` shows that the lexer put that `(` in a string run, and the caret prints `bracket none`. Save `e4-brackets.png`.
 
+Six more scripts pin the milestone 2 fixes. Each fails at #29's merge, bbaac22.
+
+- `editor-m2-copy-mixed.drive` double clicks `Body` on line 23, adds a bare caret at `25:13` with `click mod`, and copies `Body` and the whole of line 25 with its break. The cut removes `Body` and line 25, so the row total drops to 10,372. Save `m2-copy-mixed.png`.
+- `editor-m2-column-wrap.drive` turns wrap on, types 24 words after line 23 so it wraps to two rows, and runs `drag` with `alt` from column 13 of its second row to line 25. Line 23 selects `23:124..23:130` on the row under the press, and lines 24 and 25 select `13..19`. Save `m2-column-wrap.png`.
+- `editor-m2-brackets-stale.drive` matches the `{` on line 4,124 to `bracket 4576:1`, types `/*` at the start of line 4,125, and clicks after the `{` again. It prints `bracket none` and `kind 4576 0 comment` before any view has built line 4,576. Typing `*/` after it brings `bracket 4576:1` back. Save `m2-brackets-stale.png`.
+- `editor-m2-mod-reclick.drive` makes carets at column 13 of lines 23, 25 and 27 with `click mod`, then clicks the one on line 27 again at once. That second click is a double click, so it keeps the other two carets and adds `Tone` on line 27. Typing `x` changes all three. Save `m2-mod-reclick.png`.
+- `editor-m2-mod-words.drive` clicks `23:13`, then runs `click double mod` on `Dim` on line 24 and `click triple mod` on line 26. The caret stays, and the word `24:19..24:22` and the line `26:1..27:1` are added. Save `m2-mod-words.png`.
+- `editor-m2-column-again.drive` runs the column lane's `drag` with `alt` twice from the same spot. The second drag counts as a double click and still selects `Tone::` on the five lines. Save `m2-column-again.png`.
+
 The perf scripts:
 
 - `editor-occurrence-100.drive` clicks the first `let`, on line 16, and presses `mod+d` 100 times, which gives 100 selections from line 16 to line 1,628. In a timed window it sends 100 `type x` steps, and writes `editor-occurrence-100.csv`. Then each `let` is 100 `x`, and the `let` on line 1,631 is not changed.
