@@ -24,7 +24,7 @@ use bevy_fynix::{AnyView, Signal, ViewExt, derived, resource};
 use bevy_rubrix::find::{FindBar, find_bar};
 use bevy_rubrix::{
     EditDoc, EditLine, EditSystems, EditView, Lang, LineNumber,
-    Overflow, code_editor,
+    Overflow, Preedit, code_editor,
 };
 
 use super::code::{
@@ -210,7 +210,7 @@ pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
             editor.history().undo_depth(),
             editor.history().redo_depth()
         ),
-        Ask::Ime => return None,
+        Ask::Ime => return ime(world, doc),
     })
 }
 
@@ -464,6 +464,31 @@ fn visual_lines(world: &World, text: Entity) -> Option<f32> {
     };
     let one = height(gutter_of(world, text)?)?;
     (one > 0.0).then_some((height(text)? / one).round())
+}
+
+/// The `log ime` answer: the editor's preedit and its cursor, and the
+/// bottom-left of its primary caret in logical pixels, which is where
+/// the window should put the input method's candidate box.
+fn ime(world: &World, doc: Entity) -> Option<String> {
+    let mut views =
+        world.try_query::<(&EditView, Option<&Preedit>)>()?;
+    let (view, preedit) =
+        views.iter(world).find(|(view, _)| view.doc() == doc)?;
+    let preedit = preedit.map_or_else(
+        || "none".into(),
+        |preedit| {
+            let cursor = preedit.cursor().map_or_else(
+                || "none".into(),
+                |(from, to)| format!("{from}..{to}"),
+            );
+            format!("{:?} cursor {cursor}", preedit.value())
+        },
+    );
+    let caret = view.caret_rect().map_or_else(
+        || "none".into(),
+        |caret| format!("{} {}", caret.min.x, caret.max.y),
+    );
+    Some(format!("preedit {preedit} caret {caret}"))
 }
 
 fn find_overlay() -> PageView {

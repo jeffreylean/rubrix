@@ -8,6 +8,7 @@ mod diff_view;
 mod editor;
 pub mod find;
 mod frame;
+mod ime;
 mod keymap;
 mod marks;
 mod numbers;
@@ -44,6 +45,7 @@ pub use editor::{
     EditSystems, EditView, EditorChanged, Request, code_editor,
 };
 pub use frame::Tx;
+pub use ime::Preedit;
 pub use keymap::{
     Action, ChordError, Gesture, Keymap, Mods, Platform, Stroke,
 };
@@ -143,6 +145,7 @@ impl Plugin for RubrixPlugin {
                 )
                     .after(UiSystems::PostLayout),
             );
+        ime::plugin(app);
     }
 }
 

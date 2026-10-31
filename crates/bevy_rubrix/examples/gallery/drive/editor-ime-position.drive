@@ -1,0 +1,103 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -1683
+wait 10
+click 306.6 466
+wait 2
+log caret
+expect caret 1 primary 1 120:5..120:5 visible true
+log ime
+expect ime enabled true
+expect ime position 305 475 last
+expect ime caret 305 475
+key down
+wait 2
+log caret
+expect caret 1 primary 1 121:2..121:2 visible true
+log ime
+expect ime enabled true
+expect ime position 279 492 last
+expect ime caret 279 492
+key down
+wait 2
+log caret
+expect caret 1 primary 1 122:1..122:1 visible true
+log ime
+expect ime enabled true
+expect ime position 271 509 last
+expect ime caret 271 509
+key down
+wait 2
+log caret
+expect caret 1 primary 1 123:5..123:5 visible true
+log ime
+expect ime enabled true
+expect ime position 305 526 last
+expect ime caret 305 526
+key down
+wait 2
+log caret
+expect caret 1 primary 1 124:5..124:5 visible true
+log ime
+expect ime enabled true
+expect ime position 305 543 last
+expect ime caret 305 543
+key down
+wait 2
+log caret
+expect caret 1 primary 1 125:1..125:1 visible true
+log ime
+expect ime enabled true
+expect ime position 271 560 last
+expect ime caret 271 560
+key down
+wait 2
+log caret
+expect caret 1 primary 1 126:5..126:5 visible true
+log ime
+expect ime enabled true
+expect ime position 305 577 last
+expect ime caret 305 577
+key down
+wait 2
+log caret
+expect caret 1 primary 1 127:5..127:5 visible true
+log ime
+expect ime enabled true
+expect ime position 305 594 last
+expect ime caret 305 594
+key down
+wait 2
+log caret
+expect caret 1 primary 1 128:5..128:5 visible true
+log ime
+expect ime enabled true
+expect ime position 305 611 last
+expect ime caret 305 611
+key down
+wait 2
+log caret
+expect caret 1 primary 1 129:5..129:5 visible true
+log ime
+expect ime enabled true
+expect ime position 305 628 last
+expect ime caret 305 628
+key down
+wait 2
+log caret
+expect caret 1 primary 1 130:5..130:5 visible true
+log ime
+expect ime enabled true
+expect ime position 305 645 last
+expect ime caret 305 645
+move 740 400
+scroll 0 -200
+wait 10
+log ime
+expect ime enabled true
+expect ime position 305 445 last
+expect ime caret 305 445
+wait 30
+screenshot e3-position.png
+exit
