@@ -1,0 +1,24 @@
+page editor
+wait 120
+click 586 68
+wait 60
+click 281.4 126
+key mod+f
+wait 5
+type e
+wait 60
+log find
+expect find open query "e" 1 of 100000 capped
+expect find label "1 of 100000+"
+key escape
+wait 10
+log find
+expect find closed
+expect find marked 0
+type x
+wait 5
+log text 1
+expect text 1 "//! Thx theme the examples share."
+wait 30
+screenshot e5-close.png
+exit

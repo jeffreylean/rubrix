@@ -171,6 +171,7 @@ fn prepare(world: &mut World, node: Entity) {
     world
         .entity_mut(node)
         .insert((
+            bevy::ui_widgets::TextInput,
             EditableText::default(),
             TextLayout {
                 linebreak: LineBreak::NoWrap,

@@ -1,0 +1,16 @@
+page editor
+wait 120
+move 740 400
+scroll 0 -11373
+wait 10
+click 415.8 228
+key mod+f
+wait 10
+# grep -oi theme large.rs.txt | wc -l -> 132
+log find
+expect find open query "theme" 13 of 132 marked 9
+log caret
+expect caret 1 primary 1 676:16..676:21 visible true
+wait 30
+screenshot e5-open.png
+exit

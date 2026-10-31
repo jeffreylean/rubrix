@@ -7,6 +7,7 @@ mod damage;
 mod diff_edit;
 mod diff_view;
 mod editor;
+pub mod find;
 mod frame;
 mod ime;
 mod keymap;
@@ -117,6 +118,13 @@ impl Plugin for RubrixPlugin {
                 )
                     .chain()
                     .after(PickingSystems::Last),
+            )
+            .add_systems(
+                PreUpdate,
+                find::follow
+                    .after(EditSystems::Apply)
+                    .after(InputFocusSystems::Dispatch)
+                    .run_if(any_with_component::<find::FindBar>),
             )
             .add_systems(
                 Update,

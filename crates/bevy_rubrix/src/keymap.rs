@@ -490,6 +490,10 @@ const SHARED: &[Entry] = &[
     ("mod+x", Action::Cut),
     ("mod+v", Action::Paste),
     ("escape", Action::Command(Command::CollapseToPrimary)),
+    ("mod+f", Action::Run(crate::find::open_find)),
+    ("mod+alt+f", Action::Run(crate::find::open_replace)),
+    ("mod+g", Action::Run(crate::find::next)),
+    ("mod+shift+g", Action::Run(crate::find::previous)),
 ];
 
 /// Linux and Windows conventions.
