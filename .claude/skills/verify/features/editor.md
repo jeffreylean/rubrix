@@ -52,6 +52,31 @@ The recipes:
 - **Wrap (lane 10).** Run `editor-wrap.drive`. It turns wrap on and clicks the end of line 300. It records rows 300 and 301 (`top 5083 height 17 lines 1`, `top 5100`), types `wrap` words until line 300 wraps onto a second visual line (`top 5083 height 34 lines 2`, row 301 at `top 5117`), then types more until it wraps onto a third (`top 5083 height 51 lines 3`, row 301 at `top 5134`). Row 300's top stays, and each new visual line moves row 301 down by one row height, 17 px. `seams` prints `gaps 0 overlaps 0`. Save `e2-wrap.png`.
 - **Acceptance.** Run `editor-acceptance.drive`. On line 5,004 of the 10,000-line file and on line 50,004 of the 100,000-line input, it types 100 `x` in a timed window, presses Home, selects two lines down, copies, pastes 10 lines below, and undoes the paste, with an `expect` after each step. It prints `drive: <n> of <n> checks pass` and saves `e2-acceptance-10k.png` and `e2-acceptance-100k.png`.
 
+## Line commands, carets and brackets (E4)
+
+E4 adds the line commands, the multi-caret gestures, the selection tools and the bracket match. Its scripts are `editor-*.drive` too. `gen_drives.py` writes them from the same model of the text, and also writes the fixtures `fixtures/edit/comment.py` and `fixtures/edit/comment.json`. Run each with `launch.sh <script> <out dir>`. Each prints `drive: <n> of <n> checks pass` and `drive: exit ok`.
+
+`log caret` ends with the bracket match: `caret 1 primary 1 21:42..21:42 visible true bracket 30:5`. The bracket is the one at or just before the primary caret, and `<line>:<col>` is where its match is, the column in chars from 1. A bracket inside a string or a comment does not count. `bracket none` means no bracket is there, or its match is out of reach (1,000 lines or 50,000 chars). With several selections, `<k>` is the newest one's place in buffer order, since the newest is the primary.
+
+Most lanes edit lines 23 to 27 of `large.rs.txt`, the `Tone::` arms. Each starts with 12 spaces, so column 13 is the `T`.
+
+- **Indent (lane 2).** Run `editor-indent.drive`. It selects `23:13..25:42` and presses Tab, Shift+Tab, `mod+]` and `mod+[`. The three lines gain 4 spaces, lose them, gain them, and lose them, and the selection moves 4 columns with them. Then a Backspace at `27:9`, after 8 spaces, deletes back to the stop at `27:5`. The undo depth goes 1 to 5. Save `e4-indent.png`.
+- **Move lines (lane 3).** Run `editor-move-lines.drive`. It selects `23:13..24:20` and presses Alt+Down, Alt+Up, Shift+Alt+Down and `mod+enter`, with `mod+z` after each. It checks lines 21 to 27, the selection and the undo depth after each key. The selection moves with its lines, sits on the lower copy after Shift+Alt+Down, and is back at `23:13..24:20` after each undo. `mod+enter` adds a line of 12 spaces below line 24 and puts the caret at `25:13`. Save `e4-move-lines.png`.
+- **Comment (lane 4).** Run `editor-comment.drive`. On `23:13..25:42` it presses `mod+/` twice, which adds `// ` at column 13 and takes it away, then Shift+Alt+A, which puts `/* ` before `Tone` on line 23 and ` */` at the end of line 25. Then it opens `comment.py` and presses `mod+/` on line 2, which gains `# ` after its indent. Last, it opens `comment.json` and presses `mod+/` on line 2. The text stays and the undo depth stays 0. Save `e4-comment.png`.
+- **Occurrence (lane 5).** Run `editor-occurrence.drive`. It puts line 620 at the top and clicks inside the `let` on line 629. The first `mod+d` selects that `let`. The next two add the ones on lines 630 and 635, which gives 3 selections with the primary at 3. Typing `var` changes all three, and Escape leaves the one caret at `635:20`. Save `e4-occurrence.png`.
+- **Column (lane 6).** Run `editor-column.drive`. It runs `drag` with `alt` from column 13 of line 23 to column 19 of line 27, which selects `Tone::` on each of the five lines. Typing `x` puts `x` at column 13 on all five. Save `e4-column.png`.
+- **Mod click (lane 7).** Run `editor-mod-click.drive`. It clicks `23:13`, then runs `click mod` at column 13 of lines 24, 25 and 26, then again on line 24. The caret counts are 2, 3, 4 and 3. Save `e4-mod-click.png`.
+- **Line clipboard (lane 8).** Run `editor-line-clipboard.drive`. At the bare caret `16:5`, `mod+c` copies line 16 with its line break, and `mod+x` cuts it, so the row total drops to 10,372. Then it makes carets at column 13 of lines 22 to 24 and runs `paste a\nb\nc`, which puts `a`, `b` and `c` at the three carets. Save `e4-line-clipboard.png`.
+- **Surround (lane 9).** Run `editor-surround.drive`. It double clicks `Body` on line 23, then types `(`, `[`, `{`, `"`, `'` and a backtick, with `mod+z` after each. Each pair wraps `Body`, which stays selected at `23:20..23:24`, and each undo puts back the text and `23:19..23:23`. Save `e4-surround.png`.
+- **Brackets (lane 10).** Run `editor-brackets.drive`. A click after the `{` that ends line 21 prints `bracket 30:5`, the `}` that closes `fn tone`. Then it clicks after the `(` in `"(none)"` on line 9,506. `expect kind 9506 25 string` shows that the lexer put that `(` in a string run, and the caret prints `bracket none`. Save `e4-brackets.png`.
+
+The perf scripts:
+
+- `editor-occurrence-100.drive` clicks the first `let`, on line 16, and presses `mod+d` 100 times, which gives 100 selections from line 16 to line 1,628. In a timed window it sends 100 `type x` steps, and writes `editor-occurrence-100.csv`. Then each `let` is 100 `x`, and the `let` on line 1,631 is not changed.
+- `editor-move-1000.drive` opens the 100,000-line input, selects lines 50,000 to 50,999 with a click and a shift click, and presses Alt+Down 100 times in a timed window. It writes `editor-move-1000.csv`. Then the block is at lines 50,100 to 51,099, lines 51,000 to 51,099 are at 50,000 to 50,099, and `seams` is clean.
+
+The perf rule is the plan's. With `RUBRIX_NO_VSYNC=1` in `--release`, `frame-stats.sh` gives a p95 for each CSV. The bar for both is 3.0 ms.
+
 ## Perf
 
 Run `editor-10k.drive`, `editor-100k.drive`, `code-large.drive` and `code-100k.drive` with `RUBRIX_NO_VSYNC=1` in `--release`, at trunk and at head, interleaved, five runs each, alone, with the load under 4. Read each CSV with `frame-stats.sh`, which drops the 60-frame wait at the start of each window.
