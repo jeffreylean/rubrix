@@ -180,7 +180,11 @@ pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
             let each = selections
                 .iter()
                 .map(|s| {
-                    format!("{}..{}", place(s.anchor), place(s.head))
+                    format!(
+                        "{}..{}",
+                        place(s.start()),
+                        place(s.end())
+                    )
                 })
                 .collect::<Vec<_>>();
             format!(

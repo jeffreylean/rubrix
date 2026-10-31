@@ -56,7 +56,9 @@ use bevy_fynix::{
     AnyView, Bevy, Cx, FynixPlugin, ScopedExt, Theme, ViewExt, keyed,
     mount, resource,
 };
-use bevy_rubrix::{ClipboardProvider, EditClipboard, RubrixPlugin};
+use bevy_rubrix::{
+    CaretBlink, ClipboardProvider, EditClipboard, RubrixPlugin,
+};
 use pages::PAGES;
 
 const DARK: Palette = Palette { dark: true };
@@ -343,7 +345,8 @@ fn main() -> AppExit {
         ),
     );
     if let Some(drive) = drive {
-        app.add_plugins(drive);
+        app.insert_resource(CaretBlink { period: None })
+            .add_plugins(drive);
     }
     app.run()
 }

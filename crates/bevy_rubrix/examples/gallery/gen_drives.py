@@ -1331,6 +1331,7 @@ def word_around(line, column):
 
 def caret(anchor, head=None, count=1, primary=1):
     head = head or anchor
+    anchor, head = min(anchor, head), max(anchor, head)
     return [
         "log caret",
         f"expect caret {count} primary {primary} "

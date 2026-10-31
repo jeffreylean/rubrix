@@ -29,7 +29,7 @@ The page lays out as the code page does. The buttons sit at y 68: `large.rs` at 
 
 The page answers G2's `caret`, `text <line>` and `undo` topics. Lines and columns count from 1, and a column counts chars from the line's start.
 
-- `log caret` prints `caret <n> primary <k> <sel> ... visible <bool>`. `<n>` is the selection count, `<k>` is the primary's place among them in buffer order, from 1, and each `<sel>` is `<line>:<col>..<line>:<col>`, anchor then head. `visible` says whether the primary caret is inside the view.
+- `log caret` prints `caret <n> primary <k> <sel> ... visible <bool>`. `<n>` is the selection count, `<k>` is the primary's place among them in buffer order, from 1, and each `<sel>` is `<line>:<col>..<line>:<col>`, its start then its end, so a selection made backwards prints the same as one made forwards. `visible` says whether the primary caret is inside the view.
 - `log text <line>` prints the line quoted as Rust debug text, so leading spaces show, or `none` past the last line.
 - `log undo` prints `undo <depth> redo <depth>`.
 - `log runs <line>` reads the editor's doc when the page shows no code view. `log rows` reads the editor's list, and its `total` is the editor's row count.
