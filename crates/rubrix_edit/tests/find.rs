@@ -129,6 +129,174 @@ fn a_newline_in_a_query_matches_a_crlf_line_break() {
     );
 }
 
+fn regex_query(text: &str) -> Query {
+    Query {
+        regex: true,
+        ..query(text)
+    }
+}
+
+#[test]
+fn a_newline_inside_a_character_class_stays_in_the_class() {
+    let text = "e1 e] e[ e^ ea eb ex e: e( e) e? e\r e\n[\nx";
+    let reference = |pattern: &str| {
+        regex::RegexBuilder::new(pattern)
+            .case_insensitive(true)
+            .multi_line(true)
+            .build()
+            .expect("a valid pattern")
+            .find_iter(text)
+            .map(|found| found.range())
+            .collect::<Vec<_>>()
+    };
+    let table = [
+        (r"e[[:digit:]\n]", 2),
+        (r"e[]\n]", 2),
+        (r"e[^]\n]", 11),
+        (r"e[\]\n]", 2),
+        (r"e[[a]\n]", 2),
+        (r"e[a[b]x\n]", 4),
+        (r"e[\n[a-z]&&[^b]]", 3),
+        (r"e[\[\n]", 2),
+        (r"e[\n[:digit:]]", 2),
+        (r"\[\n", 1),
+    ];
+    for (pattern, count) in table {
+        let matches = found(text, &regex_query(pattern));
+        assert_eq!(matches, reference(pattern), "{pattern}");
+        assert_eq!(matches.len(), count, "{pattern}");
+    }
+    let crlf = "a]\r\nb[\r\nc";
+    assert_eq!(found(crlf, &regex_query(r"[\]]\n")), vec![1..4]);
+    assert_eq!(found(crlf, &regex_query(r"\[\nc")), vec![5..9]);
+}
+
+/// Types `typed` at `at` with the search open, and checks the search
+/// that followed the edit against a fresh one.
+fn follows_an_edit(
+    text: &str,
+    query: &Query,
+    at: usize,
+    typed: &str,
+) {
+    let mut editor = editor(text);
+    let mut search = Search::new(query);
+    search.run(editor.buffer());
+    editor.set_selections(Selections::new(Selection::caret(at)));
+    let change = editor
+        .apply(Command::Type(typed), &Monospace::default())
+        .expect("a change");
+    search.edited(editor.buffer(), &change);
+    search.run(editor.buffer());
+    let after = editor.buffer().to_string();
+    let fresh = found(&after, query);
+    assert!(!fresh.is_empty(), "{query:?} matches {after:?}");
+    assert_eq!(search.matches(), fresh, "{query:?} in {after:?}");
+}
+
+#[test]
+fn an_edit_finds_a_match_that_starts_lines_above_it() {
+    let text = "share.\n\nx\nfo\n";
+    let at = text.find("fo").expect("fo") + 2;
+    follows_an_edit(text, &query("share.\n\nx\nfoo"), at, "o");
+    follows_an_edit(
+        text,
+        &regex_query(r"share\.\n\n.*\nfoo"),
+        at,
+        "o",
+    );
+    follows_an_edit(
+        text,
+        &regex_query(r"share\.\s+x\s+foo"),
+        at,
+        "o",
+    );
+    let earlier = "a b\na\n\n\n\nc\n";
+    let at = earlier.find('c').expect("c");
+    follows_an_edit(earlier, &regex_query(r"a\s+b"), at, "b");
+}
+
+#[test]
+fn edits_keep_a_search_equal_to_a_fresh_one() {
+    let mut rng = Rng(rng_seed());
+    let alphabet = ["a", "b", "\n", " ", "ab", "\n\n"];
+    let queries = [
+        query("a\nb"),
+        query("b\n\na"),
+        query("a b"),
+        regex_query(r"a\s+b"),
+        regex_query(r"a[^b]*b"),
+        regex_query(r"(?s)a.*?b"),
+        regex_query(r"\n\n+"),
+        regex_query(r"a.*\n.*b"),
+        regex_query(r"^b\n(a|\n){2}"),
+    ];
+    for round in 0..300 {
+        let pick = |rng: &mut Rng, n: u32| -> String {
+            (0..n)
+                .map(|_| {
+                    alphabet
+                        [rng.below(alphabet.len() as u32) as usize]
+                })
+                .collect()
+        };
+        let len = rng.below(60);
+        let mut editor = editor(&pick(&mut rng, len));
+        let query =
+            &queries[rng.below(queries.len() as u32) as usize];
+        let mut search = Search::new(query);
+        search.run(editor.buffer());
+        for _ in 0..4 {
+            let end = editor.buffer().len() as u32 + 1;
+            let (a, b) =
+                (rng.below(end) as usize, rng.below(end) as usize);
+            editor.set_selections(Selections::new(Selection {
+                anchor: a.min(b),
+                head: a.max(b),
+            }));
+            let typed_len = 1 + rng.below(3);
+            let typed = pick(&mut rng, typed_len);
+            let change = editor
+                .apply(Command::Type(&typed), &Monospace::default())
+                .expect("a change");
+            search.edited(editor.buffer(), &change);
+            if rng.chance(50) {
+                search.run(editor.buffer());
+            }
+        }
+        search.run(editor.buffer());
+        let text = editor.buffer().to_string();
+        assert_eq!(
+            search.matches(),
+            found(&text, query),
+            "round {round}: {query:?} in {text:?}"
+        );
+    }
+}
+
+#[test]
+fn a_match_that_splits_a_grapheme_cluster_does_not_count() {
+    let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+    let text = format!("family {family} end e\u{301} e\r\n");
+    assert!(found(&text, &query("\u{1f469}")).is_empty());
+    assert!(found(&text, &query("\u{1f468}")).is_empty());
+    assert_eq!(
+        found(&text, &query(family)),
+        vec![7..7 + family.len()]
+    );
+    let end = text.find("end").expect("end");
+    let last = text.rfind("e\r").expect("a last e");
+    assert_eq!(
+        found(&text, &query("e")),
+        vec![end..end + 1, last..last + 1]
+    );
+    assert!(found(&text, &regex_query(r"e\r")).is_empty());
+    assert_eq!(
+        found(&text, &regex_query(r"e\r\n")),
+        vec![last..last + 3]
+    );
+}
+
 #[test]
 fn an_invalid_regex_finds_nothing_and_says_why() {
     let bad = Query {

@@ -2331,3 +2331,47 @@ doc.insert(start, "x" * 200)
 steps += [doc.text(LINE), caret((LINE, start[1] + 200))]
 steps += [remote("remote 50: ", *(f"u{i + 1} {LINE}:{column + 200} " for i, column in enumerate(carets)))]
 collab("100k", steps, "log typing", "log rows", "wait 30", "screenshot e6-100k.png")
+
+# m2fa: the milestone 2 review's find findings, L2-F1 and L4-F1 to L4-F5.
+doc = Doc(LARGE_RS_LINES)
+TONE = (23, 13)
+steps = []
+for opener, field_keys in [("mod+f", ["mod+enter", "alt+enter", "mod+shift+enter", "shift+alt+enter", "shift+escape"]), ("mod+alt+f", ["mod+enter", "shift+escape"])]:
+    for key in field_keys:
+        steps += [f"click {doc.at(*TONE)}", f"key {opener}", "wait 10", f"key {key}", "wait 5", "key escape", "wait 5"]
+        steps += ["log find", "expect find closed"]
+doc.lines[TONE[0] - 1] = doc.line(TONE[0]).replace("Tone", "q", 1)
+steps += ["type q", "wait 5", doc.text(TONE[0])]
+find_script("m2-focus", steps, "wait 30", "screenshot m2fa-focus.png")
+
+steps = [f"click {Doc(LARGE_RS_LINES).at(1, 1)}", "key mod+f", "wait 5", REGEX, "wait 5"]
+for query, reference in [(r"e[[:digit:]\n]", r"e[0-9\n]"), (r"e[]\n]", r"e[]\n]")]:
+    count = len(find_all(LARGE_RS_TEXT, reference, regex=True))
+    steps += [FIND_FIELD, "key mod+a", f"type {query}", "wait 20", f"# python re.findall(r'{reference}', large.rs.txt, re.I) -> {count}"]
+    steps += counted(query, count)
+find_script("m2-class", steps, "wait 30", "screenshot m2fa-class.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [f"click {doc.at(1, 1)}", "key mod+f", "wait 5", REGEX, "wait 5"]
+for query, line, typed in [(r"share\.\n\n.*\nfoo", 4, "foo"), (r"Color;\s+use[^;]*;\s+qux", 10, "qux")]:
+    before = "\n".join(doc.lines)
+    assert not find_all(before, query, regex=True), query
+    doc.insert((line, 1), typed)
+    after = find_all("\n".join(doc.lines), query, regex=True)
+    assert len(after) == 1 and find_place("\n".join(doc.lines), after[0][0])[0] < line - 1, query
+    steps += [FIND_FIELD, "key mod+a", f"type {query}", "wait 20", counted(query, 0)]
+    steps += [f"click {doc.at(line, 1)}", f"type {typed}", "wait 30", doc.text(line), counted(query, 1)]
+find_script("m2-restart", steps, "wait 30", "screenshot m2fa-restart.png")
+
+steps = [f"click {Doc(LARGE_RS_LINES).at(1, 1)}", "key mod+f", "wait 5", REGEX, "wait 5"]
+for query, error, shot in [("e(", "unclosed group", "m2fa-error.png"), ("(?<=a)b", "look-around, including look-ahead and look-behind, is not supported", "m2fa-error-long.png")]:
+    steps += [FIND_FIELD, "key mod+a", f"type {query}", "wait 10", "log find", f'expect find label "Invalid regex: {error}"', "wait 30", f"screenshot {shot}"]
+find_script("m2-error", steps)
+
+FAMILY = "\U0001f468‍\U0001f469‍\U0001f467"
+SHOWN = FAMILY.replace("‍", "\\u{200d}")
+steps = [f"click {Doc(LARGE_RS_LINES).at(1, 1)}", f"paste family {FAMILY} end\\n", "wait 5"]
+steps += ["key mod+alt+f", "wait 5", FIND_FIELD, "key mod+a", "type \U0001f469", "wait 10", "log find", 'expect find open query "\U0001f469" 0 of 0', 'expect find label "No results"']
+steps += ["key mod+a", f"type {FAMILY}", "wait 10", "log find", f'expect find open query "{SHOWN}" 1 of 1', caret((1, 8), (1, 13)), "wait 30", "screenshot m2fa-cluster.png"]
+steps += [REPLACE_FIELD, "type Y", "key enter", "wait 10", "log text 1", 'expect text 1 "family Y end"']
+find_script("m2-cluster", steps)
