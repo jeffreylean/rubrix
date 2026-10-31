@@ -80,6 +80,44 @@ fn carets_on_several_lines_copy_each_in_order() {
 }
 
 #[test]
+fn a_range_and_a_bare_caret_copy_the_range_and_the_caret_line() {
+    let source = "ab cd\nef\ngh";
+    let mut editor = editor(
+        source,
+        &[Selection { anchor: 0, head: 2 }, Selection::caret(7)],
+    );
+    assert_eq!(editor.copy_text(), "ab\nef\n");
+    apply(&mut editor, Command::Cut);
+    assert_eq!(text(&editor), " cd\ngh");
+    assert_eq!(editor.history().undo_depth(), 1);
+    apply(&mut editor, Command::Undo);
+    assert_eq!(text(&editor), source);
+}
+
+#[test]
+fn a_bare_caret_beside_a_range_on_its_line_takes_the_line_once() {
+    let mut editor = editor(
+        "ab cd\nef",
+        &[Selection { anchor: 0, head: 2 }, Selection::caret(4)],
+    );
+    assert_eq!(editor.copy_text(), "ab cd\n");
+    apply(&mut editor, Command::Cut);
+    assert_eq!(text(&editor), "ef");
+}
+
+#[test]
+fn a_range_that_ends_in_a_break_takes_no_second_break() {
+    let editor = editor(
+        "ab\ncd\nef",
+        &[
+            Selection { anchor: 0, head: 3 },
+            Selection { anchor: 6, head: 7 },
+        ],
+    );
+    assert_eq!(editor.copy_text(), "ab\ne");
+}
+
+#[test]
 fn a_cut_at_a_caret_removes_its_line() {
     let mut editor = carets("ab\ncd\nef", &[4]);
     assert_eq!(editor.copy_text(), "cd\n");

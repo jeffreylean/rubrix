@@ -402,6 +402,21 @@ const LINES: Gesture = Gesture(|stroke| {
     spanning(line(&stroke.from), line(&stroke.to))
 });
 
+const ADD_WORDS: Gesture =
+    Gesture(|stroke| added(stroke.base, (WORDS.0)(stroke).primary()));
+
+const ADD_LINES: Gesture =
+    Gesture(|stroke| added(stroke.base, (LINES.0)(stroke).primary()));
+
+pub(crate) fn added(
+    base: &Selections,
+    selection: Selection,
+) -> Selections {
+    let mut selections = base.clone();
+    selections.add(selection);
+    selections
+}
+
 /// `from` through `to`, the head at the side `to` lies on.
 fn spanning(
     from: core::ops::Range<usize>,
@@ -567,7 +582,6 @@ const MACOS: &[Entry] = &[
     ("ctrl+b", go(Motion::Left)),
 ];
 
-/// (modifiers, clicks, gesture). `""` is no modifier.
 const GESTURES: &[(&str, u8, Gesture)] = &[
     ("", 1, PLACE),
     ("shift", 1, EXTEND),
@@ -576,7 +590,11 @@ const GESTURES: &[(&str, u8, Gesture)] = &[
     ("", 2, WORDS),
     ("", 3, LINES),
     ("mod", 1, crate::commands::ADD_CARET),
+    ("mod", 2, ADD_WORDS),
+    ("mod", 3, ADD_LINES),
     ("alt", 1, crate::commands::COLUMN),
+    ("alt", 2, crate::commands::COLUMN),
+    ("alt", 3, crate::commands::COLUMN),
 ];
 
 impl Keymap {
@@ -900,6 +918,10 @@ mod tests {
         );
     }
 
+    fn same(a: Gesture, b: Gesture) -> bool {
+        core::ptr::fn_addr_eq(a.0, b.0)
+    }
+
     #[test]
     fn a_press_with_unbound_modifiers_falls_back_to_place_or_extend()
     {
@@ -909,11 +931,36 @@ mod tests {
             shift: true,
             ..Mods::NONE
         };
-        let same =
-            |a: Gesture, b: Gesture| core::ptr::fn_addr_eq(a.0, b.0);
+        let ctrl_alt = Mods { alt: true, ..CTRL };
         assert!(same(keymap.gesture(alt_shift, 1), EXTEND));
-        assert!(same(keymap.gesture(CTRL, 2), PLACE));
+        assert!(same(keymap.gesture(ctrl_alt, 2), PLACE));
         assert!(same(keymap.gesture(Mods::NONE, 7), LINES));
+    }
+
+    #[test]
+    fn mod_and_alt_keep_their_gestures_at_every_click_count() {
+        let alt = Mods {
+            alt: true,
+            ..Mods::NONE
+        };
+        for keymap in [Keymap::linux(), Keymap::macos()] {
+            let primary = match keymap.platform() {
+                Platform::Linux => CTRL,
+                Platform::MacOs => Mods {
+                    super_key: true,
+                    ..Mods::NONE
+                },
+            };
+            let gesture = |mods, clicks| keymap.gesture(mods, clicks);
+            assert!(same(gesture(primary, 2), ADD_WORDS));
+            assert!(same(gesture(primary, 3), ADD_LINES));
+            for clicks in 1..=3 {
+                assert!(same(
+                    gesture(alt, clicks),
+                    crate::commands::COLUMN
+                ));
+            }
+        }
     }
 
     #[test]

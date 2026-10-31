@@ -1,0 +1,27 @@
+page editor
+wait 120
+click 432.6 500 double
+click 373.8 534 mod
+log caret
+expect caret 2 primary 2 23:19..23:23 25:13..25:13
+key mod+c
+clipboard
+log copied
+expect copied "Body\n            Tone::Faint => hex(0x727072),\n"
+key mod+x
+wait 5
+log text 23
+expect text 23 "            Tone:: => hex(0xFCFCFA),"
+log text 25
+expect text 25 "            Tone::Accent => hex(0xFFD866),"
+log rows
+expect rows total 10372 following
+log caret
+expect caret 2 primary 2 23:19..23:19 25:1..25:1
+log copied
+expect copied "Body\n            Tone::Faint => hex(0x727072),\n"
+log undo
+expect undo 1 redo 0
+wait 30
+screenshot m2-copy-mixed.png
+exit

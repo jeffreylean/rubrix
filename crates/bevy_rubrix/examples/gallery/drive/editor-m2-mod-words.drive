@@ -1,0 +1,12 @@
+page editor
+wait 120
+click 373.8 500
+click 432.6 517 double mod
+log caret
+expect caret 2 primary 2 23:13..23:13 24:19..24:22
+click 373.8 551 triple mod
+log caret
+expect caret 3 primary 3 23:13..23:13 24:19..24:22 26:1..27:1
+wait 30
+screenshot m2-mod-words.png
+exit

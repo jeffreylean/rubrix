@@ -514,10 +514,9 @@ fn replay(
             Step::Column(from, to) => {
                 let point = |pos: Pos| {
                     let at = at(pos, &editor)?;
-                    let buffer = editor.buffer();
                     Ok::<_, String>((
-                        buffer.line_of(at),
-                        layout.x(buffer, at),
+                        at,
+                        layout.x(editor.buffer(), at),
                     ))
                 };
                 let selections = column(
@@ -662,7 +661,7 @@ fn bracket(editor: &Editor, lang: Lang) -> String {
         rubrix_highlight::highlight(lang, &buffer.to_string());
     let head = editor.selections().primary().head;
     matching_bracket(buffer, head, |line| {
-        bracket_skips(highlights.stored_runs(line))
+        Some(bracket_skips(highlights.stored_runs(line)))
     })
     .map_or_else(
         || "none".to_owned(),

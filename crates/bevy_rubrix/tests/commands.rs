@@ -16,12 +16,13 @@ use bevy::window::{PrimaryWindow, Window};
 use bevy_rubrix::{
     Action, BRACKET, BracketMatch, Brackets, Command, EditDoc,
     EditRequest, Keymap, Lang, Mark, MarkKind, Marks, Motion,
-    Request, Selection, Selections, toggle_block_comment,
+    Overflow, Request, Selection, Selections, toggle_block_comment,
     toggle_line_comment,
 };
 use support::{
-    chord, drag_end_on, drag_on, edit_line, hold_key, hold_on,
-    key_with, laid_out, mount_editor, point_at, press_on, type_text,
+    Wrapping, chord, drag_end_on, drag_on, edit_line, hold_key,
+    hold_on, key_with, laid_out, mount_editor, point_at, press_on,
+    type_text,
 };
 
 fn settle(app: &mut App) {
@@ -219,6 +220,118 @@ fn alt_drag_past_a_short_line_keeps_the_pointer_column_on_long_lines()
     focus(&mut app, view);
     type_text(&mut app, "x");
     assert_eq!(text(&app, entity), "abxgh\nabxgh\nabx\n");
+}
+
+fn ranges(app: &App, entity: Entity) -> Vec<(usize, usize)> {
+    doc(app, entity)
+        .editor()
+        .selections()
+        .iter()
+        .map(|s| (s.start(), s.end()))
+        .collect()
+}
+
+#[test]
+fn mod_double_and_triple_clicks_add_the_word_and_the_line() {
+    let mut app = laid_out();
+    let (view, entity) = mount_editor(
+        &mut app,
+        Lang::Plain,
+        "aaa bbb\nccc ddd\neee fff\n",
+        600.0,
+        300.0,
+    );
+    settle(&mut app);
+    let top = edit_line(&mut app, view, 0);
+    let first = point_at(&app, top, 0);
+    press_on(&mut app, top, first, 1);
+    hold_key(&mut app, KeyCode::ControlLeft, true);
+    let middle = edit_line(&mut app, view, 1);
+    let ddd = point_at(&app, middle, 5);
+    for count in 1..=2 {
+        press_on(&mut app, middle, ddd, count);
+    }
+    assert_eq!(
+        ranges(&app, entity),
+        [(0, 0), (12, 15)],
+        "a quick second mod+click keeps the carets and adds the word"
+    );
+    let bottom = edit_line(&mut app, view, 2);
+    let eee = point_at(&app, bottom, 1);
+    for count in 1..=3 {
+        press_on(&mut app, bottom, eee, count);
+    }
+    hold_key(&mut app, KeyCode::ControlLeft, false);
+    assert_eq!(
+        ranges(&app, entity),
+        [(0, 0), (12, 15), (16, 24)],
+        "a mod+triple-click adds the line with its break"
+    );
+}
+
+fn alt_drag(
+    app: &mut App,
+    on: Entity,
+    from: Vec2,
+    to: Vec2,
+    count: u8,
+) {
+    hold_on(app, on, from, count);
+    drag_on(app, on, from, to);
+    drag_end_on(app, on, from, to);
+}
+
+#[test]
+fn a_quick_second_alt_drag_still_selects_a_column() {
+    let mut app = laid_out();
+    let source = "line 1\nline 2\nline 3\n";
+    let (view, entity) =
+        mount_editor(&mut app, Lang::Plain, source, 600.0, 300.0);
+    settle(&mut app);
+    let top = edit_line(&mut app, view, 0);
+    let from = point_at(&app, top, 2);
+    let bottom = edit_line(&mut app, view, 2);
+    let to = point_at(&app, bottom, 4);
+    hold_key(&mut app, KeyCode::AltLeft, true);
+    alt_drag(&mut app, top, from, to, 1);
+    alt_drag(&mut app, top, from, to, 2);
+    hold_key(&mut app, KeyCode::AltLeft, false);
+    assert_eq!(ranges(&app, entity), [(2, 4), (9, 11), (16, 18)]);
+}
+
+#[test]
+fn alt_drag_from_a_wrapped_row_takes_the_column_on_that_row() {
+    let mut app = laid_out();
+    let long = "word ".repeat(40);
+    let source = format!("{long}\nabcdefgh\nabcdefgh\n");
+    let (view, entity) =
+        mount_editor(&mut app, Lang::Plain, &source, 300.0, 300.0);
+    app.world_mut().resource_mut::<Wrapping>().0 = Overflow::Wrap;
+    settle(&mut app);
+    let top = edit_line(&mut app, view, 0);
+    let row_one = point_at(&app, top, 0).y;
+    let second = (0..long.len())
+        .find(|&byte| point_at(&app, top, byte).y > row_one + 1.0)
+        .expect("the long line wraps");
+    let from = point_at(&app, top, second + 2);
+    let bottom = edit_line(&mut app, view, 2);
+    let to = Vec2::new(
+        point_at(&app, top, second + 5).x,
+        point_at(&app, bottom, 0).y,
+    );
+    hold_key(&mut app, KeyCode::AltLeft, true);
+    alt_drag(&mut app, top, from, to, 1);
+    hold_key(&mut app, KeyCode::AltLeft, false);
+    let next = long.len() + 1;
+    assert_eq!(
+        ranges(&app, entity),
+        [
+            (second + 2, second + 5),
+            (next + 2, next + 5),
+            (next + 11, next + 14),
+        ],
+        "the press line takes its column on the row under the press"
+    );
 }
 
 #[derive(Resource, Default)]

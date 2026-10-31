@@ -464,61 +464,90 @@ pub(crate) fn paste_lines(
     })
 }
 
-/// A cut of whole lines: when the selections are bare carets, the
-/// cut removes each caret's line with its break. The last line takes
-/// the break before it, so no empty line is left. `None` leaves the
-/// cut to the plain path.
-pub(crate) fn cut_lines(
-    buffer: &Buffer,
-    selections: &Selections,
-) -> Option<Plan> {
-    if !selections.iter().all(|selection| selection.is_caret()) {
-        return None;
-    }
-    let count = buffer.line_count();
-    let edits = blocks(buffer, selections)
-        .into_iter()
-        .map(|block| {
-            let range = if block.end < count {
-                buffer.line_start(block.start)
-                    ..buffer.line_start(block.end)
-            } else if block.start > 0 {
-                buffer.line_end(block.start - 1)..buffer.len()
-            } else {
-                0..buffer.len()
-            };
-            (range, String::new())
-        })
-        .collect();
-    Some(Plan {
-        edits,
-        after: After::Map,
-    })
+fn line_with_break_after(buffer: &Buffer, line: u32) -> Range<usize> {
+    let end = if line + 1 < buffer.line_count() {
+        buffer.line_start(line + 1)
+    } else {
+        buffer.len()
+    };
+    buffer.line_start(line)..end
 }
 
-/// What a copy at bare carets copies: the lines that hold a caret,
-/// each once and with its line break, in buffer order. `None` when
-/// some selection is a range.
-pub(crate) fn line_copy(
+fn line_with_a_break_unless_alone(
+    buffer: &Buffer,
+    line: u32,
+) -> Range<usize> {
+    if line + 1 < buffer.line_count() {
+        line_with_break_after(buffer, line)
+    } else if line > 0 {
+        buffer.line_end(line - 1)..buffer.len()
+    } else {
+        0..buffer.len()
+    }
+}
+
+pub(crate) fn cut(buffer: &Buffer, selections: &Selections) -> Plan {
+    let caret = line_with_a_break_unless_alone;
+    let mut edits: Vec<(Range<usize>, String)> = Vec::new();
+    for region in regions(buffer, selections, caret) {
+        match edits.last_mut() {
+            _ if region.is_empty() => {}
+            Some((last, _)) if region.start <= last.end => {
+                last.end = last.end.max(region.end);
+            }
+            _ => edits.push((region, String::new())),
+        }
+    }
+    Plan {
+        edits,
+        after: After::Map,
+    }
+}
+
+pub(crate) fn copy(
     buffer: &Buffer,
     selections: &Selections,
-) -> Option<String> {
-    if !selections.iter().all(|selection| selection.is_caret()) {
-        return None;
-    }
-    let count = buffer.line_count();
+) -> String {
     let mut text = String::new();
-    for block in blocks(buffer, selections) {
-        let end = if block.end < count {
-            buffer.line_start(block.end)
-        } else {
-            buffer.len()
-        };
-        text.push_str(
-            &buffer.slice(buffer.line_start(block.start)..end),
-        );
+    let mut copied: Option<usize> = None;
+    for region in regions(buffer, selections, line_with_break_after) {
+        match copied {
+            _ if region.is_empty() => {}
+            Some(end) if region.start <= end => {
+                if region.end > end {
+                    text.push_str(&buffer.slice(end..region.end));
+                    copied = Some(region.end);
+                }
+            }
+            _ => {
+                if !text.is_empty() && !text.ends_with('\n') {
+                    text.push_str(buffer.eol().as_str());
+                }
+                text.push_str(&buffer.slice(region.clone()));
+                copied = Some(region.end);
+            }
+        }
     }
-    Some(text)
+    text
+}
+
+fn regions(
+    buffer: &Buffer,
+    selections: &Selections,
+    caret: fn(&Buffer, u32) -> Range<usize>,
+) -> Vec<Range<usize>> {
+    let mut regions: Vec<Range<usize>> = selections
+        .iter()
+        .map(|selection| {
+            if selection.is_caret() {
+                caret(buffer, buffer.line_of(selection.head))
+            } else {
+                selection.range()
+            }
+        })
+        .collect();
+    regions.sort_unstable_by_key(|region| (region.start, region.end));
+    regions
 }
 
 /// Where Backspace at `at` deletes back to when only spaces, at
