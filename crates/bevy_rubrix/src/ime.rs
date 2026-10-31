@@ -371,6 +371,12 @@ type RowText = Row<'static>;
 /// The bars under the drawn bytes `drawn` of a row, in device pixels
 /// from the window's corner, each on the pixel row nearest the font's
 /// underline. A bar the row's clip hides is left out.
+///
+/// The run blocks of a row's visual lines overlap when the line is
+/// shorter than the font, so a bar takes the run that holds its
+/// line's centre. A fallback font, such as a colour emoji font, can
+/// put its underline below the line, where the row clips it, so such
+/// a bar sits 2 px above the line's bottom instead.
 fn bar_rects(
     (_, node, at, block, text, info, clip): Row,
     drawn: core::ops::Range<usize>,
@@ -379,20 +385,23 @@ fn bar_rects(
     let corner = at.translation + node.content_box().min;
     select::rects(&layout, drawn, 1.0, Color::NONE)
         .filter_map(|([x0, y0, x1, y1], _)| {
+            let centre = (y0 + y1) / 2.0;
             let run = info.run_geometry.iter().find(|run| {
                 run.bounds.min.x <= x0
                     && x0 < run.bounds.max.x
-                    && run.bounds.min.y < y1
-                    && y0 < run.bounds.max.y
+                    && run.bounds.min.y <= centre
+                    && centre < run.bounds.max.y
             });
-            let (middle, thickness) =
-                run.map_or((y1 - 2.0, 1.0), |run| {
+            let (middle, thickness) = run
+                .map(|run| {
                     (
                         run.underline_y
                             + run.underline_thickness / 2.0,
                         run.underline_thickness,
                     )
-                });
+                })
+                .filter(|&(middle, _)| y0 <= middle && middle < y1)
+                .unwrap_or((y1 - 2.0, 1.0));
             let top = (corner.y + middle).floor();
             let rect = Rect::new(
                 (corner.x + x0).round(),
