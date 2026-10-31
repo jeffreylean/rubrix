@@ -1,7 +1,11 @@
 //! Code, diff and file-tree UI kit for Bevy, built on fynix.
 
+mod caret;
+mod clipboard;
 mod code_view;
 mod diff_view;
+mod editor;
+mod keymap;
 mod select;
 mod tokens;
 
@@ -14,12 +18,21 @@ use bevy::ecs::system::ResMut;
 use bevy::picking::PickingSystems;
 use bevy::text::Font;
 use bevy::ui::UiSystems;
+pub use caret::Hit;
+pub use clipboard::{ClipboardProvider, EditClipboard, SystemClipboard};
 pub use code_view::{
     CodeDoc, CodeLine, CodeSource, CodeStream, CodeView, Overflow,
     code_view,
 };
 pub use diff_view::{
     DiffDoc, DiffRow, DiffRowAt, DiffSource, DiffView, diff_view,
+};
+pub use editor::{
+    CodeEditor, EditDoc, EditLine, EditRequest, EditSystems, EditView,
+    EditorChanged, Request, code_editor,
+};
+pub use keymap::{
+    Action, ChordError, Gesture, Keymap, Mods, Platform, Stroke,
 };
 pub use rubrix_diff::{Layout, Row, Side};
 pub use rubrix_highlight::{Kind, Lang, Run};
