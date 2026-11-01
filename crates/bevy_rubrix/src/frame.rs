@@ -17,7 +17,8 @@ use bevy::math::Vec2;
 use bevy::time::Time;
 use bevy_fynix::views::VirtualList;
 use rubrix_edit::{
-    Buffer, Change, Command, Editor, Layout, Monospace, Selections,
+    Affinity, Buffer, Change, Command, Editor, Layout, Monospace,
+    Selections,
 };
 use rubrix_highlight::LineEdit;
 
@@ -304,6 +305,7 @@ pub(crate) trait EditTarget {
         target: Entity,
         buffer: &Buffer,
         head: usize,
+        affinity: Affinity,
     ) -> Option<(Entity, Reveal)>;
 }
 
@@ -384,10 +386,11 @@ impl EditTarget for EditView {
         target: Entity,
         buffer: &Buffer,
         head: usize,
+        affinity: Affinity,
     ) -> Option<(Entity, Reveal)> {
         let geometry = geometry(scene, target)?;
         let area = scene.views.get(target).ok()?.1.list()?;
-        Some((area, geometry.reveal(buffer, head)))
+        Some((area, geometry.reveal(buffer, head, affinity)))
     }
 }
 
@@ -562,11 +565,14 @@ pub(crate) fn apply(world: &mut World, mut frame: Local<Frame>) {
                 |(_, edit, ..)| {
                     let (_, doc) = parts.docs.get(edit.doc()).ok()?;
                     let editor = doc.editor();
+                    let selections = editor.selections();
                     EditView::reveal(
                         &parts.scene,
                         view,
                         editor.buffer(),
-                        editor.selections().primary().head,
+                        selections.primary().head,
+                        selections
+                            .affinity(selections.primary_index()),
                     )
                 },
             )

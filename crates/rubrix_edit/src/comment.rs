@@ -322,7 +322,7 @@ fn block_comments(
     }
     let mut targets = ranges.iter().zip(&found);
     let mut after = selections.clone();
-    after.update(|selection, _| {
+    after.update(|selection, _, _| {
         let (range, found) =
             targets.next().expect("one range per selection");
         let (start, end) = match found {

@@ -18,7 +18,7 @@ use bevy::ui::{
     PositionType, UiGlobalTransform, UiRect, ZIndex, px,
 };
 use bevy_fynix::views::{VirtualList, drawn_layout};
-use rubrix_edit::{Assoc, Buffer, Change};
+use rubrix_edit::{Affinity, Assoc, Buffer, Change};
 
 use crate::caret::{CARET_WIDTH, Geometry, RowParts};
 use crate::editor::{EditDoc, EditLine, EditView};
@@ -259,7 +259,8 @@ pub(crate) fn draw(
         for caret in carets {
             let head = buffer.floor_char_boundary(caret.head);
             let line = buffer.line_of(head);
-            let shape = geometry.caret(buffer, head);
+            let shape =
+                geometry.caret(buffer, head, Affinity::Downstream);
             let bar = row(line).and_then(origin).map(|at| {
                 [
                     at.x + shape.x,

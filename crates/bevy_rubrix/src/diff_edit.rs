@@ -30,13 +30,14 @@ use bevy::ui::{
     ZIndex, px,
 };
 use bevy_fynix::views::{VirtualList, drawn_layout};
-use parley::{Affinity, Cursor};
+use parley::Cursor;
 use rubrix_diff::{
     Anchor, FileChange, FileDiff, Layout, Rediff, Row, RowSplice,
     Rows,
 };
 use rubrix_edit::{
-    Buffer, Layout as _, Monospace, SCAN_LINES, Selection, Selections,
+    Affinity, Buffer, Layout as _, Monospace, SCAN_LINES, Selection,
+    Selections,
 };
 
 use crate::commands::{BRACKET_ALPHA, keep, refreshed};
@@ -178,8 +179,13 @@ impl DiffLayout {
 }
 
 impl rubrix_edit::Layout for DiffLayout {
-    fn x(&self, buffer: &Buffer, offset: usize) -> f32 {
-        Monospace::default().x(buffer, offset)
+    fn x(
+        &self,
+        buffer: &Buffer,
+        offset: usize,
+        affinity: Affinity,
+    ) -> f32 {
+        Monospace::default().x(buffer, offset, affinity)
     }
 
     /// With no line showing that way, the end of the caret's line,
@@ -188,9 +194,10 @@ impl rubrix_edit::Layout for DiffLayout {
         &self,
         buffer: &Buffer,
         from: usize,
+        _: Affinity,
         rows: i32,
         x: f32,
-    ) -> Option<usize> {
+    ) -> Option<(usize, Affinity)> {
         let line = buffer.line_of(from);
         let mut at = line;
         for _ in 0..rows.unsigned_abs() {
@@ -200,18 +207,29 @@ impl rubrix_edit::Layout for DiffLayout {
             }
         }
         if at == line && rows != 0 {
-            return Some(if rows > 0 {
+            let edge = if rows > 0 {
                 buffer.line_end(line)
             } else {
                 buffer.line_start(line)
-            });
+            };
+            return Some((edge, Affinity::Downstream));
         }
         Monospace::default().vertical(
             buffer,
             buffer.line_start(at),
+            Affinity::Downstream,
             0,
             x,
         )
+    }
+
+    fn row(
+        &self,
+        buffer: &Buffer,
+        offset: usize,
+        affinity: Affinity,
+    ) -> Range<usize> {
+        Monospace::default().row(buffer, offset, affinity)
     }
 
     fn page_rows(&self) -> u32 {
@@ -755,7 +773,8 @@ fn hit(
             (start + byte, pointed.map(|(_, x)| x))
         }
     };
-    let x = Monospace::default().x(buffer, offset);
+    let x =
+        Monospace::default().x(buffer, offset, Affinity::Downstream);
     let pointer =
         pointed.map_or(x, |x| x / doc.edit.advance.max(1.0));
     Hit {
@@ -1190,9 +1209,12 @@ fn caret(
     let drawn = Shown::new(content).shown(byte);
     let laid = drawn_layout(block, layout, node);
     let scale = 1.0 / node.inverse_scale_factor();
-    let bbox =
-        Cursor::from_byte_index(&laid, drawn, Affinity::Downstream)
-            .geometry(&laid, CARET_WIDTH * scale);
+    let bbox = Cursor::from_byte_index(
+        &laid,
+        drawn,
+        parley::Affinity::Downstream,
+    )
+    .geometry(&laid, CARET_WIDTH * scale);
     let corner = (at.translation
         + node.content_box().min
         + Vec2::new(bbox.x0 as f32, bbox.y0 as f32))
@@ -1341,7 +1363,7 @@ fn tints_on(
         let bbox = Cursor::from_byte_index(
             &laid,
             drawn(head),
-            Affinity::Downstream,
+            parley::Affinity::Downstream,
         )
         .geometry(&laid, CARET_WIDTH / logical);
         let [x0, y0, y1] =
