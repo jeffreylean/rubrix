@@ -25,6 +25,19 @@ log ime
 expect ime page preedit none
 log undo
 expect undo 1 redo 0
+ime preedit
+ime commit 你好
+ime preedit
+wait 5
+log text 120
+expect text 120 "    你好    .run();"
+log text 123
+expect text 123 "fn setup(world: &mut World) {"
+log caret
+expect caret 1 primary 1 123:1..123:1 visible true
+log undo
+expect undo 1 redo 0
+ime enable
 type x
 wait 5
 log text 123
@@ -47,6 +60,27 @@ log ime
 expect ime page preedit none
 log undo
 expect undo 3 redo 0
+ime enable
+click 273.0 228
+click 273.0 245 mod
+log caret
+expect caret 2 primary 2 126:1..126:1 127:1..127:1
+ime preedit 你好 6 6
+wait 5
+log ime
+expect ime page preedit "你好" cursor 6..6
+click 331.8 228
+wait 5
+log text 126
+expect text 126 "你好    let mut registry = world.resource_mut::<DockRegistry<Monokai>>();"
+log text 127
+expect text 127 "你好    for (id, name) in ["
+log caret
+expect caret 1 primary 1 126:10..126:10 visible true
+log ime
+expect ime page preedit none
+log undo
+expect undo 4 redo 0
 wait 30
 screenshot e3-click.png
 exit
