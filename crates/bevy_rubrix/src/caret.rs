@@ -62,8 +62,9 @@ pub(crate) const CARET_WIDTH: f32 = 2.0;
 pub struct Hit {
     pub line: u32,
     pub offset: usize,
-    /// `Upstream` for a point right of the last glyph of a row the
-    /// line wraps after, and `Downstream` anywhere else.
+    /// `Upstream` for a point on the right half of the last cluster
+    /// of a row the line wraps after, or right of it, and
+    /// `Downstream` anywhere else.
     pub affinity: Affinity,
     pub x: f32,
     /// The pointer's own x in the units of `x`, before it snapped to
@@ -284,7 +285,9 @@ impl Laid<'_> {
     fn row(&self, visual: u32) -> Range<usize> {
         self.layout.get(visual as usize).map_or(0..0, |line| {
             let range = line.text_range();
-            // parley starts a line with no text run at `usize::MAX`.
+            // A line holding only fynix's blank-line inline box has
+            // no text run, and parley leaves its start at
+            // `usize::MAX`.
             range.start.min(range.end)..range.end
         })
     }
@@ -294,6 +297,13 @@ fn parley_affinity(affinity: Affinity) -> parley::Affinity {
     match affinity {
         Affinity::Downstream => parley::Affinity::Downstream,
         Affinity::Upstream => parley::Affinity::Upstream,
+    }
+}
+
+fn rubrix_affinity(affinity: parley::Affinity) -> Affinity {
+    match affinity {
+        parley::Affinity::Downstream => Affinity::Downstream,
+        parley::Affinity::Upstream => Affinity::Upstream,
     }
 }
 
@@ -533,12 +543,7 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
             Some((
                 start
                     + self.shown(buffer, line).source(cursor.index()),
-                match cursor.affinity() {
-                    parley::Affinity::Downstream => {
-                        Affinity::Downstream
-                    }
-                    parley::Affinity::Upstream => Affinity::Upstream,
-                },
+                rubrix_affinity(cursor.affinity()),
                 local.x * laid.node.inverse_scale_factor(),
             ))
         });
