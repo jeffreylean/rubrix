@@ -137,23 +137,41 @@ fn only_macos_binds_the_emacs_keys() {
 }
 
 #[test]
-fn home_goes_to_column_zero_on_macos_and_to_the_indent_on_linux() {
+fn home_goes_to_the_row_start_and_only_cmd_left_to_the_indent() {
     let reach = |motion| {
         command(Command::Move {
             motion,
             extend: true,
         })
     };
+    for keymap in [Keymap::linux(), Keymap::macos()] {
+        let platform = keymap.platform();
+        assert_eq!(
+            keymap.get("home"),
+            Some(&go(Motion::LineStart)),
+            "{platform:?}"
+        );
+        assert_eq!(
+            keymap.get("shift+home"),
+            Some(&reach(Motion::LineStart)),
+            "{platform:?}"
+        );
+        assert_eq!(keymap.get("end"), Some(&go(Motion::End)));
+        assert_eq!(
+            keymap.get("shift+end"),
+            Some(&reach(Motion::End))
+        );
+    }
     let macos = Keymap::macos();
-    assert_eq!(macos.get("home"), Some(&go(Motion::LineStart)));
-    assert_eq!(
-        macos.get("shift+home"),
-        Some(&reach(Motion::LineStart))
-    );
     assert_eq!(macos.get("super+left"), Some(&go(Motion::Home)));
+    assert_eq!(
+        macos.get("super+shift+left"),
+        Some(&reach(Motion::Home))
+    );
+    assert_eq!(macos.get("super+right"), Some(&go(Motion::End)));
     let linux = Keymap::linux();
-    assert_eq!(linux.get("home"), Some(&go(Motion::Home)));
-    assert_eq!(linux.get("shift+home"), Some(&reach(Motion::Home)));
+    assert_eq!(linux.get("ctrl+left"), Some(&go(Motion::WordLeft)));
+    assert_eq!(linux.get("ctrl+right"), Some(&go(Motion::WordRight)));
 }
 
 #[test]
