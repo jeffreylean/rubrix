@@ -378,8 +378,12 @@ fn head(app: &App, entity: Entity) -> (usize, Affinity) {
     (selections.primary().head, selections.affinity(primary))
 }
 
-#[test]
-fn a_press_right_of_a_wrapped_row_lands_at_its_end() {
+/// An editor whose first line, `word ` forty times, wraps, with that
+/// line's row, the byte that starts its second row, and a point
+/// `advances` glyphs right of the last glyph of its first row.
+fn wrapped_words(
+    advances: f32,
+) -> (App, Entity, Entity, usize, Vec2) {
     let mut app = laid_out();
     let long = "word ".repeat(40);
     let source = format!("{long}\nnext\n");
@@ -394,9 +398,15 @@ fn a_press_right_of_a_wrapped_row_lands_at_its_end() {
         .expect("the long line wraps");
     let advance = point_at(&app, top, 1).x - point_at(&app, top, 0).x;
     let right = Vec2::new(
-        point_at(&app, top, second - 1).x + 0.75 * advance,
+        point_at(&app, top, second - 1).x + advances * advance,
         row_one,
     );
+    (app, entity, top, second, right)
+}
+
+#[test]
+fn a_press_right_of_a_wrapped_row_lands_at_its_end() {
+    let (mut app, entity, top, second, right) = wrapped_words(0.75);
     let wrapped = (second, Affinity::Upstream);
     let row_two = point_at(&app, top, second);
     press_on(&mut app, top, row_two, 1);
@@ -423,6 +433,33 @@ fn a_press_right_of_a_wrapped_row_lands_at_its_end() {
             "a press with {key:?}"
         );
     }
+}
+
+#[test]
+fn a_double_press_right_of_a_wrapped_row_selects_its_last_word() {
+    let (mut app, entity, top, second, right) = wrapped_words(2.0);
+    let selected = |app: &App| {
+        let selection =
+            doc(app, entity).editor().selections().primary();
+        selection.start()..selection.end()
+    };
+    let double_press = |app: &mut App, top, at| {
+        press_on(app, top, at, 1);
+        press_on(app, top, at, 2);
+    };
+    double_press(&mut app, top, right);
+    assert_eq!(
+        selected(&app),
+        second - 5..second - 1,
+        "past the row"
+    );
+    let row_two = point_at(&app, top, second);
+    double_press(&mut app, top, row_two);
+    assert_eq!(
+        selected(&app),
+        second..second + 4,
+        "at row 1's start"
+    );
 }
 
 #[derive(Resource, Default)]

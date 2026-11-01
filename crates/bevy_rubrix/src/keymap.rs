@@ -20,7 +20,7 @@ use bevy::input::{ButtonInput, ButtonState};
 use bevy::input_focus::InputFocus;
 use rubrix_edit::{
     Affinity, Buffer, Command, Layout, Motion, Selection, Selections,
-    word_at,
+    graphemes, word_at,
 };
 use rubrix_highlight::Lines;
 
@@ -382,13 +382,25 @@ const EXTEND: Gesture = Gesture(|stroke| {
     )
 });
 
-/// The word at the press through the word at the pointer.
+/// The word at the press through the word at the pointer. A hit
+/// right of a wrapped row takes the row's last word, past the space
+/// the wrap leaves at the row's end.
 const WORDS: Gesture = Gesture(|stroke| {
     let word = |hit: &Hit| {
         let start = stroke.buffer.line_start(hit.line);
         let line = content(stroke.buffer, hit.line);
-        let word =
-            word_at(line, (hit.offset - start).min(line.len()));
+        let at = (hit.offset - start).min(line.len());
+        let at = match hit.affinity {
+            Affinity::Downstream => at,
+            Affinity::Upstream => {
+                let row = &line[..at];
+                let words = row.trim_end();
+                graphemes(if words.is_empty() { row } else { words })
+                    .last()
+                    .map_or(at, |(before, _)| before)
+            }
+        };
+        let word = word_at(line, at);
         start + word.start..start + word.end
     };
     spanning(word(&stroke.from), word(&stroke.to))
