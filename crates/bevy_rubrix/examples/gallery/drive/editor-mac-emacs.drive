@@ -1,0 +1,46 @@
+page editor
+wait 120
+click 432.6 500
+log caret
+expect caret 1 primary 1 23:20..23:20 visible true
+oskey ctrl+a
+wait 60 until caret 1 primary 1 23:13..23:13 visible true
+oskey ctrl+a
+wait 60 until caret 1 primary 1 23:1..23:1 visible true
+oskey ctrl+e
+wait 60 until caret 1 primary 1 23:41..23:41 visible true
+oskey ctrl+p
+wait 60 until caret 1 primary 1 22:21..22:21 visible true
+oskey ctrl+n
+wait 60 until caret 1 primary 1 23:41..23:41 visible true
+oskey ctrl+b
+wait 60 until caret 1 primary 1 23:40..23:40 visible true
+oskey ctrl+f
+wait 60 until caret 1 primary 1 23:41..23:41 visible true
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log undo
+expect undo 0 redo 0
+click 432.6 517
+oskey ctrl+k
+wait 60 until text 24 "            Tone::D"
+log caret
+expect caret 1 primary 1 24:20..24:20 visible true
+log undo
+expect undo 1 redo 0
+oskey ctrl+k
+wait 60 until text 24 "            Tone::D            Tone::Faint => hex(0x727072),"
+log caret
+expect caret 1 primary 1 24:20..24:20 visible true
+log rows
+expect rows total 10372 following
+log undo
+expect undo 2 redo 0
+click 382.2 534
+oskey ctrl+t
+wait 60 until text 25 "            oTne::Accent => hex(0xFFD866),"
+log caret
+expect caret 1 primary 1 25:15..25:15 visible true
+log undo
+expect undo 3 redo 0
+exit

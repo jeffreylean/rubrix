@@ -1,0 +1,108 @@
+page editor
+wait 120
+clipboard system
+click 373.8 500
+oskey mod+shift+right
+wait 60 until caret 1 primary 1 23:13..23:41 visible true
+oskey mod+c
+wait 60 until pbpaste "Tone::Body => hex(0xFCFCFA),"
+pbcopy from pbcopy
+log pbpaste
+click 273.0 143
+oskey mod+v
+wait 60 until text 2 "from pbcopy"
+log undo
+expect undo 1 redo 0
+drag 373.8 500 407.4 517
+drag 373.8 551 407.4 568 mod
+log caret
+expect caret 2 primary 2 23:13..24:17 26:13..27:17
+oskey mod+c
+wait 60 until pbpaste "Tone::Body => hex(0xFCFCFA),\n            Tone\nTone::Accent => hex(0xFFD866),\n            Tone"
+click 273.0 177
+click 273.0 279 mod
+log caret
+expect caret 2 primary 2 4:1..4:1 10:1..10:1
+oskey mod+v
+wait 60 until text 4 "Tone::Body => hex(0xFCFCFA),"
+log text 4
+expect text 4 "Tone::Body => hex(0xFCFCFA),"
+log text 5
+expect text 5 "            Tone"
+log text 6
+expect text 6 "use bevy::color::Color;"
+log text 7
+expect text 7 "use bevy_fynix::tokens::{"
+log text 8
+expect text 8 "    Curve, Motion, MotionTokens, SpacingTokens, SurfaceTokens,"
+log text 9
+expect text 9 "    TextTokens, Tone,"
+log text 10
+expect text 10 "};"
+log text 11
+expect text 11 "Tone::Accent => hex(0xFFD866),"
+log text 12
+expect text 12 "            Tone"
+log caret
+expect caret 2 primary 2 5:17..5:17 12:17..12:17
+log undo
+expect undo 2 redo 0
+pbcopy Tone::Body => hex(0xFCFCFA),\n            Tone\nTone::Accent => hex(0xFFD866),\n            Tone
+log pbpaste
+click 273.0 381
+click 273.0 466 mod
+log caret
+expect caret 2 primary 2 16:1..16:1 21:1..21:1
+oskey mod+v
+wait 60 until text 16 "Tone::Body => hex(0xFCFCFA),"
+log text 16
+expect text 16 "Tone::Body => hex(0xFCFCFA),"
+log text 17
+expect text 17 "            Tone"
+log text 18
+expect text 18 "fn hex(rgb: u32) -> Color {"
+log text 19
+expect text 19 "    let [_, r, g, b] = rgb.to_be_bytes();"
+log text 20
+expect text 20 "    Color::srgb_u8(r, g, b)"
+log text 21
+expect text 21 "}"
+log text 22
+expect text 22 "Tone::Accent => hex(0xFFD866),"
+log text 23
+expect text 23 "            Tone"
+log caret
+expect caret 2 primary 2 17:17..17:17 23:17..23:17
+log undo
+expect undo 3 redo 0
+pbcopy Tone::Bold => hex(0xFCFCFA),\n            Tone\nTone::Accent => hex(0xFFD866),\n            Tone
+log pbpaste
+click 844.2 330
+click 432.6 364 mod
+log caret
+expect caret 2 primary 2 13:69..13:69 15:20..15:20
+oskey mod+v
+wait 60 until text 13 "/// The examples' theme. Nothing in the views names it: they ask forTone::Bold => hex(0xFCFCFA),"
+log text 13
+expect text 13 "/// The examples' theme. Nothing in the views names it: they ask forTone::Bold => hex(0xFCFCFA),"
+log text 14
+expect text 14 "            Tone"
+log text 15
+expect text 15 "Tone::Accent => hex(0xFFD866),"
+log text 16
+expect text 16 "            Tone"
+log text 17
+expect text 17 "/// whatever token traits they need, and this implements them."
+log text 18
+expect text 18 "pub struct Monokai;Tone::Bold => hex(0xFCFCFA),"
+log text 19
+expect text 19 "            Tone"
+log text 20
+expect text 20 "Tone::Accent => hex(0xFFD866),"
+log text 21
+expect text 21 "            Tone"
+log caret
+expect caret 2 primary 2 16:17..16:17 21:17..21:17
+log undo
+expect undo 4 redo 0
+exit

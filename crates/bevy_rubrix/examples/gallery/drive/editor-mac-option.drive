@@ -1,0 +1,70 @@
+page editor
+wait 120
+click 273.0 143
+paste foo_bar.baz(qux)
+wait 5
+log text 2
+expect text 2 "foo_bar.baz(qux)"
+log caret
+expect caret 1 primary 1 2:17..2:17 visible true
+oskey alt+left
+wait 60 until caret 1 primary 1 2:16..2:16 visible true
+oskey alt+left
+wait 60 until caret 1 primary 1 2:13..2:13 visible true
+oskey alt+left
+wait 60 until caret 1 primary 1 2:12..2:12 visible true
+oskey alt+left
+wait 60 until caret 1 primary 1 2:9..2:9 visible true
+oskey alt+left
+wait 60 until caret 1 primary 1 2:8..2:8 visible true
+oskey alt+left
+wait 60 until caret 1 primary 1 2:1..2:1 visible true
+log text 2
+expect text 2 "foo_bar.baz(qux)"
+oskey alt+right
+wait 60 until caret 1 primary 1 2:8..2:8 visible true
+oskey alt+right
+wait 60 until caret 1 primary 1 2:9..2:9 visible true
+oskey alt+right
+wait 60 until caret 1 primary 1 2:12..2:12 visible true
+oskey alt+right
+wait 60 until caret 1 primary 1 2:13..2:13 visible true
+oskey alt+right
+wait 60 until caret 1 primary 1 2:16..2:16 visible true
+oskey alt+right
+wait 60 until caret 1 primary 1 2:17..2:17 visible true
+log text 2
+expect text 2 "foo_bar.baz(qux)"
+wait 600
+click 273.0 143
+log caret
+expect caret 1 primary 1 2:1..2:1 visible true
+oskey alt+shift+right
+wait 60 until caret 1 primary 1 2:1..2:8 visible true
+oskey alt+shift+right
+wait 60 until caret 1 primary 1 2:1..2:9 visible true
+oskey alt+shift+a
+wait 60 until text 2 "/* foo_bar. */baz(qux)"
+oskey mod+z
+wait 60 until text 2 "foo_bar.baz(qux)"
+log undo
+expect undo 1 redo 1
+wait 600
+click 365.4 143
+oskey alt+backspace
+wait 60 until text 2 "foo_bar.(qux)"
+log caret
+expect caret 1 primary 1 2:9..2:9 visible true
+wait 600
+click 273.0 143
+oskey alt+delete
+wait 60 until text 2 ".(qux)"
+log caret
+expect caret 1 primary 1 2:1..2:1 visible true
+oskey alt+f
+wait 60 until text 2 "ƒ.(qux)"
+log caret
+expect caret 1 primary 1 2:2..2:2 visible true
+log undo
+expect undo 4 redo 0
+exit

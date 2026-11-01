@@ -1,0 +1,59 @@
+page editor
+wait 120
+click 432.6 500
+log caret
+expect caret 1 primary 1 23:20..23:20 visible true
+oskey mod+left
+wait 60 until caret 1 primary 1 23:13..23:13 visible true
+oskey mod+left
+wait 60 until caret 1 primary 1 23:1..23:1 visible true
+oskey mod+right
+wait 60 until caret 1 primary 1 23:41..23:41 visible true
+oskey mod+up
+wait 60 until caret 1 primary 1 1:1..1:1 visible true
+oskey mod+down
+wait 60 until caret 1 primary 1 10373:1..10373:1 visible true
+oskey mod+up
+wait 60 until caret 1 primary 1 1:1..1:1 visible true
+click 373.8 517
+type abc
+wait 5
+log text 24
+expect text 24 "            abcTone::Dim => hex(0x939293),"
+log undo
+expect undo 1 redo 0
+oskey mod+z
+wait 60 until undo 0 redo 1
+log text 24
+expect text 24 "            Tone::Dim => hex(0x939293),"
+oskey mod+shift+z
+wait 60 until undo 1 redo 0
+log text 24
+expect text 24 "            abcTone::Dim => hex(0x939293),"
+click 373.8 534
+oskey mod+shift+right
+wait 60 until caret 1 primary 1 25:13..25:42 visible true
+oskey mod+c
+wait 60 until copied "Tone::Faint => hex(0x727072),"
+log undo
+expect undo 1 redo 0
+oskey mod+x
+wait 60 until text 25 "            "
+log undo
+expect undo 2 redo 0
+click 373.8 551
+oskey mod+v
+wait 60 until text 26 "            Tone::Faint => hex(0x727072),Tone::Accent => hex(0xFFD866),"
+log undo
+expect undo 3 redo 0
+click 432.6 568
+oskey mod+backspace
+oskey right
+wait 60 until caret 1 primary 1 27:21..27:21 visible true
+log text 27
+expect text 27 "            Tone::OnAccent => hex(0x2D2A2E),"
+log undo
+expect undo 3 redo 0
+oskey mod+a
+wait 60 until caret 1 primary 1 1:1..10373:1 visible true
+exit
