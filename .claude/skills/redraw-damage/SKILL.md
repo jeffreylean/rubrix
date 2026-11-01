@@ -34,7 +34,9 @@ Run `damage` and `rows` on every change that touches the covered code. Run `dama
 
 ## Status at the sync commit
 
-`damage`, `rows` and `damage-deep` pass. Any `rows` failure is new.
+`damage`, `rows` and `damage-deep` pass at `278caa5`. Any `rows` failure is new.
+
+The model was first confirmed at `24b97b0`, on the F1 fix branch. #36 and #37 then changed `editor.rs`, `frame.rs` and `change.rs`. None of those changes alters a step that the model takes, The `Change` and `CatchUp` rows of the coverage table and the list of assumptions say why.
 
 **F1, fixed. A row could keep drawing a line that moved away from its slot.** `rows.rs` `line` learns that its slot moved only from `RowSlot::index`'s check, which is `follow` in virtual_list.rs. Before the fix, that check compared the slot's index with the one it saw at the last Mount. When the index changed and came back to the same number between two Mounts, the row saw no move. Its line number then held another line, and `Damage` had no entry for it, because that line's spans did not change. TLC found three paths.
 
@@ -53,7 +55,7 @@ Two fynix tests in `vendor/fynix/crates/bevy_fynix/src/tests/virtual_list.rs` ch
 
 ## Shown to fail
 
-On the sync commit, each of these breaks of the code, mirrored in the model, made a check fail.
+At `24b97b0`, each of these breaks of the code, mirrored in the model, made a check fail. The model and the code these breaks change are the same at the sync commit.
 
 - `Damage::settle` drops the last frame's entries as well: `damage` fails with a trace of 3 states, and `rows` with one of 8.
 - `Damage::note` stops moving kept entries through the edits: `damage` fails with a trace of 4 states.
@@ -74,7 +76,7 @@ Read the trace in `~/.cache/redraw-damage/<check>/tlc.log`. Each state names the
 ## Does a change touch the verified code?
 
 ```sh
-git diff --stat 24b97b01b787dd7a1d0a41ca125d8c0b8a588cbd -- \
+git diff --stat 278caa5060c96ae222c50cc5435f6858943775e9 -- \
   crates/bevy_rubrix/src/damage.rs crates/bevy_rubrix/src/editor.rs \
   crates/bevy_rubrix/src/frame.rs crates/bevy_rubrix/src/marks.rs \
   crates/bevy_rubrix/src/rows.rs crates/bevy_rubrix/src/lib.rs \
@@ -89,7 +91,7 @@ If the diff touches a function in the table, update the matching operator so tha
 
 ## Coverage
 
-Sync commit: `24b97b01b787dd7a1d0a41ca125d8c0b8a588cbd`. At this commit the model was confirmed to describe the code below. Move the sync commit forward only after you confirm that the model describes the code at the new commit, and record the new status.
+Sync commit: `278caa5060c96ae222c50cc5435f6858943775e9`. At this commit the model was confirmed to describe the code below. Move the sync commit forward only after you confirm that the model describes the code at the new commit, and record the new status.
 
 | Model | Code |
 | --- | --- |
@@ -99,8 +101,8 @@ Sync commit: `24b97b01b787dd7a1d0a41ca125d8c0b8a588cbd`. At this commit the mode
 | `RowSplices`, `SpliceRows` | `row_edits`, `row_splices`, `splice_rows`, damage.rs |
 | `SpliceSlots` | `VirtualList::splice`, its loop over `self.slots`, which leaves `Placed::filled_at` as it is (vendor/fynix/crates/bevy_fynix/src/views/virtual_list.rs) |
 | `EditsOn`, `Changes` | the contract on `Change::line_edits` (crates/rubrix_edit/src/change.rs): at least one line removed and one inserted, ascending, `first + inserted <= next.first` |
-| `Change` | `Tx::transact` (frame.rs): `EditDoc::run`, which lexes and calls `Damage::note`, then `EditView::splice`, which calls `splice_rows` |
-| `CatchUp` | `EditDoc::catch_up`, from the end of `frame::apply` and from `diff_edit::catch_up` |
+| `Change` | `Tx::transact` (frame.rs): `EditDoc::run`, which lexes and calls `Damage::note`, then `EditView::splice`, which calls `splice_rows`. `Tx::lay_out` changes only the layout that the commands read, so it changes which edit is made, not the steps |
+| `CatchUp` | `EditDoc::catch_up`, from the end of `frame::apply` and from `diff_edit::catch_up`. `frame::catch_up_window` sets the last line to lex, and the model leaves it free, because a lex may return any set of lines |
 | `SetMarks` | `Marks::set` (marks.rs), from `match_brackets`, `draw_markers`, `find::follow`, ime and app code, in any schedule |
 | `StartFrame` | the settle loop at the top of `frame::apply`, PreUpdate in `EditSystems::Apply` |
 | `Fill` | `read_sources` then `place_rows`, which calls `VirtualList::place` and `fill`, in fynix's Update `Prepare` set. `fill` adds one to `fills` and gives each slot it places that count as `filled_at` |
@@ -114,9 +116,9 @@ Each action is one indivisible step because the code makes it one. `frame::apply
 
 - The ground truth for a line's spans is its text, the runs `Highlights` stores for it, and the marks on its line number. The model trusts `edit_many_lines` and `catch_up` to return every line whose stored runs changed, and lets a lex return any set of lines. Whether those runs are the right highlighting is not checked.
 - The model has one view and one list. Heights, scrolling and the `MAX_SLOTS` cap appear only as a free choice of the window's first row and size at each `fill`.
-- Edits come from the `Change::line_edits` contract. `Change::map` and range remapping are left out because PR M3FA rewrites them.
-- Diff rows are not modeled. `diff_edit::fires` gates its `Damage::fires` call on `Session.reads`, and its rows map through `rubrix_diff` rows, whose gap expansion PR M3FB rewrites. The find scan's pause and resume are left out because seeded differential tests cover them.
-- `Marks` and `EditDoc` are never replaced on their entities. A new `Damage` restarts `seq` at 0, and that case is not checked.
+- Edits come from the `Change::line_edits` contract. `line_edits` reads only the change's replacements, so the moves that a line move carries do not change the edits. `Change::map`, `Change::map_range` and `Ranges::map` are left out, because they move offsets and marker ranges, and those reach the rows only through `Marks::set`, which `SetMarks` models with any set of lines.
+- Diff rows are not modeled. `diff_edit::fires` gates its `Damage::fires` call on `Session.reads`, and its rows map through `rubrix_diff` rows and their gap expansion. The find scan's pause and resume are left out because seeded differential tests cover them.
+- `Marks` and `EditDoc` are never replaced on their entities. A new `Damage` restarts `seq` at 0, and that case is not checked. `EditDoc::restored`, which `restore_state` in hooks.rs calls when an `EditDoc` is added, also starts a new `Damage`. The revision it carries over is the `EditorChanged` count, not `Damage`'s `seq`.
 - The bounds are small: at most 4 lines, 2 slots, 3 frames and 3 notes. A pass covers those bounds only. The `rows` check stops at 3 lines, because at 4 lines a run of an earlier scratch fix had not finished after 5 minutes.
 - `fills` is a `u64` in the code and is never near its limit, so the model does not wrap it.
 - A count per slot, which starts again when `fill` drops a slot and builds it again, also passes `rows` in these bounds. The code keeps one count for the list because that count never repeats a value a row saw, not because the check tells the two apart.
