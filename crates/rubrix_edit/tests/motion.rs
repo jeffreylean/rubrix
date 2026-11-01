@@ -474,6 +474,28 @@ fn typing_and_selection_changes_reset_the_affinity() {
 }
 
 #[test]
+fn set_selections_keeps_a_head_affinity_the_snap_leaves_in_place() {
+    let mut editor = editor_at(INDENTED, 5);
+    editor.set_selections(Selections::with_affinity(
+        Selection::caret(12),
+        Upstream,
+    ));
+    assert_eq!(heads(&editor), (12, Upstream));
+    let _ = editor.apply(go(Motion::Home), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (2, Downstream), "Home acts on row 0");
+    let mut editor = editor_at("e\u{301}xyz", 0);
+    editor.set_selections(Selections::with_affinity(
+        Selection::caret(1),
+        Upstream,
+    ));
+    assert_eq!(
+        heads(&editor),
+        (0, Downstream),
+        "a head snapped out of a cluster"
+    );
+}
+
+#[test]
 fn a_kept_head_keeps_its_affinity_through_a_save_and_a_merge() {
     let mut editor = editor_at(INDENTED, 5);
     let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);

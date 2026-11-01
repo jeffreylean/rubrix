@@ -19,7 +19,8 @@ use bevy::input::keyboard::{
 use bevy::input::{ButtonInput, ButtonState};
 use bevy::input_focus::InputFocus;
 use rubrix_edit::{
-    Buffer, Command, Layout, Motion, Selection, Selections, word_at,
+    Affinity, Buffer, Command, Layout, Motion, Selection, Selections,
+    graphemes, word_at,
 };
 use rubrix_highlight::Lines;
 
@@ -361,27 +362,45 @@ pub struct Stroke<'a> {
 
 /// One caret at the press, extended to the pointer.
 const PLACE: Gesture = Gesture(|stroke| {
-    Selections::new(Selection {
-        anchor: stroke.from.offset,
-        head: stroke.to.offset,
-    })
+    Selections::with_affinity(
+        Selection {
+            anchor: stroke.from.offset,
+            head: stroke.to.offset,
+        },
+        stroke.to.affinity,
+    )
 });
 
 /// The primary's anchor kept, its head at the pointer.
 const EXTEND: Gesture = Gesture(|stroke| {
-    Selections::new(Selection {
-        anchor: stroke.base.primary().anchor,
-        head: stroke.to.offset,
-    })
+    Selections::with_affinity(
+        Selection {
+            anchor: stroke.base.primary().anchor,
+            head: stroke.to.offset,
+        },
+        stroke.to.affinity,
+    )
 });
 
-/// The word at the press through the word at the pointer.
+/// The word at the press through the word at the pointer. A hit
+/// right of a wrapped row takes the row's last word, past the space
+/// the wrap leaves at the row's end.
 const WORDS: Gesture = Gesture(|stroke| {
     let word = |hit: &Hit| {
         let start = stroke.buffer.line_start(hit.line);
         let line = content(stroke.buffer, hit.line);
-        let word =
-            word_at(line, (hit.offset - start).min(line.len()));
+        let at = (hit.offset - start).min(line.len());
+        let at = match hit.affinity {
+            Affinity::Downstream => at,
+            Affinity::Upstream => {
+                let row = &line[..at];
+                let words = row.trim_end();
+                graphemes(if words.is_empty() { row } else { words })
+                    .last()
+                    .map_or(at, |(before, _)| before)
+            }
+        };
+        let word = word_at(line, at);
         start + word.start..start + word.end
     };
     spanning(word(&stroke.from), word(&stroke.to))
@@ -402,18 +421,23 @@ const LINES: Gesture = Gesture(|stroke| {
     spanning(line(&stroke.from), line(&stroke.to))
 });
 
-const ADD_WORDS: Gesture =
-    Gesture(|stroke| added(stroke.base, (WORDS.0)(stroke).primary()));
+const ADD_WORDS: Gesture = Gesture(|stroke| {
+    let word = (WORDS.0)(stroke).primary();
+    added(stroke.base, word, Affinity::Downstream)
+});
 
-const ADD_LINES: Gesture =
-    Gesture(|stroke| added(stroke.base, (LINES.0)(stroke).primary()));
+const ADD_LINES: Gesture = Gesture(|stroke| {
+    let line = (LINES.0)(stroke).primary();
+    added(stroke.base, line, Affinity::Downstream)
+});
 
 pub(crate) fn added(
     base: &Selections,
     selection: Selection,
+    affinity: Affinity,
 ) -> Selections {
     let mut selections = base.clone();
-    selections.add(selection);
+    selections.add_with_affinity(selection, affinity);
     selections
 }
 

@@ -1,0 +1,53 @@
+page editor
+wait 120
+click 734 68
+wait 60
+click 1250 500
+key space
+type abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd
+wait 10
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA), abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd"
+log row 23
+expect row 23 top 374 height 34 lines 2
+click 273.0 517
+log caret
+expect caret 1 primary 1 23:112..23:112 visible true
+log ime
+expect ime caret 271 526
+click 1250 500
+log caret
+expect caret 1 primary 1 23:112..23:112 visible true
+log ime
+expect ime caret 1203 509
+click 273.0 517
+log caret
+expect caret 1 primary 1 23:112..23:112 visible true
+log ime
+expect ime caret 271 526
+click 306.6 500
+click 1250 500 shift
+log caret
+expect caret 1 primary 1 23:5..23:112 visible true
+log ime
+expect ime caret 1203 509
+drag 323.4 500 1250 500
+log caret
+expect caret 1 primary 1 23:7..23:112 visible true
+log ime
+expect ime caret 1203 509
+click 340.2 500
+click 1250 500 mod
+log caret
+expect caret 2 primary 2 23:9..23:9 23:112..23:112
+log ime
+expect ime caret 1203 509
+click 357.0 500
+click 1250 500 alt
+log caret
+expect caret 1 primary 1 23:112..23:112 visible true
+log ime
+expect ime caret 1203 509
+wait 30
+screenshot wrap-click.png
+exit

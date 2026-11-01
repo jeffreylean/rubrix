@@ -941,6 +941,31 @@ fn an_empty_selected_line_gets_a_narrow_rect() {
 }
 
 #[test]
+fn home_and_end_on_an_empty_line_stay_on_it() {
+    let mut app = laid_out();
+    let (view, entity) = mount_editor(
+        &mut app,
+        Lang::Plain,
+        "ab\n\ncd\n",
+        600.0,
+        300.0,
+    );
+    settle(&mut app);
+    caret_at(&mut app, entity, view, 3);
+    focus(&mut app, view);
+    for (code, key) in
+        [(KeyCode::Home, Key::Home), (KeyCode::End, Key::End)]
+    {
+        key_with(&mut app, &[], code, key);
+        assert_eq!(
+            doc(&app, entity).editor().selections().primary().head,
+            3,
+            "{code:?}"
+        );
+    }
+}
+
+#[test]
 fn down_moves_by_visual_row_in_wrap_mode() {
     let mut app = laid_out();
     let long = "word ".repeat(40);

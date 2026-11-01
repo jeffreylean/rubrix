@@ -136,10 +136,11 @@ fn spans(buffer: &Buffer, line: u32, parts: &[&str]) -> bool {
 
 /// mod+click at `at`: removes the selection that holds `at`, unless
 /// it is the only one, or else adds a caret at `at` as the new
-/// primary.
+/// primary, on the row `affinity` names.
 pub fn toggle_caret(
     selections: &Selections,
     at: usize,
+    affinity: Affinity,
 ) -> Selections {
     let mut toggled = selections.clone();
     match selections
@@ -147,18 +148,21 @@ pub fn toggle_caret(
         .position(|s| s.start() <= at && at <= s.end())
     {
         Some(index) => toggled.remove(index),
-        None => toggled.add(Selection::caret(at)),
+        None => {
+            toggled.add_with_affinity(Selection::caret(at), affinity)
+        }
     }
     toggled
 }
 
-/// A column selection dragged from `from` to `to`, each an offset on
-/// the visual row under it and an x in `layout`'s units: one
-/// selection per line between them, from the boundary nearest
-/// `from`'s x to the one nearest `to`'s x, the line of `to` holding
-/// the primary. The lines of `from` and `to` take both x's on the row
-/// under that end, and the lines between take them on their first
-/// row.
+/// A column selection dragged from `from` to `to`, each an offset,
+/// the affinity that names the visual row under it, and an x in
+/// `layout`'s units: one selection per line between them, from the
+/// boundary nearest `from`'s x to the one nearest `to`'s x, the line
+/// of `to` holding the primary. The lines of `from` and `to` take
+/// both x's on the row under that end, and the lines between take
+/// them on their first row. Each head keeps the affinity of the row
+/// it was found on.
 ///
 /// # Panics
 ///
@@ -166,32 +170,37 @@ pub fn toggle_caret(
 pub fn column(
     buffer: &Buffer,
     layout: &dyn Layout,
-    from: (usize, f32),
-    to: (usize, f32),
+    from: (usize, Affinity, f32),
+    to: (usize, Affinity, f32),
 ) -> Selections {
     let on = |line: u32| {
-        let row = [from.0, to.0]
+        let (row, affinity) = [from, to]
             .into_iter()
-            .find(|&at| buffer.line_of(at) == line)
-            .unwrap_or_else(|| buffer.line_start(line));
+            .find(|&(at, ..)| buffer.line_of(at) == line)
+            .map_or(
+                (buffer.line_start(line), Affinity::Downstream),
+                |(at, affinity, _)| (at, affinity),
+            );
         let at = |x| {
             layout
-                .vertical(buffer, row, Affinity::Downstream, 0, x)
-                .map_or(row, |(at, _)| at)
+                .vertical(buffer, row, affinity, 0, x)
+                .unwrap_or((row, affinity))
         };
-        Selection {
-            anchor: at(from.1),
-            head: at(to.1),
-        }
+        let (anchor, _) = at(from.2);
+        let (head, affinity) = at(to.2);
+        (Selection { anchor, head }, affinity)
     };
     let (first, last) =
         (buffer.line_of(from.0), buffer.line_of(to.0));
     let step = if last < first { -1 } else { 1 };
-    let mut selections = Selections::new(on(first));
+    let (selection, affinity) = on(first);
+    let mut selections =
+        Selections::with_affinity(selection, affinity);
     let mut line = first;
     while line != last {
         line = line.wrapping_add_signed(step);
-        selections.add(on(line));
+        let (selection, affinity) = on(line);
+        selections.add_with_affinity(selection, affinity);
     }
     selections
 }

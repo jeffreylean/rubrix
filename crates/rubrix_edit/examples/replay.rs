@@ -101,8 +101,8 @@ use std::process::ExitCode;
 use std::{env, fs};
 
 use rubrix_edit::{
-    Buffer, Command, Editor, Layout, Monospace, Motion, Selection,
-    Selections, bracket_skips, column, matching_bracket,
+    Affinity, Buffer, Command, Editor, Layout, Monospace, Motion,
+    Selection, Selections, bracket_skips, column, matching_bracket,
     toggle_caret,
 };
 use rubrix_highlight::{Lang, Lines};
@@ -516,10 +516,11 @@ fn replay(
                     let at = at(pos, &editor)?;
                     Ok::<_, String>((
                         at,
+                        Affinity::Downstream,
                         layout.x(
                             editor.buffer(),
                             at,
-                            rubrix_edit::Affinity::Downstream,
+                            Affinity::Downstream,
                         ),
                     ))
                 };
@@ -536,6 +537,7 @@ fn replay(
                 editor.set_selections(toggle_caret(
                     editor.selections(),
                     at,
+                    Affinity::Downstream,
                 ));
             }
             Step::Copy => copied = editor.copy_text(),
