@@ -2740,14 +2740,21 @@ steps += ["key mod+x", "wait 5", texts(doc, [LINE, CARET]), rows_total(doc), car
 steps += ["log copied", f"expect copied {rust_debug(copied)}", undo(1, 0)]
 editor("m2-copy-mixed", steps, "wait 30", "screenshot m2-copy-mixed.png")
 
+def wrap_tone_line(doc):
+    line = TONE_LINES[0]
+    tail = " ".join(["abcd"] * 24)
+    doc.insert((line, len(doc.line(line)) + 1), " " + tail)
+    starts = wrap_starts(doc.line(line))
+    assert len(starts) == 2, starts
+    steps = [WRAP, "wait 60", f"click {doc.end(line)}", "key space", f"type {tail}", "wait 10", doc.text(line)]
+    steps += [f"log row {line}", f"expect row {line} top {(line - 1) * ROW} height {2 * ROW} lines 2"]
+    return steps, starts[1]
+
+
 doc = Doc(LARGE_RS_LINES)
 LINE = TONE_LINES[0]
-WORDS = " ".join(["abcd"] * 24)
-doc.insert((LINE, len(doc.line(LINE)) + 1), " " + WORDS)
-second = wrap_starts(doc.line(LINE))[1]
-assert len(wrap_starts(doc.line(LINE))) == 2 and all(len(doc.line(n)) < WRAP_COLUMNS for n in TONE_LINES[1:3])
-steps = [WRAP, "wait 60", f"click {doc.end(LINE)}", "key space", f"type {WORDS}", "wait 10", doc.text(LINE)]
-steps += [f"log row {LINE}", f"expect row {LINE} top {(LINE - 1) * ROW} height {2 * ROW} lines 2"]
+steps, second = wrap_tone_line(doc)
+assert all(len(doc.line(n)) < WRAP_COLUMNS for n in TONE_LINES[1:3])
 left, right = TONE_COLUMN, TONE_COLUMN + len("Tone::")
 row_two, last = doc.y(LINE) + ROW, doc.y(TONE_LINES[2]) + ROW
 steps += [f"drag {column_x(left)} {row_two} {column_x(right)} {last} alt", "wait 5"]
@@ -3298,15 +3305,10 @@ steps += [f"click {doc.at(LINE, 20)}", os_inert("mod+backspace", "right", (LINE,
 steps += [os_caret("mod+a", (1, 1), (doc.rows(), 1))]
 LINE = TONE_LINES[0]
 assert max(map(len, doc.lines[:LINE])) < WRAP_COLUMNS
-TAIL = " ".join(["abcd"] * 24)
-doc.insert((LINE, len(doc.line(LINE)) + 1), " " + TAIL)
-starts = wrap_starts(doc.line(LINE))
-assert len(starts) == 2, starts
-second = starts[1]
+wrap, second = wrap_tone_line(doc)
 end = len(doc.line(LINE)) + 1
 row_two = doc.y(LINE) + ROW
-steps += [CENTER, "scroll 0 100000000", "wait 10", WRAP, "wait 60", f"click {doc.end(LINE)}", "key space", f"type {TAIL}", "wait 10", doc.text(LINE)]
-steps += [f"log row {LINE}", f"expect row {LINE} top {(LINE - 1) * ROW} height {2 * ROW} lines 2"]
+steps += [CENTER, "scroll 0 100000000", "wait 10", wrap]
 steps += [f"click {doc.at(LINE, 5)}", caret((LINE, 5))]
 steps += [os_caret("end", (LINE, second)), drawn_caret(doc, LINE, second, 1, 0)]
 steps += [os_caret("end", (LINE, second)), drawn_caret(doc, LINE, second, 1, 0)]
@@ -3318,6 +3320,21 @@ steps += [os_caret("end", (LINE, end)), drawn_caret(doc, LINE, end, second, 1)]
 steps += [os_caret("shift+home", (LINE, end), (LINE, second))]
 steps += [os_caret("mod+shift+left", (LINE, end), (LINE, second))]
 editor("mac-cmd", steps)
+
+doc = Doc(LARGE_RS_LINES)
+LINE = TONE_LINES[0]
+steps, second = wrap_tone_line(doc)
+past_row_one = doc.end(LINE)
+row_two = f"{column_x(1)} {doc.y(LINE) + ROW}"
+on_row_one = drawn_caret(doc, LINE, second, 1, 0)
+on_row_two = drawn_caret(doc, LINE, second, second, 1)
+for at, drawn in [(row_two, on_row_two), (past_row_one, on_row_one), (row_two, on_row_two)]:
+    steps += [f"click {at}", caret((LINE, second)), drawn]
+steps += [f"click {doc.at(LINE, 5)}", f"click {past_row_one} shift", caret((LINE, 5), (LINE, second)), on_row_one]
+steps += [f"drag {doc.at(LINE, 7)} {past_row_one}", caret((LINE, 7), (LINE, second)), on_row_one]
+steps += [f"click {doc.at(LINE, 9)}", f"click {past_row_one} mod", carets_at([(LINE, 9), (LINE, second)]), on_row_one]
+steps += [f"click {doc.at(LINE, 11)}", f"click {past_row_one} alt", caret((LINE, second)), on_row_one]
+editor("wrap-click", steps, "wait 30", "screenshot wrap-click.png")
 
 doc = Doc(LARGE_RS_LINES)
 LINE = 2
