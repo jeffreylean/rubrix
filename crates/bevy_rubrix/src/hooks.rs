@@ -142,8 +142,10 @@ fn near(doc: &EditDoc, markers: &Markers, from: u32) -> Vec<Mark> {
         {
             continue;
         }
-        let (range_start, range_end) =
-            (range.start.max(start), range.end.min(end));
+        let (range_start, range_end) = (
+            buffer.floor_char_boundary(range.start.max(start)),
+            buffer.floor_char_boundary(range.end.min(end)),
+        );
         for line in
             buffer.line_of(range_start)..=buffer.line_of(range_end)
         {
@@ -237,7 +239,10 @@ pub(crate) fn save_state(
     mut states: ResMut<EditStates>,
 ) {
     if let Ok((doc, key)) = docs.get(removed.entity) {
-        states.save(key.clone(), EditState::save(doc.editor()));
+        states.save(
+            key.clone(),
+            EditState::save(doc.editor(), doc.seq()),
+        );
     }
 }
 
@@ -251,6 +256,6 @@ pub(crate) fn restore_state(
     };
     if let Some(state) = states.forget(key) {
         let lang = doc.lang();
-        *doc = EditDoc::from_editor(lang, state.restore());
+        *doc = EditDoc::restored(lang, state);
     }
 }

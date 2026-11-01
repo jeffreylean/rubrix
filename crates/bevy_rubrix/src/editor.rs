@@ -32,7 +32,9 @@ use bevy_fynix::views::{Span, virtual_list};
 use bevy_fynix::{
     AnyView, Bevy, Cx, Prop, Signal, View, component, keyed,
 };
-use rubrix_edit::{Buffer, Change, Command, Editor, Selections};
+use rubrix_edit::{
+    Buffer, Change, Command, EditState, Editor, Selections,
+};
 use rubrix_highlight::{Highlights, Lang, LineEdit, Run, highlight};
 
 use crate::caret::{Built, CaretLayer, Hit, Metrics};
@@ -123,6 +125,14 @@ impl EditDoc {
             damage: Damage::default(),
             changes: 0,
             paste: None,
+        }
+    }
+
+    pub(crate) fn restored(lang: Lang, state: EditState) -> EditDoc {
+        let changes = state.revision();
+        EditDoc {
+            changes,
+            ..EditDoc::from_editor(lang, state.restore())
         }
     }
 

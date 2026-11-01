@@ -1,0 +1,14 @@
+page collab
+wait 120
+move 740 400
+scroll 0 -1938
+wait 10
+click 1250 211
+paste collab: hi
+wait 5
+log text 120
+expect text 120 "        .run();collab: hi"
+log paste
+expect paste "collab: collab: hi"
+screenshot m3fa-paste-tag.png
+exit

@@ -27,7 +27,7 @@ Preconditions: `doctor.sh` is clean and the out dir is empty. `gen_drives.py` wr
 The page lays out as the editor page does: the buttons sit at y 68: `100k lines` at x 290, `markers` at 438, `annotate` at 586, `50 carets` at 734, `respawn` at 882, and the wider `1,000 markers` at 1041; line `n` shows at y `126 + (n - t) * 17` with line `t` at the top, and the text starts at x 271, or 279.4 under the 100,000-line input's six-digit gutter. The page answers `caret`, `text <line>` and `undo` as the editor page does.
 
 - `remote <name> <line>:<col> [<line>:<col>]` sets the caret labelled `<name>`: a caret at the first place, or a range from the first (anchor) to the second (head). Its colour comes from a hash of the name, the same each run. A second `remote` with the same name replaces that caret.
-- `log remote` prints `remote <n>: <caret>, ...`, each `<label> <place> shown` for a bar or `<label> edge <top|bottom> at <place>` for an edge marker, where `<place>` is `<line>:<col>` or `<anchor>..<head>`. A caret drawn by no view yet prints `unplaced`.
+- `log remote` prints `remote <n>: <caret>, ... | over gutter <k> | edge labels <e> overlapping <o>`, each caret `<label> <place> shown` for a bar or `<label> edge <top|bottom> at <place>` for an edge marker, where `<place>` is `<line>:<col>` or `<anchor>..<head>`. A caret drawn by no view yet prints `unplaced`. `<k>` counts the remote bars, tints and labels on screen whose left edge is left of the line numbers' right edge, `<e>` the edge labels on screen (`↑ `, `↓ ` or `+<n>`), and `<o>` the pairs of those that overlap.
 - `log changed` prints `changed <n> rising <bool> last <seq>`: the `EditorChanged` messages for the doc on show since it was spawned, whether each revision was one past the one before, and the last revision.
 - `log markers` prints `markers <n>: <severity> <from>..<to>, ...`, the first ten by start.
 - `log annotations` prints `annotations <n>: <line> <badge>, ...`.
@@ -45,6 +45,17 @@ The recipes:
 - **Respawn (lane 8).** Run `collab-respawn.drive`. It types `abc` at the end of line 120, presses Enter, clicks `respawn`, clicks into the new view, and presses `mod+z` twice. `log text 120`, `log text 121` and `log undo` match before and after the respawn, and the two undos restore the original lines with `undo 0 redo 2`. Save `e6-respawn.png`.
 - **Clipboard (lane 9).** Run `wl-paste -n` before and after, read only. Run `collab-clipboard.drive`. It copies line 120 with `shift+end` and `mod+c`, then runs `paste one\ntwo` at the end of line 125. `log copied` prints the line, `log paste` prints it tagged `collab: `, `log text 125` and `log text 126` show `one` and `two`, and the last `log paste` prints `collab: one\ntwo`. The two `wl-paste` outputs match. Save `e6-clipboard.png`.
 - **100k (lane 10).** Run `collab-100k.drive`. It opens the 100,000-line input, clicks `50 carets` and `1,000 markers` with the caret at `50000:9`, and types 200 `x` inside `frames start` and `frames stop collab-100k-type.csv`. `log remote` lists 50 carets, each 200 columns right of where it started. Save `e6-100k.png`.
+
+The milestone 3 fixes, written by the last block of `gen_drives.py`, each failing at 218d8a3:
+
+- `collab-m3-move-annotation.drive` moves line 201 up onto the annotated empty line 200, undoes and redoes it, then moves line 200 down: the badge follows line 200's text to 201 each time and comes back to 200 on each undo.
+- `collab-m3-move-marker.drive` clicks `markers`, moves line 132 up, undoes, moves line 130 down, undoes: all three markers move with their lines and come back on each undo.
+- `collab-m3-move-remote.drive` sets `remote W 119:12` and `remote P 120:12` and moves line 120 up: the two carets swap lines with their text, undo and redo swap them back and forth, and a second move takes P on to 118:12 and leaves W.
+- `collab-m3-multibyte.drive` pastes ten `李` at the end of line 120 and clicks `50 carets` from column 1: the gallery does not panic, every caret sits on a character boundary, and typing `ab` then undoing moves all 50 right by two and back.
+- `collab-m3-paste-tag.drive` runs `paste collab: hi`: the text arrives whole, `.run();collab: hi`, and `log paste` shows it tagged once more.
+- `collab-m3-revision.drive` types `abc` and Enter, clicks `respawn`, and undoes: the undo's `EditorChanged` carries revision 5, one past the last before the respawn.
+- `collab-m3-gutter.drive` pastes a 200-character run on line 120, scrolls 30 px sideways, and sets carets at 120:1, 121:1 and a range from 122:1 to 120:3: `over gutter 0`, nothing remote paints over the line numbers (`m3fa-gutter.png`).
+- `collab-m3-edge-labels.drive` opens the 100,000-line input, clicks `50 carets` on line 50,000, and scrolls 100 lines past it each way: u1 and u50 are at the edge, and `edge labels 21 overlapping 0` at both edges: 20 labels fit the row and the other 30 fold into one `+30` (`m3fa-edge-top.png`, `m3fa-edge-bottom.png`).
 
 ## Perf
 

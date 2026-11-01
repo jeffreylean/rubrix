@@ -141,7 +141,7 @@ fn editor_changed_names_the_view_a_key_edited_through() {
 struct Generation(u32);
 
 #[test]
-fn undo_after_a_respawn_restores_the_text_from_before_it() {
+fn undo_and_the_revision_carry_on_after_a_respawn() {
     const TEXT: &str = "fn a() {}\n";
     let mut app = laid_out();
     let key = EditKey("src/a.rs".into());
@@ -171,6 +171,10 @@ fn undo_after_a_respawn_restores_the_text_from_before_it() {
     key_with(&mut app, &[], KeyCode::Enter, Key::Enter);
     let typed = text(&app, doc);
     assert_eq!(typed, "fn a() {} b\n\n");
+    let seq = |app: &App, doc| {
+        app.world().get::<EditDoc>(doc).expect("a doc").seq()
+    };
+    let before = seq(&app, doc);
 
     app.world_mut().despawn(doc);
     assert_eq!(app.world().resource::<EditStates>().len(), 1);
@@ -183,11 +187,13 @@ fn undo_after_a_respawn_restores_the_text_from_before_it() {
     app.world_mut().resource_mut::<Generation>().0 += 1;
     settle(&mut app);
     assert_eq!(text(&app, doc), typed, "the key's state wins");
+    assert_eq!(seq(&app, doc), before);
 
     let view = editor(&mut app);
     request(&mut app, doc, view, Request::command(Command::Undo));
     request(&mut app, doc, view, Request::command(Command::Undo));
     assert_eq!(text(&app, doc), TEXT);
+    assert_eq!(seq(&app, doc), before + 2);
 }
 
 #[test]

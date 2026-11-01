@@ -1,0 +1,43 @@
+page collab
+wait 120
+click 586 68
+wait 5
+move 740 400
+scroll 0 -3213
+wait 10
+log annotations
+expect annotations annotations 1: 200 review
+click 273.0 313
+key alt+up
+wait 5
+log text 200
+expect text 200 "mod common;"
+log text 201
+expect text 201 ""
+log annotations
+expect annotations annotations 1: 201 review
+key mod+z
+wait 5
+log annotations
+expect annotations annotations 1: 200 review
+key mod+shift+z
+wait 5
+log annotations
+expect annotations annotations 1: 201 review
+key mod+z
+wait 5
+click 273.0 296
+key alt+down
+wait 5
+log text 200
+expect text 200 "mod common;"
+log text 201
+expect text 201 ""
+log annotations
+expect annotations annotations 1: 201 review
+key mod+z
+wait 5
+log annotations
+expect annotations annotations 1: 200 review
+screenshot m3fa-move-annotation.png
+exit

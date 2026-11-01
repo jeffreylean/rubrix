@@ -27,7 +27,7 @@ fn edited() -> Editor {
 #[test]
 fn a_round_trip_keeps_the_text_the_selections_and_the_undo_depth() {
     let editor = edited();
-    let restored = EditState::save(&editor).restore();
+    let restored = EditState::save(&editor, 0).restore();
     assert_eq!(
         restored.buffer().to_string(),
         editor.buffer().to_string()
@@ -45,7 +45,7 @@ fn a_round_trip_keeps_the_text_the_selections_and_the_undo_depth() {
 
 #[test]
 fn undo_after_a_round_trip_restores_the_text_before_the_edits() {
-    let mut restored = EditState::save(&edited()).restore();
+    let mut restored = EditState::save(&edited(), 0).restore();
     for _ in 0..3 {
         apply(&mut restored, Command::Undo);
     }
@@ -56,7 +56,7 @@ fn undo_after_a_round_trip_restores_the_text_before_the_edits() {
 #[test]
 fn an_edit_after_a_save_leaves_the_saved_text() {
     let mut editor = edited();
-    let state = EditState::save(&editor);
+    let state = EditState::save(&editor, 0);
     let saved = editor.buffer().to_string();
     apply(&mut editor, Command::SelectAll);
     apply(&mut editor, Command::Type("gone"));
