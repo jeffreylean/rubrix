@@ -13,9 +13,7 @@ use crate::buffer::{Buffer, Spot};
 ///
 /// The row motions act on the row the affinity names, so Home on a
 /// `Downstream` head at a wrap point stays on the row after it, and
-/// End goes to that row's end. Pierre, which has no affinity, puts
-/// such a head on the row before (`getSoftLineInfo`). rubrix does
-/// not copy that.
+/// End goes to that row's end.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Affinity {
     #[default]
@@ -56,14 +54,13 @@ pub enum Motion {
     WordLeft,
     WordRight,
     /// The first non-blank character of the head's row, or the row's
-    /// start when the head is already there. Pierre's `textStart`,
-    /// Cmd+Left on macOS.
+    /// start when the head is already there. Cmd+Left on macOS.
     Home,
-    /// The start of the head's row. Pierre's `start`, the Home key.
+    /// The start of the head's row. The Home key.
     LineStart,
     /// The end of the head's row, which is the wrap point with the
     /// head kept on that row, or the end of the line's content before
-    /// any `\r\n`. Pierre's `end`.
+    /// any `\r\n`.
     End,
     /// One row, through [`Layout`], aiming for the goal x. Up on the
     /// first row goes to the start of the text, and Down on the last

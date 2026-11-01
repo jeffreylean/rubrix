@@ -254,7 +254,7 @@ fn monospace_counts_tabs_to_the_next_stop() {
     );
 }
 
-const PIERRE: &str = "  abcdefghij  klmnop";
+const INDENTED: &str = "  abcdefghij  klmnop";
 
 struct WrapAt(&'static [usize]);
 
@@ -356,7 +356,7 @@ impl Layout for WrapAt {
     }
 }
 
-const PIERRE_ROWS: WrapAt = WrapAt(&[0, 12]);
+const INDENTED_ROWS: WrapAt = WrapAt(&[0, 12]);
 
 fn heads(editor: &Editor) -> (usize, Affinity) {
     let selections = editor.selections();
@@ -364,35 +364,35 @@ fn heads(editor: &Editor) -> (usize, Affinity) {
 }
 
 #[test]
-fn home_and_end_resolve_on_the_soft_row_as_pierre_does() {
-    let mut editor = editor_at(PIERRE, 16);
-    let _ = editor.apply(go(Motion::LineStart), &PIERRE_ROWS);
+fn home_and_end_resolve_on_the_soft_row() {
+    let mut editor = editor_at(INDENTED, 16);
+    let _ = editor.apply(go(Motion::LineStart), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (12, Downstream), "start");
-    let mut editor = editor_at(PIERRE, 16);
-    let _ = editor.apply(go(Motion::End), &PIERRE_ROWS);
+    let mut editor = editor_at(INDENTED, 16);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (20, Downstream), "end");
-    let mut editor = editor_at(PIERRE, 16);
-    let _ = editor.apply(go(Motion::Home), &PIERRE_ROWS);
+    let mut editor = editor_at(INDENTED, 16);
+    let _ = editor.apply(go(Motion::Home), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (14, Downstream), "textStart");
-    let _ = editor.apply(go(Motion::Home), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::Home), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (12, Downstream), "textStart again");
 }
 
 #[test]
 fn end_on_a_wrapped_row_stays_upstream_of_the_break() {
-    let mut editor = editor_at(PIERRE, 5);
-    let _ = editor.apply(go(Motion::End), &PIERRE_ROWS);
+    let mut editor = editor_at(INDENTED, 5);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (12, Upstream));
-    let _ = editor.apply(go(Motion::End), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (12, Upstream), "a second End stays");
-    let _ = editor.apply(go(Motion::Home), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::Home), &INDENTED_ROWS);
     assert_eq!(
         heads(&editor),
         (2, Downstream),
         "Home goes to row 0's indent"
     );
-    let _ = editor.apply(go(Motion::End), &PIERRE_ROWS);
-    let _ = editor.apply(go(Motion::LineStart), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
+    let _ = editor.apply(go(Motion::LineStart), &INDENTED_ROWS);
     assert_eq!(
         heads(&editor),
         (0, Downstream),
@@ -402,47 +402,47 @@ fn end_on_a_wrapped_row_stays_upstream_of_the_break() {
 
 #[test]
 fn home_on_a_continuation_row_stays_on_it() {
-    let mut editor = editor_at(PIERRE, 12);
-    let _ = editor.apply(go(Motion::Home), &PIERRE_ROWS);
+    let mut editor = editor_at(INDENTED, 12);
+    let _ = editor.apply(go(Motion::Home), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (14, Downstream));
-    let _ = editor.apply(go(Motion::Home), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::Home), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (12, Downstream));
-    let _ = editor.apply(go(Motion::LineStart), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::LineStart), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (12, Downstream));
 }
 
 #[test]
 fn vertical_motion_from_a_row_end_keeps_its_row() {
-    let text = format!("{PIERRE}\n{PIERRE}");
+    let text = format!("{INDENTED}\n{INDENTED}");
     let mut editor = editor_at(&text, 5);
-    let _ = editor.apply(go(Motion::End), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (12, Upstream));
-    let _ = editor.apply(go(Motion::Down), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::Down), &INDENTED_ROWS);
     assert_eq!(
         heads(&editor),
         (20, Downstream),
         "down lands at the end of row 1"
     );
-    let _ = editor.apply(go(Motion::Up), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::Up), &INDENTED_ROWS);
     assert_eq!(
         heads(&editor),
         (12, Upstream),
         "up comes back to the end of row 0"
     );
-    let _ = editor.apply(go(Motion::Up), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::Up), &INDENTED_ROWS);
     assert_eq!(
         heads(&editor),
         (0, Downstream),
         "up on the first row goes to the text's start"
     );
     let mut editor = editor_at(&text, 2);
-    let _ = editor.apply(go(Motion::Down), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::Down), &INDENTED_ROWS);
     assert_eq!(
         heads(&editor),
         (14, Downstream),
         "down from row 0 lands on row 1 of the same line"
     );
-    let _ = editor.apply(go(Motion::Down), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::Down), &INDENTED_ROWS);
     assert_eq!(
         heads(&editor),
         (23, Downstream),
@@ -452,19 +452,19 @@ fn vertical_motion_from_a_row_end_keeps_its_row() {
 
 #[test]
 fn typing_and_selection_changes_reset_the_affinity() {
-    let mut editor = editor_at(PIERRE, 5);
-    let _ = editor.apply(go(Motion::End), &PIERRE_ROWS);
+    let mut editor = editor_at(INDENTED, 5);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (12, Upstream));
-    let _ = editor.apply(Command::Type("x"), &PIERRE_ROWS);
+    let _ = editor.apply(Command::Type("x"), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (13, Downstream));
-    let mut editor = editor_at(PIERRE, 5);
-    let _ = editor.apply(go(Motion::End), &PIERRE_ROWS);
+    let mut editor = editor_at(INDENTED, 5);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
     editor.set_selections(Selections::new(Selection::caret(12)));
     assert_eq!(heads(&editor), (12, Downstream));
-    let mut editor = editor_at(PIERRE, 5);
-    let _ = editor.apply(shift(Motion::End), &PIERRE_ROWS);
+    let mut editor = editor_at(INDENTED, 5);
+    let _ = editor.apply(shift(Motion::End), &INDENTED_ROWS);
     assert_eq!(heads(&editor), (12, Upstream));
-    let _ = editor.apply(shift(Motion::Right), &PIERRE_ROWS);
+    let _ = editor.apply(shift(Motion::Right), &INDENTED_ROWS);
     assert_eq!(
         heads(&editor),
         (13, Downstream),
@@ -475,18 +475,18 @@ fn typing_and_selection_changes_reset_the_affinity() {
 
 #[test]
 fn a_kept_head_keeps_its_affinity_through_a_save_and_a_merge() {
-    let mut editor = editor_at(PIERRE, 5);
-    let _ = editor.apply(go(Motion::End), &PIERRE_ROWS);
+    let mut editor = editor_at(INDENTED, 5);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
     let restored = EditState::save(&editor, 0).restore();
     assert_eq!(heads(&restored), (12, Upstream));
     let mut selections = Selections::new(Selection::caret(2));
     selections.add(Selection::caret(5));
     let mut editor = Editor::from_parts(
-        Buffer::new(PIERRE),
+        Buffer::new(INDENTED),
         selections,
         History::new(),
     );
-    let _ = editor.apply(go(Motion::End), &PIERRE_ROWS);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
     assert_eq!(editor.selections().len(), 1);
     assert_eq!(heads(&editor), (12, Upstream));
 }
