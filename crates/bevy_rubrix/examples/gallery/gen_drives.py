@@ -655,7 +655,7 @@ stream(
     "refollow",
     scrolled_up,
     "wheel 0 -400",
-    "wait 400",
+    "wait 3000 until rows following true",
     "log rows",
     "expect rows following true",
     "log stream",
