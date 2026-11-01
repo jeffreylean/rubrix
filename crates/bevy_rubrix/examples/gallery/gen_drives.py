@@ -3237,3 +3237,150 @@ steps += ["key mod+v", "wait 3", [doc.text(n) for n in range(21, 27)], carets_at
 doc.lines = after_cut
 steps += ["key mod+z", "wait 3", [doc.text(n) for n in range(21, 25)], undo(1, 1)]
 cf("paste-lines", steps, "wait 30", "screenshot cf-paste-lines.png")
+
+
+OS_KEY_TIMEOUT_FRAMES = 60
+
+
+def os_key(combo, topic, text):
+    return [f"oskey {combo}", f"wait {OS_KEY_TIMEOUT_FRAMES} until {topic} {text}"]
+
+
+def os_caret(combo, anchor, head=None):
+    return os_key(combo, "caret", caret_text(anchor, head))
+
+
+def os_inert(combo, then, anchor):
+    return [f"oskey {combo}", os_caret(then, anchor)]
+
+
+def os_text(combo, doc, n):
+    return os_key(combo, "text", f"{n} {ime_debug(doc.line(n))}")
+
+
+def drive_escaped(text):
+    return text.replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t")
+
+
+doc = Doc(LARGE_RS_LINES)
+LINE = TONE_LINES[0]
+end = len(doc.line(LINE)) + 1
+steps = [f"click {doc.at(LINE, 20)}", caret((LINE, 20))]
+steps += [os_caret("mod+left", (LINE, TONE_COLUMN)), os_caret("mod+left", (LINE, 1)), os_caret("mod+right", (LINE, end))]
+steps += [os_caret("mod+up", (1, 1)), os_caret("mod+down", (doc.rows(), 1)), os_caret("mod+up", (1, 1))]
+LINE = TONE_LINES[1]
+before = doc.line(LINE)
+doc.insert((LINE, TONE_COLUMN), "abc")
+typed = doc.line(LINE)
+steps += [f"click {doc.at(LINE, TONE_COLUMN)}", "type abc", "wait 5", doc.text(LINE), undo(1, 0)]
+doc.lines[LINE - 1] = before
+steps += [os_key("mod+z", "undo", "0 redo 1"), doc.text(LINE)]
+doc.lines[LINE - 1] = typed
+steps += [os_key("mod+shift+z", "undo", "1 redo 0"), doc.text(LINE)]
+LINE = TONE_LINES[2]
+end = len(doc.line(LINE)) + 1
+copied = doc.between((LINE, TONE_COLUMN), (LINE, end))
+steps += [f"click {doc.at(LINE, TONE_COLUMN)}", os_caret("mod+shift+right", (LINE, TONE_COLUMN), (LINE, end))]
+steps += [os_key("mod+c", "copied", rust_debug(copied)), undo(1, 0)]
+doc.lines[LINE - 1] = doc.line(LINE)[: TONE_COLUMN - 1]
+steps += [os_text("mod+x", doc, LINE), undo(2, 0)]
+LINE = TONE_LINES[3]
+doc.insert((LINE, TONE_COLUMN), copied)
+steps += [f"click {doc.at(LINE, TONE_COLUMN)}", os_text("mod+v", doc, LINE), undo(3, 0)]
+LINE = TONE_LINES[4]
+steps += [f"click {doc.at(LINE, 20)}", os_inert("mod+backspace", "right", (LINE, 21)), doc.text(LINE), undo(3, 0)]
+steps += [os_caret("mod+a", (1, 1), (doc.rows(), 1))]
+editor("mac-cmd", steps)
+
+doc = Doc(LARGE_RS_LINES)
+LINE = 2
+CALL = "foo_bar.baz(qux)"
+steps = [f"click {doc.at(LINE, 1)}", f"paste {CALL}", "wait 5"]
+at = doc.insert((LINE, 1), CALL)
+steps += [doc.text(LINE), caret(at)]
+line = doc.line(LINE)
+column, lefts, rights = at[1], [], []
+while column > 1:
+    column = word_left(line, column)
+    lefts.append(column)
+while column <= len(line):
+    column = word_right(line, column)
+    rights.append(column)
+assert lefts == [16, 13, 12, 9, 8, 1] and rights == [8, 9, 12, 13, 16, 17], (lefts, rights)
+steps += [[os_caret("alt+left", (LINE, c)) for c in lefts], doc.text(LINE)]
+steps += [[os_caret("alt+right", (LINE, c)) for c in rights], doc.text(LINE)]
+steps += [APART, f"click {doc.at(LINE, 1)}", caret((LINE, 1))]
+steps += [os_caret("alt+shift+right", (LINE, 1), (LINE, rights[0])), os_caret("alt+shift+right", (LINE, 1), (LINE, rights[1]))]
+doc.lines[LINE - 1] = f"/* {line[: rights[1] - 1]} */{line[rights[1] - 1 :]}"
+steps += [os_text("alt+shift+a", doc, LINE)]
+doc.lines[LINE - 1] = line
+steps += [os_text("mod+z", doc, LINE), undo(1, 1)]
+column = line.index("(") + 1
+doc.lines[LINE - 1] = line[: word_left(line, column) - 1] + line[column - 1 :]
+steps += [APART, f"click {doc.at(LINE, column)}", os_text("alt+backspace", doc, LINE), caret((LINE, word_left(line, column)))]
+line = doc.line(LINE)
+doc.lines[LINE - 1] = line[word_right(line, 1) - 1 :]
+steps += [APART, f"click {doc.at(LINE, 1)}", os_text("alt+delete", doc, LINE), caret((LINE, 1))]
+doc.insert((LINE, 1), "ƒ")
+steps += [os_text("alt+f", doc, LINE), caret((LINE, 2)), undo(4, 0)]
+editor("mac-option", steps)
+
+doc = Doc(LARGE_RS_LINES)
+LINE = TONE_LINES[0]
+end = len(doc.line(LINE)) + 1
+above = (LINE - 1, min(end, len(doc.line(LINE - 1)) + 1))
+steps = [f"click {doc.at(LINE, 20)}", caret((LINE, 20))]
+steps += [os_caret("ctrl+a", (LINE, TONE_COLUMN)), os_caret("ctrl+a", (LINE, 1)), os_caret("ctrl+e", (LINE, end))]
+steps += [os_caret("ctrl+p", above), os_caret("ctrl+n", (LINE, end))]
+steps += [os_caret("ctrl+b", (LINE, end - 1)), os_caret("ctrl+f", (LINE, end)), doc.text(LINE), undo(0, 0)]
+LINE = TONE_LINES[1]
+doc.lines[LINE - 1] = doc.line(LINE)[:19]
+steps += [f"click {doc.at(LINE, 20)}", os_text("ctrl+k", doc, LINE), caret((LINE, 20)), undo(1, 0)]
+doc.join(LINE + 1)
+steps += [os_text("ctrl+k", doc, LINE), caret((LINE, 20)), rows_total(doc), undo(2, 0)]
+LINE = TONE_LINES[2]
+line = doc.line(LINE)
+doc.lines[LINE - 1] = line[: TONE_COLUMN - 1] + line[TONE_COLUMN] + line[TONE_COLUMN - 1] + line[TONE_COLUMN + 1 :]
+steps += [f"click {doc.at(LINE, TONE_COLUMN + 1)}", os_text("ctrl+t", doc, LINE), caret((LINE, TONE_COLUMN + 2)), undo(3, 0)]
+editor("mac-emacs", steps)
+
+
+def paste_pieces(doc, carets, pieces):
+    lines = [n for n, _ in carets]
+    assert lines == sorted(set(lines)), carets
+    after, shift = [], 0
+    for (n, column), piece in zip(carets, pieces):
+        after.append(doc.insert((n + shift, column), piece))
+        shift += piece.count("\n")
+    return after
+
+
+def paste_at(doc, carets, pieces, depth):
+    first = carets[0][0]
+    steps = [f"click {doc.at(*carets[0])}", [f"click {doc.at(*c)} mod" for c in carets[1:]], carets_at(carets)]
+    after = paste_pieces(doc, carets, pieces)
+    steps += [os_text("mod+v", doc, first), [doc.text(n) for n in range(first, after[-1][0] + 1)]]
+    return steps + [carets_at(after), undo(depth, 0)]
+
+
+doc = Doc(LARGE_RS_LINES)
+LINE = TONE_LINES[0]
+end = len(doc.line(LINE)) + 1
+steps = ["clipboard system", f"click {doc.at(LINE, TONE_COLUMN)}"]
+steps += [os_caret("mod+shift+right", (LINE, TONE_COLUMN), (LINE, end))]
+steps += [os_key("mod+c", "pbpaste", rust_debug(doc.between((LINE, TONE_COLUMN), (LINE, end))))]
+FROM_SHELL = "from pbcopy"
+doc.insert((2, 1), FROM_SHELL)
+steps += [f"pbcopy {FROM_SHELL}", "log pbpaste", f"click {doc.at(2, 1)}", os_text("mod+v", doc, 2), undo(1, 0)]
+ranges = [((n, TONE_COLUMN), (n + 1, 17)) for n in TONE_LINES[0::3]]
+pieces = [doc.between(*r) for r in ranges]
+joined = "\n".join(pieces)
+steps += [f"drag {doc.at(*ranges[0][0])} {doc.at(*ranges[0][1])}", f"drag {doc.at(*ranges[1][0])} {doc.at(*ranges[1][1])} mod"]
+steps += [selections(ranges), os_key("mod+c", "pbpaste", rust_debug(joined))]
+assert all(doc.line(n) == "" for n in [4, 10]), "empty lines"
+steps += [paste_at(doc, [(4, 1), (10, 1)], pieces, 2)]
+assert all(doc.line(n) == "" for n in [16, 21]), "empty lines"
+steps += [f"pbcopy {drive_escaped(joined)}", "log pbpaste", paste_at(doc, [(16, 1), (21, 1)], pieces, 3)]
+other = joined.replace("Body", "Bold")
+steps += [f"pbcopy {drive_escaped(other)}", "log pbpaste", paste_at(doc, [(n, len(doc.line(n)) + 1) for n in [13, 15]], [other, other], 4)]
+editor("mac-clipboard", steps)
