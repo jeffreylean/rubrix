@@ -22,6 +22,8 @@ pub enum Motion {
     /// The first non-blank character of the line, or column 0 when
     /// the head is already there.
     Home,
+    /// The start of the line, column 0.
+    LineStart,
     /// The end of the line's content, before any `\r\n`.
     End,
     /// One row, through [`Layout`], aiming for the goal x. Up on the
@@ -61,6 +63,7 @@ impl Motion {
                 let indent = indent(content).len();
                 start + if rel == indent { 0 } else { indent }
             }
+            Motion::LineStart => buffer.spot(from).start,
             Motion::End => {
                 let Spot { start, content, .. } = buffer.spot(from);
                 start + content.len()

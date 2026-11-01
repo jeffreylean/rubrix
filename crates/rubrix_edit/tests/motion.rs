@@ -172,6 +172,18 @@ fn home_toggles_between_the_indent_and_column_zero() {
 }
 
 #[test]
+fn line_start_goes_to_column_zero_from_anywhere_on_the_line() {
+    let text = "first\n    let x = 1;";
+    for at in [text.len(), 10, 6] {
+        let mut editor = editor_at(text, at);
+        assert_eq!(
+            stops(&mut editor, go(Motion::LineStart), 2),
+            [6, 6]
+        );
+    }
+}
+
+#[test]
 fn end_and_document_motions() {
     let text = "ab\r\ncd\nef";
     let mut editor = editor_at(text, 0);
@@ -320,12 +332,13 @@ fn on_a_boundary(text: &str, at: usize) -> bool {
 
 #[test]
 fn random_motions_keep_carets_on_boundaries() {
-    const MOTIONS: [Motion; 12] = [
+    const MOTIONS: [Motion; 13] = [
         Motion::Left,
         Motion::Right,
         Motion::WordLeft,
         Motion::WordRight,
         Motion::Home,
+        Motion::LineStart,
         Motion::End,
         Motion::Up,
         Motion::Down,
@@ -358,7 +371,7 @@ fn random_motions_keep_carets_on_boundaries() {
             2 => Command::Type("é🎉"),
             3 => Command::Enter,
             _ => Command::Move {
-                motion: MOTIONS[rng.below(12) as usize],
+                motion: MOTIONS[rng.below(13) as usize],
                 extend: rng.chance(40),
             },
         };
