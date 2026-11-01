@@ -715,10 +715,8 @@ pub(crate) fn remeasure(
         let height = height.ceil() * node.inverse_scale_factor();
         measured.push((tag.view, tag.line as usize, height));
     }
-    if measured.is_empty() {
-        return;
-    }
     measured.sort_unstable_by_key(|&(view, ..)| view);
+    let mut moved = false;
     for view in measured.chunk_by(|a, b| a.0 == b.0) {
         let list =
             world.get::<EditView>(view[0].0).and_then(EditView::list);
@@ -727,8 +725,11 @@ pub(crate) fn remeasure(
                 .iter()
                 .map(|&(_, line, height)| (line, height))
                 .collect::<Vec<_>>();
-            remeasure_rows(world, list, &heights);
+            moved |= remeasure_rows(world, list, &heights);
         }
+    }
+    if !moved {
+        return;
     }
     if let Err(error) = world.run_system_cached(numbers::place) {
         warn!(

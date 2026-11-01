@@ -975,24 +975,35 @@ impl VirtualList {
 /// drew it, a frame late, so the frame that changes the height draws
 /// the row at its old height: clipped when it grew, with a gap below
 /// when it shrank.
+///
+/// Returns whether it moved the rows. It leaves them when the list
+/// already knows each height, so work that follows the rows can be
+/// skipped too.
 pub fn remeasure(
     world: &mut World,
     list: Entity,
     measured: &[(usize, f32)],
-) {
+) -> bool {
     let Some(view) = world.get::<ComputedNode>(list).map(|area| {
         area.content_box().height() * area.inverse_scale_factor()
     }) else {
-        return;
+        return false;
     };
     let Some(scroll) =
         world.get::<ScrollPosition>(list).map(|at| at.y)
     else {
-        return;
+        return false;
     };
     let Some(mut state) = world.get_mut::<VirtualList>(list) else {
-        return;
+        return false;
     };
+    let known = |&(index, height): &(usize, f32)| {
+        index >= state.heights.len()
+            || state.heights.row(index) == Some((height, true))
+    };
+    if !state.sideways_switched && measured.iter().all(known) {
+        return false;
+    }
     let to = state.restack(measured, view, scroll);
     let slots = state
         .slots
@@ -1022,6 +1033,7 @@ pub fn remeasure(
     {
         goal.shift(&mut position, Vec2::Y * (to - scroll));
     }
+    true
 }
 
 fn read_sources(
