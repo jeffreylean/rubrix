@@ -17,6 +17,7 @@ A drive script is a text file of steps that the gallery runs one per line, with 
 - `drive-ime` writes `Ime` messages, and the `ime` topic names the last one the gallery read.
 - `drive-paste` hands its text to the gallery's `Paste` resource and sends `mod+v`, never through the shared clipboard.
 - `drive-page-topics` asks the page on show for `caret`, `text <line>` and `undo`, and prints `n/a` for a page without an answer.
+- `drive-wait-until` ends `wait <frames> until <topic> <text>` on the first frame the topic's line holds the text, so a script waits out an animation timed in seconds at any frame rate. It counts as a check, which fails when the frames run out first. `a_wait_until_ends_on_the_frame_its_topic_holds_the_text` and `a_wait_until_fails_its_check_when_the_frames_run_out` cover it.
 - `drive-summary` counts every `expect` and ends with `drive: <passed> of <checks> checks pass` and exit code 0 or 1.
 - `drive-wtype` runs `wtype` only under `launch.sh --ime-live`.
 - `run-all` runs every saved script and prints one row per script.
