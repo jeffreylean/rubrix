@@ -534,3 +534,32 @@ fn a_preedit_past_the_right_edge_scrolls_to_its_cursor() {
     let (_, position) = last_seen(&mut app);
     assert_eq!(position, Vec2::new(caret.min.x, caret.max.y));
 }
+
+#[test]
+fn a_view_that_loses_the_focus_after_a_click_takes_its_next_preedit()
+{
+    let (mut app, view, _) =
+        composing(&[TEXT.find("run").expect("run")]);
+    let row = edit_line(&mut app, view, 2);
+    let at = point_at(&app, row, 1);
+    press_on(&mut app, row, at, 1);
+    settle(&mut app);
+    send(&mut app, [preedit("x", Some((1, 1)))]);
+    settle(&mut app);
+    assert!(
+        app.world().get::<Preedit>(view).is_none(),
+        "still the ended composition's"
+    );
+    app.world_mut().resource_mut::<InputFocus>().clear();
+    settle(&mut app);
+    focus(&mut app, view);
+    settle(&mut app);
+    send(&mut app, [preedit("n", Some((1, 1)))]);
+    settle(&mut app);
+    assert_eq!(
+        app.world().get::<Preedit>(view).map(Preedit::value),
+        Some("n"),
+        "the IME can come back on while another view has the focus, \
+         so this view may see no Enabled before its next composition"
+    );
+}

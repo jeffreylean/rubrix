@@ -138,8 +138,9 @@ pub(crate) fn plugin(app: &mut App) {
 /// Takes this frame's IME messages into the focused view, in order:
 /// a preedit replaces the composition, a commit goes to the doc as a
 /// request, and the IME turning on or off ends the composition. A
-/// view that lost the focus loses its composition. A composition that
-/// starts or changes is an edit the user sees, so it brings the
+/// view that lost the focus loses its composition, and stops waiting
+/// for an `Ime::Enabled` that may reach another view. A composition
+/// that starts or changes is an edit the user sees, so it brings the
 /// caret into view as an edit does.
 fn read(
     mut ime: MessageReader<Ime>,
@@ -151,9 +152,11 @@ fn read(
     let focused = focus
         .and_then(|focus| focus.get())
         .filter(|&view| views.contains(view));
-    for (view, _, preedit, _) in &views {
-        if preedit.is_some() && focused != Some(view) {
-            commands.entity(view).remove::<(Preedit, Composing)>();
+    for (view, _, preedit, ended) in &views {
+        if (preedit.is_some() || ended) && focused != Some(view) {
+            commands
+                .entity(view)
+                .remove::<(Preedit, Composing, Ended)>();
         }
     }
     let Some((view, edit, was, mut ended)) =
