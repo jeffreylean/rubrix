@@ -8,7 +8,7 @@
 //! that starts with `#` do nothing, and a bad line makes the gallery
 //! exit with code 2 and print its number. Steps:
 //!
-//! - `page <name>`, `wait <frames>`, `exit`
+//! - `page <name>`, `wait <frames> [until <topic> <text>]`, `exit`
 //! - `move <x> <y>`, `click <x> <y> [double|triple] [shift] [mod]
 //!   [alt]`, `drag <x0> <y0> <x1> <y1> [shift] [mod] [alt]`, `press
 //!   <x> <y>`, `release`, `scroll <dx> <dy>`, `wheel <dx> <dy>`
@@ -40,10 +40,12 @@
 //! A scroll goes to what is under the pointer, so a `click` on the
 //! page list leaves the pointer there until a `move` takes it back.
 //! `resize` asks Hyprland for the size and is done when the window
-//! reports it, or exits with code 2 after two seconds. `exit` stops
-//! a `record` still running, prints `drive: <passed> of <checks>
-//! checks pass` for the `expect` steps, and exits with code 1 when
-//! one failed.
+//! reports it, or exits with code 2 after two seconds. `wait
+//! <frames> until <topic> <text>` ends on the first frame the topic's
+//! line holds the text. It is a check, and it fails when the frames
+//! run out first. `exit` stops a `record` still running,
+//! prints `drive: <passed> of <checks> checks pass` for the `expect`
+//! and `wait ... until` steps, and exits with code 1 when one failed.
 
 use std::collections::VecDeque;
 use std::ops::Range;
@@ -141,6 +143,11 @@ impl Os {
 pub enum Step {
     Page(usize),
     Wait(u32),
+    WaitUntil {
+        frames: u32,
+        topic: String,
+        text: String,
+    },
     Move(Vec2),
     Click {
         at: Vec2,
@@ -192,7 +199,7 @@ impl Step {
     fn name(&self) -> &'static str {
         match self {
             Self::Page(_) => "page",
-            Self::Wait(_) => "wait",
+            Self::Wait(_) | Self::WaitUntil { .. } => "wait",
             Self::Move(_) => "move",
             Self::Click { .. } => "click",
             Self::Press(_) => "press",
@@ -264,8 +271,27 @@ fn parse_line(text: &str, os: Os) -> Result<Option<Step>, String> {
             Step::Page(index)
         }
         "wait" => {
-            let [frames] = exact(&words, "wait <frames>")?;
-            Step::Wait(number(frames)?)
+            let usage = "usage: wait <frames> [until <topic> <text>]";
+            let (frames, after) = first_word(rest);
+            if frames.is_empty() {
+                return Err(usage.into());
+            }
+            let frames = number(frames)?;
+            match first_word(after) {
+                ("", _) => Step::Wait(frames),
+                ("until", condition) => {
+                    let (topic, text) = split_topic(condition)?;
+                    if text.is_empty() {
+                        return Err(usage.into());
+                    }
+                    Step::WaitUntil {
+                        frames,
+                        topic,
+                        text: text.into(),
+                    }
+                }
+                _ => return Err(usage.into()),
+            }
         }
         "move" => {
             let [x, y] = exact(&words, "move <x> <y>")?;
@@ -736,6 +762,11 @@ enum Busy {
     Idle,
     Input(VecDeque<Vec<Input>>, &'static str),
     Wait(u32),
+    WaitUntil {
+        left: u32,
+        topic: String,
+        text: String,
+    },
     Screenshot,
     Resize {
         want: UVec2,
@@ -878,6 +909,34 @@ impl Drive {
         self.said.push(line);
     }
 
+    fn judge(&mut self, topic: &str, pass: bool) {
+        self.checks += 1;
+        self.passed += usize::from(pass);
+        let verdict = if pass { "pass" } else { "fail" };
+        self.say(format!("accept: {topic} {verdict}"));
+    }
+
+    fn wait_until(
+        &mut self,
+        world: &mut World,
+        left: u32,
+        topic: String,
+        text: String,
+    ) {
+        let holds = topic_line(world, &topic)
+            .is_some_and(|line| line.contains(&text));
+        if holds || left == 0 {
+            self.judge(&topic, holds);
+            self.done("wait");
+        } else {
+            self.busy = Busy::WaitUntil {
+                left: left - 1,
+                topic,
+                text,
+            };
+        }
+    }
+
     fn done(&mut self, name: &str) {
         self.say(format!("drive: {name} ok"));
     }
@@ -904,6 +963,9 @@ impl Drive {
                 self.busy = Busy::Wait(left - 1);
             }
             Busy::Wait(_) => self.done("wait"),
+            Busy::WaitUntil { left, topic, text } => {
+                self.wait_until(world, left, topic, text);
+            }
             Busy::Screenshot if self.pending_shots > 0 => {
                 self.busy = Busy::Screenshot;
             }
@@ -974,6 +1036,21 @@ impl Drive {
             }
             Step::Wait(0) => self.done(name),
             Step::Wait(frames) => self.busy = Busy::Wait(frames),
+            Step::WaitUntil {
+                frames,
+                topic,
+                text,
+            } => {
+                if topic_line(world, &topic).is_some() {
+                    self.wait_until(world, frames, topic, text);
+                } else {
+                    self.fail(
+                        world,
+                        number,
+                        &format!("no log topic `{topic}`"),
+                    );
+                }
+            }
             Step::Move(at) => self.put_in(
                 world,
                 [vec![Input::Move(at)]].into(),
@@ -1097,16 +1174,7 @@ impl Drive {
             Step::Expect { topic, text } => {
                 match topic_line(world, &topic) {
                     Some(line) => {
-                        self.checks += 1;
-                        let verdict = if line.contains(&text) {
-                            self.passed += 1;
-                            "pass"
-                        } else {
-                            "fail"
-                        };
-                        self.say(format!(
-                            "accept: {topic} {verdict}"
-                        ));
+                        self.judge(&topic, line.contains(&text));
                         self.done(name);
                     }
                     None => self.fail(
@@ -2562,6 +2630,83 @@ exit
             .resource::<bevy::input::mouse::MouseScrollPixelsPerLine>(
         );
         assert_eq!(scrolled(&mut app), 2.0 * per_line);
+    }
+
+    #[test]
+    fn a_wait_takes_a_condition_after_until() {
+        assert_eq!(
+            steps("wait 9 until runs 3 string"),
+            [Step::WaitUntil {
+                frames: 9,
+                topic: "runs 3".into(),
+                text: "string".into(),
+            }]
+        );
+        assert_eq!(
+            parse("wait").map_err(|error| error.reason),
+            Err("usage: wait <frames> [until <topic> <text>]".into())
+        );
+        for bad in [
+            "wait 9 until",
+            "wait 9 until page",
+            "wait 9 till page about",
+            "wait until page about",
+        ] {
+            assert!(parse(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_wait_until_ends_on_the_frame_its_topic_holds_the_text() {
+        let per_line = *headless("exit")
+            .world()
+            .resource::<bevy::input::mouse::MouseScrollPixelsPerLine>(
+        );
+        let mut app = headless(&format!(
+            "wheel 0 -2\nwait 1000 until scroll {}\nexit",
+            2.0 * per_line
+        ));
+        let mut exits = Vec::new();
+        for _ in 0..100 {
+            app.update();
+            exits.extend(
+                app.world_mut()
+                    .resource_mut::<Messages<AppExit>>()
+                    .drain(),
+            );
+        }
+        assert_eq!(
+            exits,
+            [AppExit::Success],
+            "long before 1000 frames"
+        );
+        assert_eq!(scrolled(&mut app), 2.0 * per_line);
+        let said = &app.world().resource::<Drive>().said;
+        assert_eq!(
+            said[said.len() - 4..],
+            [
+                "accept: scroll pass",
+                "drive: wait ok",
+                "drive: 1 of 1 checks pass",
+                "drive: exit ok",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_wait_until_fails_its_check_when_the_frames_run_out() {
+        let (exits, said) =
+            exits_and_said("wait 5 until page nowhere\nexit");
+        assert_eq!(exits, [AppExit::from_code(1)]);
+        assert_eq!(
+            said,
+            [
+                "accept: page fail",
+                "drive: wait ok",
+                "drive: 0 of 1 checks pass",
+                "drive: exit failed",
+            ]
+        );
     }
 
     #[test]
