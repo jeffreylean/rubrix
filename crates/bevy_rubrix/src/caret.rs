@@ -561,11 +561,12 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         let rel = head - buffer.line_start(line);
         let marks =
             self.marks.into_iter().flat_map(|marks| marks.on(line));
-        let into = composing(marks, rel).flatten().unwrap_or(0);
-        let affinity = if into == 0 {
-            affinity
-        } else {
+        let preedit = composing(marks, rel);
+        let into = preedit.flatten().unwrap_or(0);
+        let affinity = if preedit.is_some() {
             Affinity::Downstream
+        } else {
+            affinity
         };
         let caret = self.caret_in(
             line,
@@ -1045,11 +1046,10 @@ pub(crate) fn draw(
             let mut drawn = true;
             if selection == primary {
                 match composing(marks.on(line), rel) {
-                    Some(Some(into)) if into > 0 => {
+                    Some(Some(into)) => {
                         at += into;
                         affinity = Affinity::Downstream;
                     }
-                    Some(Some(_)) => {}
                     Some(None) => drawn = false,
                     None => {}
                 }
