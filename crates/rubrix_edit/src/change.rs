@@ -96,7 +96,7 @@ impl Change {
             "moves out of order or overlapping"
         );
         debug_assert!(
-            moves.len() % 2 == 0
+            moves.len().is_multiple_of(2)
                 && moves
                     .chunks_exact(2)
                     .all(|pair| pair[1].to == pair[0].from.start),
