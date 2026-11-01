@@ -170,6 +170,13 @@ impl Plugin for RubrixPlugin {
             )
             .add_systems(
                 PostUpdate,
+                caret::remeasure
+                    .after(UiSystems::Content)
+                    .before(UiSystems::Layout)
+                    .run_if(any_with_component::<EditView>),
+            )
+            .add_systems(
+                PostUpdate,
                 (
                     select::draw::<CodeDoc>,
                     select::draw::<DiffDoc>,

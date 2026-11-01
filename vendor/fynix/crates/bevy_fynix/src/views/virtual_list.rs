@@ -901,6 +901,15 @@ impl VirtualList {
             self.slots[slot].index = index;
             self.slots[slot].filled_at = self.fills;
         }
+        self.spawned = start..start + pool;
+        self.stack();
+        self.first_visible = self.shown_at(scroll);
+    }
+
+    /// Puts each slot at its row's top and height, each on a whole
+    /// physical pixel.
+    fn stack(&mut self) {
+        let start = self.spawned.start;
         let whole = |y: f64| {
             (y * self.physical_per_logical).round()
                 / self.physical_per_logical
@@ -908,7 +917,7 @@ impl VirtualList {
         let tops = self
             .heights
             .offsets(start)
-            .take(pool + 1)
+            .take(self.slots.len() + 1)
             .map(whole)
             .collect::<Vec<_>>();
         for placed in &mut self.slots {
@@ -916,8 +925,102 @@ impl VirtualList {
             placed.top = tops[at] as f32;
             placed.height = (tops[at + 1] - tops[at]) as f32;
         }
-        self.spawned = start..start + pool;
-        self.first_visible = self.shown_at(scroll);
+    }
+
+    /// Gives the rows in `measured` their heights, moves the built
+    /// rows to match without building others, and returns where the
+    /// list scrolls to keep its first visible row in place, or its
+    /// end when it follows the bottom. Heights from a width before a
+    /// sideways switch are forgotten first, as [`place`](Self::place)
+    /// forgets them.
+    fn restack(
+        &mut self,
+        measured: &[(usize, f32)],
+        view: f32,
+        scroll: f32,
+    ) -> f32 {
+        let scroll = f64::from(scroll);
+        let anchor = self.shown_at(scroll);
+        let within = scroll - self.heights.offset(anchor);
+        if core::mem::take(&mut self.sideways_switched) {
+            self.heights.forget();
+            self.heights.reestimate(self.estimate);
+        }
+        for &(index, height) in measured {
+            if index < self.heights.len() {
+                self.heights.set(index, height);
+            }
+        }
+        let bottom =
+            (self.heights.total() - f64::from(view)).max(0.0);
+        let to = match self.anchor {
+            Anchor::End if self.follow => bottom,
+            _ => (self.heights.offset(anchor) + within)
+                .clamp(0.0, bottom),
+        };
+        self.stack();
+        self.first_visible = self.shown_at(to);
+        self.placed_at = to as f32;
+        to as f32
+    }
+}
+
+/// Gives rows of the list on `list` the heights this frame's layout
+/// lays them out at, known before it runs, as from text shaped since
+/// the last layout, and moves the built rows to match. The first
+/// visible row keeps its place on screen. Call it after
+/// `UiSystems::Content` and before `UiSystems::Layout`.
+///
+/// Without it a row's height reaches the list from the layout that
+/// drew it, a frame late, so the frame that changes the height draws
+/// the row at its old height: clipped when it grew, with a gap below
+/// when it shrank.
+pub fn remeasure(
+    world: &mut World,
+    list: Entity,
+    measured: &[(usize, f32)],
+) {
+    let Some(view) = world.get::<ComputedNode>(list).map(|area| {
+        area.content_box().height() * area.inverse_scale_factor()
+    }) else {
+        return;
+    };
+    let Some(scroll) =
+        world.get::<ScrollPosition>(list).map(|at| at.y)
+    else {
+        return;
+    };
+    let Some(mut state) = world.get_mut::<VirtualList>(list) else {
+        return;
+    };
+    let to = state.restack(measured, view, scroll);
+    let slots = state
+        .slots
+        .iter()
+        .filter_map(|placed| {
+            Some((placed.node?, px(placed.top), px(placed.height)))
+        })
+        .collect::<Vec<_>>();
+    let (spacer, total) = (state.spacer, state.height());
+    for (slot, top, height) in slots {
+        if let Some(mut node) = world.get_mut::<Node>(slot)
+            && (node.top != top || node.height != height)
+        {
+            node.top = top;
+            node.height = height;
+        }
+    }
+    if let Some(mut node) = world.get_mut::<Node>(spacer)
+        && node.height != total
+    {
+        node.height = total;
+    }
+    if to != scroll
+        && let Ok(mut entity) = world.get_entity_mut(list)
+        && let Ok((mut goal, mut position)) = entity
+            .get_components_mut::<(&mut ScrollGoal, &mut ScrollPosition)>()
+    {
+        goal.shift(&mut position, Vec2::Y * (to - scroll));
     }
 }
 

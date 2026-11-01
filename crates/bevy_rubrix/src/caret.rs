@@ -12,23 +12,30 @@ use std::sync::OnceLock;
 use bevy::camera::Camera;
 use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
-use bevy::ecs::change_detection::DetectChangesMut;
+use bevy::ecs::change_detection::{
+    DetectChanges, DetectChangesMut, Ref,
+};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
-use bevy::ecs::query::{With, Without};
+use bevy::ecs::query::{QueryState, With, Without};
 use bevy::ecs::resource::Resource;
-use bevy::ecs::system::{Commands, Query, Res, SystemParam};
+use bevy::ecs::system::{Commands, Local, Query, Res, SystemParam};
+use bevy::ecs::world::World;
 use bevy::input_focus::InputFocus;
+use bevy::log::warn;
 use bevy::math::{Rect, Vec2};
 use bevy::picking::Pickable;
 use bevy::text::{ComputedTextBlock, LineBreak, TextLayout};
 use bevy::time::Time;
 use bevy::ui::{
     BackgroundColor, CalculatedClip, ComputedNode, Node,
-    PositionType, ScrollPosition, UiGlobalTransform, px,
+    PositionType, ScrollPosition, UiGlobalTransform, percent, px,
 };
-use bevy_fynix::views::{VirtualList, drawn_layout, rich_point};
+use bevy_fynix::views::{
+    VirtualList, drawn_layout, remeasure as remeasure_rows,
+    rich_point,
+};
 use parley::{Affinity, Cursor, Layout as Parley};
 use rubrix_edit::{Buffer, Layout, graphemes};
 use rubrix_highlight::LineEdit;
@@ -38,6 +45,7 @@ use crate::damage::{End, Shift, row_edits};
 use crate::editor::{EditDoc, EditInput, EditLine, EditView};
 use crate::keymap::content;
 use crate::marks::{Mark, MarkKind, Marks};
+use crate::numbers;
 use crate::rows::{ADVANCE, LINE_HEIGHT, Shown, inserts};
 use crate::select::{self, Layer, Over, SelectionRects};
 
@@ -661,6 +669,85 @@ pub(crate) fn blink(
             visibility.set_if_neq(shown);
         }
     }
+}
+
+/// Gives each editable view's list, before this frame's layout, the
+/// height of every built row whose text Bevy shaped again since the
+/// last layout, and moves the line numbers with the rows. The height
+/// is the one Bevy's text measure gives this layout: the text broken
+/// at the room its row leaves it, rounded up to a physical pixel. So
+/// the frame that wraps a line onto more or fewer visual lines draws
+/// it whole, with its caret, and with the rows below in their places.
+/// A row not laid out yet keeps its estimate.
+pub(crate) fn remeasure(
+    world: &mut World,
+    rows: &mut QueryState<(
+        Entity,
+        &EditLine,
+        Ref<ComputedTextBlock>,
+        &TextLayout,
+        &ComputedNode,
+    )>,
+    mut measured: Local<Vec<(Entity, usize, f32)>>,
+) {
+    measured.clear();
+    for (entity, tag, block, text, node) in rows.iter(world) {
+        if !block.is_changed() || node.size().x <= 0.0 {
+            continue;
+        }
+        let height = if text.linebreak == LineBreak::NoWrap {
+            block.buffer().height()
+        } else {
+            let Some(room) = room(world, entity) else {
+                continue;
+            };
+            let mut layout = block.buffer().clone();
+            layout.break_all_lines(Some(room));
+            layout.height()
+        };
+        let height = height.ceil() * node.inverse_scale_factor();
+        measured.push((tag.view, tag.line as usize, height));
+    }
+    if measured.is_empty() {
+        return;
+    }
+    measured.sort_unstable_by_key(|&(view, ..)| view);
+    for view in measured.chunk_by(|a, b| a.0 == b.0) {
+        let list =
+            world.get::<EditView>(view[0].0).and_then(EditView::list);
+        if let Some(list) = list {
+            let heights = view
+                .iter()
+                .map(|&(_, line, height)| (line, height))
+                .collect::<Vec<_>>();
+            remeasure_rows(world, list, &heights);
+        }
+    }
+    if let Err(error) = world.run_system_cached(numbers::place) {
+        warn!(
+            "rubrix: line numbers not moved with their rows: {error}"
+        );
+    }
+}
+
+/// The width in physical pixels that a wrapping row's text breaks at:
+/// that of its nearest ancestor that takes its row cell's whole
+/// width, less the padding and border of the nodes in between. A text
+/// is only as wide as its widest line, so its own width is too
+/// narrow.
+fn room(world: &World, text: Entity) -> Option<f32> {
+    let mut inset = 0.0;
+    let mut at = world.get::<ChildOf>(text)?.parent();
+    for _ in 0..3 {
+        let node = world.get::<ComputedNode>(at)?;
+        let content = node.content_box().width();
+        if world.get::<Node>(at)?.width == percent(100.0) {
+            return Some(content - inset);
+        }
+        inset += node.size().x - content;
+        at = world.get::<ChildOf>(at)?.parent();
+    }
+    None
 }
 
 /// `Metrics` from the first built row with plain ASCII text, or
