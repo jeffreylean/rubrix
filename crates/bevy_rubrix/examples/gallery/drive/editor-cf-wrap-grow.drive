@@ -1,0 +1,76 @@
+page editor
+wait 120
+click 734 68
+wait 60
+move 740 400
+scroll 0 -4947
+wait 10
+click 1250 296
+wait 2
+log caret
+expect caret 1 primary 1 302:49..302:49 visible true
+key space
+type wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap
+key space
+wait 3
+type a
+wait 3
+type b
+wait 3
+type c
+wait 3
+type d
+wait 3
+type e
+wait 3
+type f
+wait 3
+type g
+wait 3
+wait 10
+log row 302
+expect row 302 top 5117 
+expect row 302 lines 2
+log torn
+expect torn torn 0
+log typing
+expect typing hidden 0
+log seams
+expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok
+key space
+type wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap
+key space
+wait 3
+type a
+wait 3
+type b
+wait 3
+type c
+wait 3
+type d
+wait 3
+type e
+wait 3
+type f
+wait 3
+type g
+wait 3
+type h
+wait 3
+wait 10
+log row 302
+expect row 302 top 5117 
+expect row 302 lines 3
+log torn
+expect torn torn 0
+log typing
+expect typing hidden 0
+log seams
+expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok
+log text 302
+expect text 302 "                section(\"Field rows\", fields()), wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap abcdefg wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap abcdefgh"
+log caret
+expect caret 1 primary 1 302:226..302:226 visible true
+wait 30
+screenshot cf-wrap-grow.png
+exit

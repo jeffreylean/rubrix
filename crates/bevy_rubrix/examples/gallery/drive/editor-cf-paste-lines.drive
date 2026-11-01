@@ -1,0 +1,53 @@
+page editor
+wait 120
+click 373.8 483
+click 373.8 517 mod
+log caret
+expect caret 2 primary 2 22:13..22:13 24:13..24:13
+key mod+x
+wait 3
+log copied
+expect copied "        match tone {\n            Tone::Dim => hex(0x939293),\n"
+log caret
+expect caret 2 primary 2 22:1..22:1 23:1..23:1
+log text 21
+expect text 21 "    fn tone(&self, tone: Tone) -> Color {"
+log text 22
+expect text 22 "            Tone::Body => hex(0xFCFCFA),"
+log text 23
+expect text 23 "            Tone::Faint => hex(0x727072),"
+log text 24
+expect text 24 "            Tone::Accent => hex(0xFFD866),"
+key mod+v
+wait 3
+log text 21
+expect text 21 "    fn tone(&self, tone: Tone) -> Color {"
+log text 22
+expect text 22 "        match tone {"
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA),"
+log text 24
+expect text 24 "            Tone::Dim => hex(0x939293),"
+log text 25
+expect text 25 "            Tone::Faint => hex(0x727072),"
+log text 26
+expect text 26 "            Tone::Accent => hex(0xFFD866),"
+log caret
+expect caret 2 primary 2 23:1..23:1 25:1..25:1
+log undo
+expect undo 2 redo 0
+key mod+z
+wait 3
+log text 21
+expect text 21 "    fn tone(&self, tone: Tone) -> Color {"
+log text 22
+expect text 22 "            Tone::Body => hex(0xFCFCFA),"
+log text 23
+expect text 23 "            Tone::Faint => hex(0x727072),"
+log text 24
+expect text 24 "            Tone::Accent => hex(0xFFD866),"
+log undo
+expect undo 1 redo 1
+wait 30
+screenshot cf-paste-lines.png
+exit

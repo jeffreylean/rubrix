@@ -1598,6 +1598,7 @@ fn topic_line(world: &mut World, topic: &str) -> Option<String> {
         }
         "seams" => pages::editor::seams(world),
         "typing" => pages::editor::typing(world),
+        "torn" => pages::editor::torn(world),
         "remote" => pages::collab::remote_line(world),
         "changed" => pages::collab::changed_line(world),
         "markers" => pages::collab::markers_line(world),
