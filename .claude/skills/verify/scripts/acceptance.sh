@@ -4,7 +4,8 @@ set -euo pipefail
 [ "$#" -eq 1 ] || { echo "usage: $0 <out dir>" >&2; exit 64; }
 here=$(cd "$(dirname "$0")" && pwd)
 drive="$here/../../../../crates/bevy_rubrix/examples/gallery/drive/acceptance.drive"
-out=$(realpath -m "$1")
+mkdir -p "$1"
+out=$(cd "$1" && pwd -P)
 
 budget_ms=3.0
 

@@ -9,6 +9,7 @@ driver-wtype.drive         fail=2       wtype needs launch.sh --ime-live
 resize.drive               skip-darwin  resize asks Hyprland for the size
 rich-wrap.drive            skip-darwin  resize asks Hyprland for the size
 virtual-list-resize.drive  skip-darwin  resize asks Hyprland for the size
+driver-mac.drive           skip-linux   oskey, pbcopy and pbpaste need macOS
 editor-ime-live.drive      skip         types through fcitx5 Pinyin under launch.sh --ime-live, a hand check at milestone 1
 '
 
@@ -26,8 +27,8 @@ graphemes.keys  crates/rubrix_edit/tests/replay/graphemes.txt
 [ "$#" -eq 1 ] || { echo "usage: $0 <out dir>" >&2; exit 64; }
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
-out=$(realpath -m "$1")
-mkdir -p "$out"
+mkdir -p "$1"
+out=$(cd "$1" && pwd -P)
 os=$(uname -s)
 
 passed=0

@@ -9,16 +9,22 @@ fi
 [ "$#" -eq 2 ] || { echo "usage: $0 [--ime-live] <drive script> <out dir>" >&2; exit 64; }
 repo=$(cd "$(dirname "$0")/../../../.." && pwd)
 script=$(realpath "$1")
-out=$(realpath -m "$2")
-mkdir -p "$out"
+mkdir -p "$2"
+out=$(cd "$2" && pwd -P)
+os=$(uname -s)
 
 (cd "$repo" && cargo build --release -p bevy_rubrix --example gallery)
 target=$(cd "$repo" && cargo metadata --format-version 1 --no-deps | jq -r .target_directory)
 
 cd "$out"
+before=""
 if [ "$ime_live" -eq 1 ]; then
   echo "launch: --ime-live gives the gallery keyboard focus until it exits, so keys you type go to it" >&2
-  before=$(hyprctl activewindow -j | jq -r '.address // empty')
+  if [ "$os" = Darwin ]; then
+    echo "launch: macOS has no Hyprland to focus the gallery, so click its window to focus it" >&2
+  else
+    before=$(hyprctl activewindow -j | jq -r '.address // empty')
+  fi
 fi
 RUBRIX_IME_LIVE=$ime_live RUBRIX_DRIVE=$script "$target/release/examples/gallery" > log.txt 2>&1 &
 pid=$!
@@ -38,40 +44,47 @@ trap stop_gallery EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-addr=""
-for _ in $(seq 1 100); do
-  kill -0 "$pid" 2>/dev/null || break
-  addr=$(hyprctl clients -j | jq -r ".[] | select(.pid == $pid) | .address")
-  [ -n "$addr" ] && break
+if [ "$os" != Darwin ]; then
+  addr=""
+  for _ in $(seq 1 100); do
+    kill -0 "$pid" 2>/dev/null || break
+    addr=$(hyprctl clients -j | jq -r ".[] | select(.pid == $pid) | .address")
+    [ -n "$addr" ] && break
+    sleep 0.1
+  done
+
+  if [ -n "$addr" ]; then
+    w="address:$addr"
+    floating=$(hyprctl clients -j | jq -r ".[] | select(.pid == $pid) | .floating")
+    if [ "$floating" != "true" ]; then
+      hyprctl dispatch "hl.dsp.window.float({ window = \"$w\", action = \"toggle\" })" > /dev/null
+    fi
+    scale=${RUBRIX_SCALE:-1}
+    width=$(awk -v s="$scale" 'BEGIN { printf "%d", 1280 * s + 0.5 }')
+    height=$(awk -v s="$scale" 'BEGIN { printf "%d", 800 * s + 0.5 }')
+    hyprctl dispatch "hl.dsp.window.resize({ window = \"$w\", x = $width, y = $height })" > /dev/null
+    hyprctl dispatch "hl.dsp.window.move({ window = \"$w\", x = 80, y = 80 })" > /dev/null
+    if [ "$ime_live" -eq 1 ]; then
+      hyprctl dispatch "hl.dsp.focus({ window = \"$w\" })" > /dev/null
+      if [ "$(hyprctl activewindow -j | jq -r .pid)" != "$pid" ]; then
+        echo "launch: Hyprland did not focus the gallery, so a wtype step exits with code 2" >&2
+      fi
+    fi
+    hyprctl clients -j | jq -c ".[] | select(.pid == $pid) | {at, size, floating}" > window.json
+  elif kill -0 "$pid" 2>/dev/null; then
+    echo "no window for pid $pid" >&2
+  fi
+fi
+
+deadline=$((SECONDS + ${TIMEOUT:-300}))
+while kill -0 "$pid" 2>/dev/null; do
+  if [ "$SECONDS" -ge "$deadline" ]; then
+    echo "timeout after ${TIMEOUT:-300}s, killing pid $pid" >&2
+    kill "$pid" 2>/dev/null || true
+    break
+  fi
   sleep 0.1
 done
-
-if [ -n "$addr" ]; then
-  w="address:$addr"
-  floating=$(hyprctl clients -j | jq -r ".[] | select(.pid == $pid) | .floating")
-  if [ "$floating" != "true" ]; then
-    hyprctl dispatch "hl.dsp.window.float({ window = \"$w\", action = \"toggle\" })" > /dev/null
-  fi
-  scale=${RUBRIX_SCALE:-1}
-  width=$(awk -v s="$scale" 'BEGIN { printf "%d", 1280 * s + 0.5 }')
-  height=$(awk -v s="$scale" 'BEGIN { printf "%d", 800 * s + 0.5 }')
-  hyprctl dispatch "hl.dsp.window.resize({ window = \"$w\", x = $width, y = $height })" > /dev/null
-  hyprctl dispatch "hl.dsp.window.move({ window = \"$w\", x = 80, y = 80 })" > /dev/null
-  if [ "$ime_live" -eq 1 ]; then
-    hyprctl dispatch "hl.dsp.focus({ window = \"$w\" })" > /dev/null
-    if [ "$(hyprctl activewindow -j | jq -r .pid)" != "$pid" ]; then
-      echo "launch: Hyprland did not focus the gallery, so a wtype step exits with code 2" >&2
-    fi
-  fi
-  hyprctl clients -j | jq -c ".[] | select(.pid == $pid) | {at, size, floating}" > window.json
-elif kill -0 "$pid" 2>/dev/null; then
-  echo "no window for pid $pid" >&2
-fi
-
-if ! timeout "${TIMEOUT:-300}" tail --pid="$pid" -f /dev/null; then
-  echo "timeout after ${TIMEOUT:-300}s, killing pid $pid" >&2
-  kill "$pid" 2>/dev/null || true
-fi
 rc=0
 wait "$pid" || rc=$?
 settled=1
