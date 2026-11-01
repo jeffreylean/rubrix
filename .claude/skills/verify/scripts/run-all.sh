@@ -9,6 +9,7 @@ driver-wtype.drive         fail=2       wtype needs launch.sh --ime-live
 resize.drive               skip-darwin  resize asks Hyprland for the size
 rich-wrap.drive            skip-darwin  resize asks Hyprland for the size
 virtual-list-resize.drive  skip-darwin  resize asks Hyprland for the size
+driver-mac.drive           skip-linux   oskey, pbcopy and pbpaste need macOS
 editor-ime-live.drive      skip         types through fcitx5 Pinyin under launch.sh --ime-live, a hand check at milestone 1
 '
 

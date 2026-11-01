@@ -1,0 +1,28 @@
+page editor
+wait 120
+click 273 160
+log caret
+expect caret 1 primary 1 3:1..3:1
+oskey mod+right
+wait 60 until caret 1 primary 1 3:26..3:26
+oskey alt+f
+wait 60 until text 3 "use core::time::Duration;ƒ"
+log text 3
+clipboard system
+click 273 126
+oskey mod+shift+right
+wait 60 until caret 1 primary 1 1:1..1:34
+oskey mod+c
+wait 60 until pbpaste "//! The theme the examples share."
+log pbpaste
+pbcopy from pbcopy\tvia NSPasteboard
+log pbpaste
+click 273 177
+log caret
+expect caret 1 primary 1 4:1..4:1
+oskey mod+v
+wait 60 until text 4 "from pbcopy\tvia NSPasteboard"
+log text 4
+wait 30
+screenshot driver-mac.png
+exit
