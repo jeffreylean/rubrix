@@ -55,7 +55,7 @@ The milestone 3 fixes, written by the last block of `gen_drives.py`, each failin
 - `collab-m3-paste-tag.drive` runs `paste collab: hi`: the text arrives whole, `.run();collab: hi`, and `log paste` shows it tagged once more.
 - `collab-m3-revision.drive` types `abc` and Enter, clicks `respawn`, and undoes: the undo's `EditorChanged` carries revision 5, one past the last before the respawn.
 - `collab-m3-gutter.drive` pastes a 200-character run on line 120, scrolls 30 px sideways, and sets carets at 120:1, 121:1 and a range from 122:1 to 120:3: `over gutter 0`, nothing remote paints over the line numbers (`m3fa-gutter.png`).
-- `collab-m3-edge-labels.drive` opens the 100,000-line input, clicks `50 carets` on line 50,000, and scrolls 100 lines past it each way: every caret is at the edge and `overlapping 0` at both edges, with the labels that do not fit folded into one `+N` (`m3fa-edge-top.png`, `m3fa-edge-bottom.png`).
+- `collab-m3-edge-labels.drive` opens the 100,000-line input, clicks `50 carets` on line 50,000, and scrolls 100 lines past it each way: u1 and u50 are at the edge, and `edge labels 21 overlapping 0` at both edges: 20 labels fit the row and the other 30 fold into one `+30` (`m3fa-edge-top.png`, `m3fa-edge-bottom.png`).
 
 ## Perf
 

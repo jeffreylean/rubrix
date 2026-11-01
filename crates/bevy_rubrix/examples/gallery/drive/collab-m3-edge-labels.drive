@@ -17,7 +17,7 @@ wait 5
 log remote
 expect remote u1 edge top at
 expect remote u50 edge top at
-expect remote overlapping 0
+expect remote edge labels 21 overlapping 0
 screenshot m3fa-edge-top.png
 move 740 400
 scroll 0 100000000
@@ -28,6 +28,6 @@ wait 5
 log remote
 expect remote u1 edge bottom at
 expect remote u50 edge bottom at
-expect remote overlapping 0
+expect remote edge labels 21 overlapping 0
 screenshot m3fa-edge-bottom.png
 exit

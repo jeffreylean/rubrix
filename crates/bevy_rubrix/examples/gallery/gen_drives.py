@@ -2946,7 +2946,9 @@ collab("m3-gutter", steps, "screenshot m3fa-gutter.png")
 doc = Doc(STRESS_LINES, text_x=TEXT_X_100K)
 LINE = 50_000
 steps = [TOGGLE_100K, "wait 60", doc.scroll_to(LINE), f"click {doc.at(LINE, 1)}", FIFTY_CARETS, "wait 5"]
-steps += [rescroll(doc, LINE + 100), "wait 5", remote("u1 edge top at", "u50 edge top at", "overlapping 0")]
+EDGE_LABELS_THAT_FIT = 20
+FOLDED = f"edge labels {EDGE_LABELS_THAT_FIT + 1} overlapping 0"
+steps += [rescroll(doc, LINE + 100), "wait 5", remote("u1 edge top at", "u50 edge top at", FOLDED)]
 steps += ["screenshot m3fa-edge-top.png", rescroll(doc, LINE - 100), "wait 5"]
-steps += [remote("u1 edge bottom at", "u50 edge bottom at", "overlapping 0")]
+steps += [remote("u1 edge bottom at", "u50 edge bottom at", FOLDED)]
 collab("m3-edge-labels", steps, "screenshot m3fa-edge-bottom.png")

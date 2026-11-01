@@ -397,3 +397,81 @@ fn a_line_move_takes_the_annotations_of_both_lines_and_undo_restores_them()
         );
     }
 }
+
+const SPLIT: &str = "aaaa\nbbbb\ncccc\n";
+
+fn named(
+    ranges: &Ranges<&'static str>,
+) -> Vec<(Range<usize>, &'static str)> {
+    ranges.iter().map(|(range, &name)| (range, name)).collect()
+}
+
+fn split_by_a_move(
+    selection: Selection,
+    down: bool,
+    markers: &[(Range<usize>, &'static str)],
+    cut: &[(Range<usize>, &'static str)],
+) {
+    let mut editor = Editor::from_parts(
+        Buffer::new(SPLIT),
+        Selections::new(selection),
+        History::new(),
+    );
+    let original = Ranges::new(markers.iter().cloned());
+    let mut ranges = original.clone();
+    ranges.map(&apply(&mut editor, Command::MoveLines { down }));
+    for round in 0..2 {
+        assert_eq!(named(&ranges), cut, "move, round {round}");
+        ranges.map(&apply(&mut editor, Command::Undo));
+        assert_eq!(editor.buffer().to_string(), SPLIT);
+        assert_eq!(ranges, original, "undo, round {round}");
+        ranges.map(&apply(&mut editor, Command::Redo));
+    }
+}
+
+#[test]
+fn a_line_move_down_cuts_a_marker_it_splits_to_the_piece_with_its_start()
+ {
+    split_by_a_move(
+        Selection::caret(0),
+        true,
+        &[(1..3, "in0"), (2..7, "span"), (4..7, "newline")],
+        &[(4..5, "newline"), (6..8, "in0"), (7..9, "span")],
+    );
+}
+
+#[test]
+fn a_line_move_up_cuts_a_marker_it_splits_to_the_piece_with_its_start()
+ {
+    split_by_a_move(
+        Selection::caret(5),
+        false,
+        &[(2..7, "span"), (4..7, "newline"), (6..8, "in1")],
+        &[(1..3, "in1"), (4..5, "newline"), (7..9, "span")],
+    );
+}
+
+#[test]
+fn a_block_move_down_cuts_a_marker_into_its_neighbour_to_the_block_piece()
+ {
+    split_by_a_move(
+        Selection { anchor: 1, head: 6 },
+        true,
+        &[(0..14, "both"), (2..7, "block"), (7..12, "span")],
+        &[(0..14, "both"), (7..12, "block"), (12..14, "span")],
+    );
+}
+
+#[test]
+fn a_block_move_up_cuts_a_marker_from_its_neighbour_to_the_neighbour_piece()
+ {
+    split_by_a_move(
+        Selection {
+            anchor: 6,
+            head: 11,
+        },
+        false,
+        &[(2..12, "span"), (6..12, "block")],
+        &[(1..7, "block"), (12..14, "span")],
+    );
+}

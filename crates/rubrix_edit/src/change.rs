@@ -95,6 +95,13 @@ impl Change {
                 .all(|pair| pair[0].from.end < pair[1].from.start),
             "moves out of order or overlapping"
         );
+        debug_assert!(
+            moves.len() % 2 == 0
+                && moves
+                    .chunks_exact(2)
+                    .all(|pair| pair[1].to == pair[0].from.start),
+            "moves not in swapping pairs"
+        );
         self.moves = moves;
         self
     }
@@ -171,6 +178,47 @@ impl Change {
                     + self.end_after(i - 1)
             }
         }
+    }
+
+    pub(crate) fn map_range(
+        &self,
+        range: Range<usize>,
+    ) -> Range<usize> {
+        let Range { start, end } = range;
+        if self.moves.is_empty() {
+            return self.map(start, Assoc::After)
+                ..self.map(end, Assoc::Before);
+        }
+        for pair in self.moves.chunks_exact(2) {
+            let (first, second) = (&pair[0], &pair[1]);
+            let swap = first.from.start..second.from.end;
+            if end <= swap.start {
+                break;
+            }
+            if swap.end <= start
+                || (start <= swap.start && swap.end <= end)
+            {
+                continue;
+            }
+            if start < swap.start {
+                return start..swap.start;
+            }
+            let pieces = [
+                (first.from.clone(), first.to),
+                (
+                    first.from.end..second.from.start,
+                    second.to + second.from.len(),
+                ),
+                (second.from.clone(), second.to),
+            ];
+            let (piece, to) = pieces
+                .into_iter()
+                .find(|(piece, _)| start < piece.end)
+                .expect("the swap holds the start");
+            let end = end.min(piece.end);
+            return to + start - piece.start..to + end - piece.start;
+        }
+        range
     }
 
     pub(crate) fn moved(
