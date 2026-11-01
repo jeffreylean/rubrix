@@ -3090,7 +3090,49 @@ m3_script("add-words", PAIR, steps, "wait 30", "screenshot m3fb-add-words.png")
 # primary caret in view (`log typing`). Lines cut whole at N carets
 # paste back whole at N carets.
 def cf(name, *steps):
-    editor(f"cf-{name}", *steps)
+    editor(f"cf-{name}", cf_pinned(steps))
+
+
+CF_CLEAN = object()
+
+
+def cf_pinned(steps):
+    """`steps` with each `CF_CLEAN` made the checks that pin how many
+    frames `log torn` and edits `log typing` have counted by then, so a
+    counter that saw nothing fails. Frames are counted as drive.rs runs
+    the steps, from the editor page's first frame."""
+    out, frame, checked, edits = [], 0, set(), 0
+    for step in flat(steps):
+        if step is CF_CLEAN:
+            seen = sum(1 for f in checked if f < frame)
+            clean = ["log torn", f"expect torn frames {seen} torn 0", "log typing", f"expect typing edits {edits} hidden 0", *SEAMS_CLEAN]
+            out += clean
+            frame += len(clean)
+            continue
+        out.append(step)
+        if step == WRAP:
+            checked.update(range(frame + 2, frame + 5))
+        elif step.startswith("type ") or step in ("key space", "key backspace"):
+            checked.update(range(frame, frame + 2))
+            edits += 1
+        frame += cf_frames(step)
+    return out
+
+
+def cf_frames(step):
+    """The frames drive.rs takes to run `step`: `wait n` is the step's
+    frame and n more, a key is down then up, and a click moves, then
+    presses and releases once per click, then lets go of any held key."""
+    word, *rest = step.split()
+    if word == "wait":
+        return int(rest[0]) + 1
+    if word == "key":
+        return 2
+    if word == "click":
+        clicks = {"double": 2, "triple": 3}.get(rest[2] if len(rest) > 2 else "", 1)
+        return 1 + 2 * clicks + any(held in rest for held in ("shift", "mod", "alt"))
+    assert word in ("type", "move", "scroll", "log", "expect", "screenshot"), f"cf: no frame count for {step!r}"
+    return 1
 
 
 CF_LINE = 302
@@ -3099,7 +3141,6 @@ CF_LINE = 302
 def cf_at(doc, n, column):
     """`Doc.at`, by the editor's own column grid."""
     return f"{round(TEXT_X + (column - 1) * ADVANCE + CLICK_INSET, 1)} {doc.y(n)}"
-CF_CLEAN = ["log torn", "expect torn torn 0", "log typing", "expect typing hidden 0", SEAMS_CLEAN]
 
 
 def cf_row(doc):
@@ -3177,8 +3218,8 @@ cf("wrap-shrink", steps, "wait 30", "screenshot cf-wrap-shrink.png")
 
 doc = Doc(LARGE_RS_LINES)
 steps = [cf_wrapped(doc), cf_grow(doc, 3), "wait 10", cf_row(doc)]
-steps += [WRAP, "wait 10", CENTER, cf_lines(1), "log torn", "expect torn torn 0", SEAMS_CLEAN]
-steps += [WRAP, "wait 10", CENTER, cf_row(doc), "log torn", SEAMS_CLEAN]
+steps += [WRAP, "wait 10", CENTER, cf_lines(1), CF_CLEAN]
+steps += [WRAP, "wait 10", CENTER, cf_row(doc), CF_CLEAN]
 cf("wrap-toggle", steps, "wait 30", "screenshot cf-wrap-toggle.png")
 
 doc = Doc(LARGE_RS_LINES)

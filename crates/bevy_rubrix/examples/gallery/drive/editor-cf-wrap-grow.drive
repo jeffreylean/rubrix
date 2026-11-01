@@ -32,9 +32,9 @@ log row 302
 expect row 302 top 5117 
 expect row 302 lines 2
 log torn
-expect torn torn 0
+expect torn frames 22 torn 0
 log typing
-expect typing hidden 0
+expect typing edits 10 hidden 0
 log seams
 expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok
 key space
@@ -62,9 +62,9 @@ log row 302
 expect row 302 top 5117 
 expect row 302 lines 3
 log torn
-expect torn torn 0
+expect torn frames 43 torn 0
 log typing
-expect typing hidden 0
+expect typing edits 21 hidden 0
 log seams
 expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok
 log text 302

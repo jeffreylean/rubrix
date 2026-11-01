@@ -271,15 +271,17 @@ pub fn typing(world: &World) -> String {
 }
 
 /// The frames that changed the doc on show or its wrap, with the
-/// frame after each, and how many of those drew a gap or an overlap
-/// between two shown rows or a line number off its row. `log seams`
-/// reads only a settled frame.
+/// frame after a doc change and the two after a wrap change, and how
+/// many of those drew a gap or an overlap between two shown rows or a
+/// line number off its row. A wrap change settles over three frames:
+/// the text takes the new wrap, the row cells refit, and the list
+/// reads the refit rows. `log seams` reads only a settled frame.
 #[derive(Resource, Default)]
 struct Torn {
     doc: Option<Entity>,
     seq: u64,
     overflow: Overflow,
-    after: bool,
+    after: u8,
     frames: u32,
     torn: u32,
 }
@@ -301,14 +303,17 @@ fn count_torn(world: &mut World) {
         };
         return;
     }
-    let changed = seq > torn.seq || overflow != torn.overflow;
-    let drawn = (changed || torn.after)
+    let edited = seq > torn.seq;
+    let wrapped = overflow != torn.overflow;
+    let drawn = (edited || wrapped || torn.after > 0)
         .then(|| first_view(world))
         .flatten()
         .and_then(|(view, _)| shown_rows(world, view))
         .map(|rows| seams_of(&rows));
     let mut torn = world.resource_mut::<Torn>();
-    (torn.seq, torn.overflow, torn.after) = (seq, overflow, changed);
+    let after = if wrapped { 2 } else { u8::from(edited) };
+    torn.after = after.max(torn.after.saturating_sub(1));
+    (torn.seq, torn.overflow) = (seq, overflow);
     if let Some(seams) = drawn {
         torn.frames += 1;
         torn.torn += u32::from(
