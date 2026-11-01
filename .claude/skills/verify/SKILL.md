@@ -1,13 +1,13 @@
 ---
 name: verify
-description: Launch the rubrix gallery (a Bevy window), drive it with a script, and capture screenshots, frame times and video as proof. Use to see a bevy_rubrix change working, to confirm a gallery page behaves, or to take review evidence. Runs on Linux with Hyprland and on macOS, where resize, wtype and --ime-live focus do not work and screenshots come out black.
+description: Launch the rubrix gallery (a Bevy window), drive it with a script, and capture screenshots, frame times and video as proof. Use to see a bevy_rubrix change working, to confirm a gallery page behaves, or to take review evidence. Runs on Linux with Hyprland and on macOS, where resize, wtype and --ime-live focus do not work.
 ---
 
 # Verify rubrix in the gallery
 
 The gallery is `cargo run -p bevy_rubrix --example gallery`, a 1280 by 800 window with a page list on the left and the selected page on the right. You never touch it with the OS. A drive script, named by `RUBRIX_DRIVE`, puts clicks, keys and scrolls into the app as Bevy messages, and reads state back through `log`. Hyprland gives the window no focus, so an OS pointer warp or a typed key never arrives.
 
-On macOS the scripts run without Hyprland. launch.sh leaves the window where macOS puts it, and `resize`, `wtype` and the focus that `--ime-live` gives do not work, so `run-all.sh` skips the scripts that resize. Three steps reach macOS itself: `oskey` sends real key events through AppKit, `pbcopy` writes the system pasteboard, and the `pbpaste` topic reads it. Bevy's window screenshot comes back all black on macOS (measured on macOS 26 with Metal, also in a bare Bevy app with no rubrix code), so on a Mac judge by the `log` and `expect` lines, not by the images.
+On macOS the scripts run without Hyprland. launch.sh leaves the window where macOS puts it, and `resize`, `wtype` and the focus that `--ime-live` gives do not work, so `run-all.sh` skips the scripts that resize. Three steps reach macOS itself: `oskey` sends real key events through AppKit, `pbcopy` writes the system pasteboard, and the `pbpaste` topic reads it. The gallery does not take focus when it starts, so it can open behind other windows. macOS presents no frame to a covered window, and a screenshot of it comes back black. So on macOS a `screenshot` step exits with code 2 when macOS reports the window covered or on another Space. Keep the window in view for a script that takes screenshots, for example on a workspace of its own.
 
 Feature recipes are in `features/README.md`. Read the one for the page you are checking before you drive it.
 
@@ -117,7 +117,7 @@ out=$(mktemp -d)
 
 ## Evidence
 
-- A screenshot with `screenshot <path>`, taken by Bevy's own API from inside the app. Look at it. A black frame means nothing rendered yet, so add a `wait`. On macOS every window screenshot is black, so it proves nothing there. Every script in `drive/` waits 30 frames before its first screenshot, and a test fails if one does not.
+- A screenshot with `screenshot <path>`, taken by Bevy's own API from inside the app. Look at it. A black frame means nothing rendered yet, so add a `wait`. On macOS a covered window gives a black image, so the step refuses to take one, as the macOS paragraph above says. Every script in `drive/` waits 30 frames before its first screenshot, and a test fails if one does not.
 - A state line with `log <topic>` next to the screenshot, so the image and the state agree.
 - Frame times: `frames start`, the scroll steps, `frames stop frames.csv`, then `.claude/skills/verify/scripts/frame-stats.sh <out dir>/frames.csv`. It drops the first 60 frames and prints the median, p95 and max in milliseconds. Run perf with `RUBRIX_NO_VSYNC=1` in `--release`, alone, with no other Bevy window or build running.
 - Video: `record start <dir>`, the steps, `record stop`, then `.claude/skills/verify/scripts/video.sh <dir> <out.mp4> [fps]`. One PNG is saved per frame, so the video plays at the fps you pass (default 60), not at the speed of the capture. A `screenshot` and an `exit` finish while a record runs, and `exit` stops it. A `screenshot` step saves its image as that frame's record frame too, so the video loses no frame to it. `ffprobe -count_frames` reports the frame count.

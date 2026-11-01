@@ -1304,7 +1304,9 @@ impl Drive {
                 Ok(()) => self.done(name),
                 Err(error) => self.fail(world, number, &error),
             },
-            Step::Screenshot(path) => match make_parent(&path) {
+            Step::Screenshot(path) => match window_in_view()
+                .and_then(|()| make_parent(&path))
+            {
                 Ok(()) => {
                     let mut paths = vec![path];
                     paths.extend(self.next_frame());
@@ -1661,6 +1663,38 @@ fn oskey(keys: &[MacKey]) -> Result<(), String> {
         window.sendEvent(&event);
     }
     Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn window_in_view() -> Result<(), String> {
+    Ok(())
+}
+
+/// macOS presents no frame to a window it reports covered, so a
+/// screenshot of it comes back black.
+#[cfg(target_os = "macos")]
+fn window_in_view() -> Result<(), String> {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSWindowOcclusionState};
+
+    let Some(main) = MainThreadMarker::new() else {
+        return Ok(());
+    };
+    let covered = NSApplication::sharedApplication(main)
+        .windows()
+        .firstObject()
+        .is_some_and(|window| {
+            !window
+                .occlusionState()
+                .contains(NSWindowOcclusionState::Visible)
+        });
+    if covered {
+        Err("screenshot needs the gallery window in view, and macOS \
+             reports it covered or on another Space"
+            .into())
+    } else {
+        Ok(())
+    }
 }
 
 fn needs_macos(step: &str) -> Result<(), String> {
