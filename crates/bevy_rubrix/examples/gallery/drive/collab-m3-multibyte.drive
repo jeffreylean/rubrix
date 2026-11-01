@@ -1,0 +1,173 @@
+page collab
+wait 120
+move 740 400
+scroll 0 -1938
+wait 10
+click 1250 211
+paste 李李李李李李李李李李
+key home
+key home
+wait 5
+click 734 68
+wait 5
+log remote
+expect remote remote 50: 
+expect remote u1 120:1 shown
+expect remote u2 120:1 shown
+expect remote u3 120:2 shown
+expect remote u4 120:3 shown
+expect remote u5 120:4 shown
+expect remote u6 120:5 shown
+expect remote u7 120:6 shown
+expect remote u8 120:7 shown
+expect remote u9 120:8 shown
+expect remote u10 120:9 shown
+expect remote u11 120:10 shown
+expect remote u12 120:11 shown
+expect remote u13 120:12 shown
+expect remote u14 120:12 shown
+expect remote u15 120:13 shown
+expect remote u16 120:14 shown
+expect remote u17 120:15 shown
+expect remote u18 120:16 shown
+expect remote u19 120:16 shown
+expect remote u20 120:16 shown
+expect remote u21 120:17 shown
+expect remote u22 120:17 shown
+expect remote u23 120:17 shown
+expect remote u24 120:18 shown
+expect remote u25 120:18 shown
+expect remote u26 120:18 shown
+expect remote u27 120:18 shown
+expect remote u28 120:19 shown
+expect remote u29 120:19 shown
+expect remote u30 120:19 shown
+expect remote u31 120:20 shown
+expect remote u32 120:20 shown
+expect remote u33 120:20 shown
+expect remote u34 120:21 shown
+expect remote u35 120:21 shown
+expect remote u36 120:21 shown
+expect remote u37 120:22 shown
+expect remote u38 120:22 shown
+expect remote u39 120:22 shown
+expect remote u40 120:22 shown
+expect remote u41 120:23 shown
+expect remote u42 120:23 shown
+expect remote u43 120:23 shown
+expect remote u44 120:24 shown
+expect remote u45 120:24 shown
+expect remote u46 120:24 shown
+expect remote u47 120:25 shown
+expect remote u48 120:25 shown
+expect remote u49 120:25 shown
+expect remote u50 120:26 shown
+click 273.0 211
+type ab
+wait 5
+log remote
+expect remote u1 120:3 shown
+expect remote u2 120:3 shown
+expect remote u3 120:4 shown
+expect remote u4 120:5 shown
+expect remote u5 120:6 shown
+expect remote u6 120:7 shown
+expect remote u7 120:8 shown
+expect remote u8 120:9 shown
+expect remote u9 120:10 shown
+expect remote u10 120:11 shown
+expect remote u11 120:12 shown
+expect remote u12 120:13 shown
+expect remote u13 120:14 shown
+expect remote u14 120:14 shown
+expect remote u15 120:15 shown
+expect remote u16 120:16 shown
+expect remote u17 120:17 shown
+expect remote u18 120:18 shown
+expect remote u19 120:18 shown
+expect remote u20 120:18 shown
+expect remote u21 120:19 shown
+expect remote u22 120:19 shown
+expect remote u23 120:19 shown
+expect remote u24 120:20 shown
+expect remote u25 120:20 shown
+expect remote u26 120:20 shown
+expect remote u27 120:20 shown
+expect remote u28 120:21 shown
+expect remote u29 120:21 shown
+expect remote u30 120:21 shown
+expect remote u31 120:22 shown
+expect remote u32 120:22 shown
+expect remote u33 120:22 shown
+expect remote u34 120:23 shown
+expect remote u35 120:23 shown
+expect remote u36 120:23 shown
+expect remote u37 120:24 shown
+expect remote u38 120:24 shown
+expect remote u39 120:24 shown
+expect remote u40 120:24 shown
+expect remote u41 120:25 shown
+expect remote u42 120:25 shown
+expect remote u43 120:25 shown
+expect remote u44 120:26 shown
+expect remote u45 120:26 shown
+expect remote u46 120:26 shown
+expect remote u47 120:27 shown
+expect remote u48 120:27 shown
+expect remote u49 120:27 shown
+expect remote u50 120:28 shown
+key mod+z
+wait 5
+log remote
+expect remote u1 120:1 shown
+expect remote u2 120:1 shown
+expect remote u3 120:2 shown
+expect remote u4 120:3 shown
+expect remote u5 120:4 shown
+expect remote u6 120:5 shown
+expect remote u7 120:6 shown
+expect remote u8 120:7 shown
+expect remote u9 120:8 shown
+expect remote u10 120:9 shown
+expect remote u11 120:10 shown
+expect remote u12 120:11 shown
+expect remote u13 120:12 shown
+expect remote u14 120:12 shown
+expect remote u15 120:13 shown
+expect remote u16 120:14 shown
+expect remote u17 120:15 shown
+expect remote u18 120:16 shown
+expect remote u19 120:16 shown
+expect remote u20 120:16 shown
+expect remote u21 120:17 shown
+expect remote u22 120:17 shown
+expect remote u23 120:17 shown
+expect remote u24 120:18 shown
+expect remote u25 120:18 shown
+expect remote u26 120:18 shown
+expect remote u27 120:18 shown
+expect remote u28 120:19 shown
+expect remote u29 120:19 shown
+expect remote u30 120:19 shown
+expect remote u31 120:20 shown
+expect remote u32 120:20 shown
+expect remote u33 120:20 shown
+expect remote u34 120:21 shown
+expect remote u35 120:21 shown
+expect remote u36 120:21 shown
+expect remote u37 120:22 shown
+expect remote u38 120:22 shown
+expect remote u39 120:22 shown
+expect remote u40 120:22 shown
+expect remote u41 120:23 shown
+expect remote u42 120:23 shown
+expect remote u43 120:23 shown
+expect remote u44 120:24 shown
+expect remote u45 120:24 shown
+expect remote u46 120:24 shown
+expect remote u47 120:25 shown
+expect remote u48 120:25 shown
+expect remote u49 120:25 shown
+expect remote u50 120:26 shown
+screenshot m3fa-multibyte.png
+exit

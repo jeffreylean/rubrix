@@ -7,8 +7,9 @@ use bevy::input_focus::{FocusCause, InputFocus};
 use bevy::ui::widget::Text;
 use bevy::ui::{Display, Node};
 use bevy_rubrix::{
-    Edge, EditDoc, EditRequest, Lang, Placed, RemoteCaret,
-    RemoteCarets, RemoteView, Request, Selection, Selections,
+    Edge, EditDoc, EditRequest, Lang, Markers, Placed, Ranges,
+    RemoteCaret, RemoteCarets, RemoteView, Request, Selection,
+    Selections, Severity,
 };
 use support::{Editing, laid_out, mount_editor, type_text};
 
@@ -194,4 +195,31 @@ fn a_respawned_doc_with_its_carets_shows_one_edge_marker() {
     app.world_mut().resource_mut::<Editing>().0 = respawned;
     settle(&mut app);
     assert_eq!(shown(&mut app, "↓ Ada"), 1);
+}
+
+#[test]
+fn a_remote_caret_or_marker_inside_a_character_draws_at_its_start() {
+    let mut app = laid_out();
+    let (view, doc) =
+        mount_editor(&mut app, Lang::Rust, "李李李\n", 600.0, 400.0);
+    let mut inside = ada(4);
+    inside.anchor = 1;
+    app.world_mut().entity_mut(doc).insert((
+        RemoteCarets(vec![ada(1), inside]),
+        Markers(Ranges::new([(2..5, Severity::Error)])),
+    ));
+    settle(&mut app);
+    let [Placed::Bar(mid), Placed::Bar(ranged)] =
+        placed(&app, view)[..]
+    else {
+        panic!("two bars");
+    };
+    app.world_mut()
+        .entity_mut(doc)
+        .insert(RemoteCarets(vec![ada(0), ada(3)]));
+    settle(&mut app);
+    assert_eq!(
+        placed(&app, view),
+        [Placed::Bar(mid), Placed::Bar(ranged)]
+    );
 }

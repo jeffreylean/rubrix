@@ -7,6 +7,7 @@ use alloc::vec::Vec;
 use core::ops::Range;
 
 use crate::buffer::Buffer;
+use crate::change::Move;
 use crate::command::{After, Plan};
 use crate::motion::{
     indent as leading_blanks, next_grapheme, prev_grapheme,
@@ -181,7 +182,7 @@ pub(crate) fn move_lines(
     buffer: &Buffer,
     selections: &Selections,
     down: bool,
-) -> Option<Plan> {
+) -> Option<(Plan, Vec<Move>)> {
     let blocks = blocks(buffer, selections);
     let at_edge = if down {
         blocks.last()?.end == buffer.line_count()
@@ -192,38 +193,56 @@ pub(crate) fn move_lines(
         return None;
     }
     let mut edits = Vec::with_capacity(2 * blocks.len());
+    let mut moves = Vec::with_capacity(2 * blocks.len());
     let mut shifts = Vec::with_capacity(blocks.len());
     for block in &blocks {
         let first = buffer.line_start(block.start);
         let last = buffer.line_end(block.end - 1);
         if down {
             let next = block.end;
-            let moved = buffer.slice(last..buffer.line_end(next));
-            let text = rotate(&moved, buffer.line_start(next) - last);
+            let (start, end) =
+                (buffer.line_start(next), buffer.line_end(next));
+            let moved = buffer.slice(last..end);
+            let text = rotate(&moved, start - last);
             shifts.push(text.len() as isize);
+            moves.push(Move {
+                from: first..last,
+                to: first + text.len(),
+            });
+            moves.push(Move {
+                from: start..end,
+                to: first,
+            });
             edits.push((first..first, text));
-            edits.push((last..buffer.line_end(next), String::new()));
+            edits.push((last..end, String::new()));
         } else {
             let prev = block.start - 1;
-            let moved = buffer.slice(buffer.line_start(prev)..first);
-            let text = rotate(
-                &moved,
-                buffer.line_end(prev) - buffer.line_start(prev),
-            );
+            let (start, end) =
+                (buffer.line_start(prev), buffer.line_end(prev));
+            let moved = buffer.slice(start..first);
+            let text = rotate(&moved, end - start);
             shifts.push(-(text.len() as isize));
-            edits.push((
-                buffer.line_start(prev)..first,
-                String::new(),
-            ));
+            moves.push(Move {
+                from: start..end,
+                to: last - (end - start),
+            });
+            moves.push(Move {
+                from: first..last,
+                to: start,
+            });
+            edits.push((start..first, String::new()));
             edits.push((last..last, text));
         }
     }
     let after =
         shifted(buffer, selections, &blocks, &shifts, buffer.len());
-    Some(Plan {
-        edits,
-        after: After::Set(after),
-    })
+    Some((
+        Plan {
+            edits,
+            after: After::Set(after),
+        },
+        moves,
+    ))
 }
 
 /// `text` with its first `mid` bytes moved to its end.

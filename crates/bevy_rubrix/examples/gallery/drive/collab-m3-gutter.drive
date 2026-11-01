@@ -1,0 +1,25 @@
+page collab
+wait 120
+move 740 400
+scroll 0 -1938
+wait 10
+click 1250 211
+paste abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij
+key home
+key home
+wait 5
+move 740 400
+scroll -30 0
+wait 10
+log rows
+expect rows x 30
+remote Ada 120:1
+remote Gus 122:1 120:3
+remote Cy 121:1
+wait 5
+log remote
+expect remote Ada 120:1 shown
+expect remote Gus 122:1..120:3 shown
+expect remote over gutter 0
+screenshot m3fa-gutter.png
+exit

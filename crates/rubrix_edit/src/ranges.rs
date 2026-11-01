@@ -11,18 +11,54 @@ use crate::change::{Assoc, Change, Replacement};
 /// Text typed at either end of a range stays outside it, and text
 /// typed inside it widens it. A change that deletes or replaces all
 /// of a range's bytes drops it. An empty range is a point that text
-/// typed at it pushes right.
+/// typed at it pushes right. A line move that splits a range across
+/// the two lines it swaps cuts the range to the piece that holds its
+/// start, and the undo of the move restores the whole range.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ranges<T> {
-    items: Vec<(Range<usize>, T)>,
+    items: Vec<Item<T>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct Item<T> {
+    span: Span,
+    payload: T,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum Span {
+    Whole(Range<usize>),
+    /// A line move put the range's start past its end. The ends still
+    /// follow the text as points, so the undo of the move brings the
+    /// whole range back.
+    Split {
+        ends: (usize, usize),
+        piece: Range<usize>,
+    },
+}
+
+impl<T> Item<T> {
+    fn shown(&self) -> Range<usize> {
+        match &self.span {
+            Span::Whole(range) | Span::Split { piece: range, .. } => {
+                range.clone()
+            }
+        }
+    }
 }
 
 impl<T> Ranges<T> {
     pub fn new(
         items: impl IntoIterator<Item = (Range<usize>, T)>,
     ) -> Ranges<T> {
-        let mut items: Vec<_> = items.into_iter().collect();
-        items.sort_by_key(|(range, _)| range.start);
+        let mut items: Vec<_> = items
+            .into_iter()
+            .map(|(range, payload)| Item {
+                span: Span::Whole(range),
+                payload,
+            })
+            .collect();
+        items.sort_by_key(|item| item.shown().start);
         Ranges { items }
     }
 
@@ -38,7 +74,7 @@ impl<T> Ranges<T> {
     pub fn iter(
         &self,
     ) -> impl ExactSizeIterator<Item = (Range<usize>, &T)> + '_ {
-        self.items.iter().map(|(range, item)| (range.clone(), item))
+        self.items.iter().map(|item| (item.shown(), &item.payload))
     }
 
     /// Moves every range through `change`, which was made to the text
@@ -47,17 +83,31 @@ impl<T> Ranges<T> {
         if change.is_empty() {
             return;
         }
-        self.items.retain_mut(|(range, _)| {
-            if range.start == range.end {
-                let at = change.map(range.start, Assoc::After);
-                *range = at..at;
-                return true;
-            }
-            let start = change.map(range.start, Assoc::After);
-            let end = change.map(range.end, Assoc::Before);
-            *range = start..end;
-            start < end
+        self.items.retain_mut(|item| {
+            let (start, end) = match &item.span {
+                Span::Whole(range) if range.start == range.end => {
+                    let at = change.map(range.start, Assoc::After);
+                    item.span = Span::Whole(at..at);
+                    return true;
+                }
+                Span::Whole(range) => (range.start, range.end),
+                Span::Split { ends, .. } => *ends,
+            };
+            let ends = (
+                change.map(start, Assoc::After),
+                change.map(end, Assoc::Before),
+            );
+            item.span = if ends.0 < ends.1 {
+                Span::Whole(ends.0..ends.1)
+            } else {
+                Span::Split {
+                    ends,
+                    piece: change.map_range(item.shown()),
+                }
+            };
+            !item.shown().is_empty()
         });
+        self.items.sort_by_key(|item| item.shown().start);
     }
 }
 
@@ -120,6 +170,9 @@ enum Moved {
 }
 
 fn move_anchor(change: &Change, reps: &[Rep], at: usize) -> Moved {
+    if let Some(to) = change.moved(at, Assoc::After) {
+        return Moved::To(to);
+    }
     let first = reps.partition_point(|rep| rep.range.end < at);
     let starting = reps[first..]
         .iter()

@@ -1,8 +1,8 @@
 use core::ops::Range;
 
 use rubrix_edit::{
-    Buffer, Change, Command, Editor, History, LineAnchors, Monospace,
-    Ranges, Selection, Selections,
+    Assoc, Buffer, Change, Command, Editor, History, LineAnchors,
+    Monospace, Ranges, Selection, Selections,
 };
 
 const TEXT: &str = "zero\none\ntwo two\nthree\nfour\n";
@@ -260,4 +260,218 @@ fn every_line_of_one_change_comes_back_past_the_drop_limit() {
     anchors.map(&apply(&mut editor, Command::Undo));
     assert_eq!(editor.buffer().to_string(), text);
     assert_eq!(lines(&editor, &anchors), even);
+}
+
+fn swapped(line: u32, down: bool) -> [(u32, u32); 2] {
+    let other = if down { line + 1 } else { line - 1 };
+    [(line, other), (other, line)]
+}
+
+fn moved(
+    text: &str,
+    line: u32,
+    down: bool,
+) -> Option<(Editor, Change)> {
+    let mut editor = Editor::from_parts(
+        Buffer::new(text),
+        Selections::new(Selection::caret(
+            Buffer::new(text).line_start(line),
+        )),
+        History::new(),
+    );
+    let change = editor
+        .apply(Command::MoveLines { down }, &Monospace::default())?;
+    Some((editor, change))
+}
+
+#[test]
+fn a_line_move_takes_every_place_on_both_lines_with_its_line() {
+    for text in [TEXT, "zero\none\n\ntwo", "a\r\nbc\r\n"] {
+        let before = Buffer::new(text);
+        for line in 0..before.line_count() {
+            for down in [true, false] {
+                let Some((mut editor, change)) =
+                    moved(text, line, down)
+                else {
+                    continue;
+                };
+                let after = editor.buffer().snapshot();
+                let undo = apply(&mut editor, Command::Undo);
+                let redo = apply(&mut editor, Command::Redo);
+                for (from, to) in swapped(line, down) {
+                    let (start, end) = (
+                        before.line_start(from),
+                        before.line_end(from),
+                    );
+                    for offset in start..=end {
+                        let landed =
+                            after.line_start(to) + offset - start;
+                        let case = format!(
+                            "{text:?} line {line} down {down} \
+                             offset {offset}"
+                        );
+                        assert_eq!(
+                            change.map(offset, Assoc::After),
+                            landed,
+                            "{case} after"
+                        );
+                        if offset > start {
+                            assert_eq!(
+                                change.map(offset, Assoc::Before),
+                                landed,
+                                "{case} before"
+                            );
+                        }
+                        assert_eq!(
+                            undo.map(landed, Assoc::After),
+                            offset,
+                            "{case} undo"
+                        );
+                        assert_eq!(
+                            redo.map(offset, Assoc::After),
+                            landed,
+                            "{case} redo"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_line_move_keeps_markers_on_both_lines_and_undo_restores_them() {
+    let (one, two) = (TEXT.find("one").unwrap(), second_two());
+    let markers =
+        || Ranges::new([(one..one + 3, "one"), (two.clone(), "two")]);
+    let (mut editor, change) = moved(TEXT, 1, true).unwrap();
+    let mut ranges = markers();
+    ranges.map(&change);
+    let after: Vec<_> =
+        ranges.iter().map(|(range, &name)| (name, range)).collect();
+    let moved_two = TEXT.find("two two").unwrap() - 4;
+    assert_eq!(
+        after,
+        [
+            ("two", moved_two + 4..moved_two + 7),
+            ("one", moved_two + 8..moved_two + 11)
+        ]
+    );
+    ranges.map(&apply(&mut editor, Command::Undo));
+    assert_eq!(ranges, markers());
+}
+
+#[test]
+fn a_line_move_takes_the_annotations_of_both_lines_and_undo_restores_them()
+ {
+    for (line, down) in [(1, true), (2, false), (4, true)] {
+        let mut editor = moved(TEXT, line, down).unwrap().0;
+        apply(&mut editor, Command::Undo);
+        let mut anchors = LineAnchors::new(
+            editor.buffer(),
+            swapped(line, down).map(|(from, _)| (from, from)),
+        );
+        let change = apply(&mut editor, Command::Redo);
+        anchors.map(&change);
+        let mut landed: Vec<(u32, u32)> = anchors
+            .lines(editor.buffer())
+            .map(|(at, &from)| (from, at))
+            .collect();
+        landed.sort();
+        let mut expected = swapped(line, down).to_vec();
+        expected.sort();
+        assert_eq!(landed, expected, "line {line} down {down}");
+        anchors.map(&apply(&mut editor, Command::Undo));
+        let mut back: Vec<(u32, u32)> = anchors
+            .lines(editor.buffer())
+            .map(|(at, &from)| (from, at))
+            .collect();
+        back.sort();
+        assert_eq!(
+            back,
+            expected
+                .iter()
+                .map(|&(from, _)| (from, from))
+                .collect::<Vec<_>>(),
+            "undo of line {line} down {down}"
+        );
+    }
+}
+
+const SPLIT: &str = "aaaa\nbbbb\ncccc\n";
+
+fn named(
+    ranges: &Ranges<&'static str>,
+) -> Vec<(Range<usize>, &'static str)> {
+    ranges.iter().map(|(range, &name)| (range, name)).collect()
+}
+
+fn split_by_a_move(
+    selection: Selection,
+    down: bool,
+    markers: &[(Range<usize>, &'static str)],
+    cut: &[(Range<usize>, &'static str)],
+) {
+    let mut editor = Editor::from_parts(
+        Buffer::new(SPLIT),
+        Selections::new(selection),
+        History::new(),
+    );
+    let original = Ranges::new(markers.iter().cloned());
+    let mut ranges = original.clone();
+    ranges.map(&apply(&mut editor, Command::MoveLines { down }));
+    for round in 0..2 {
+        assert_eq!(named(&ranges), cut, "move, round {round}");
+        ranges.map(&apply(&mut editor, Command::Undo));
+        assert_eq!(editor.buffer().to_string(), SPLIT);
+        assert_eq!(ranges, original, "undo, round {round}");
+        ranges.map(&apply(&mut editor, Command::Redo));
+    }
+}
+
+#[test]
+fn a_line_move_down_cuts_a_marker_it_splits_to_the_piece_with_its_start()
+ {
+    split_by_a_move(
+        Selection::caret(0),
+        true,
+        &[(1..3, "in0"), (2..7, "span"), (4..7, "newline")],
+        &[(4..5, "newline"), (6..8, "in0"), (7..9, "span")],
+    );
+}
+
+#[test]
+fn a_line_move_up_cuts_a_marker_it_splits_to_the_piece_with_its_start()
+ {
+    split_by_a_move(
+        Selection::caret(5),
+        false,
+        &[(2..7, "span"), (4..7, "newline"), (6..8, "in1")],
+        &[(1..3, "in1"), (4..5, "newline"), (7..9, "span")],
+    );
+}
+
+#[test]
+fn a_block_move_down_cuts_a_marker_into_its_neighbour_to_the_block_piece()
+ {
+    split_by_a_move(
+        Selection { anchor: 1, head: 6 },
+        true,
+        &[(0..14, "both"), (2..7, "block"), (7..12, "span")],
+        &[(0..14, "both"), (7..12, "block"), (12..14, "span")],
+    );
+}
+
+#[test]
+fn a_block_move_up_cuts_a_marker_from_its_neighbour_to_the_neighbour_piece()
+ {
+    split_by_a_move(
+        Selection {
+            anchor: 6,
+            head: 11,
+        },
+        false,
+        &[(2..12, "span"), (6..12, "block")],
+        &[(1..7, "block"), (12..14, "span")],
+    );
 }

@@ -3,7 +3,7 @@ use std::mem;
 
 use bevy::app::{App, PreUpdate, Update};
 use bevy::clipboard::{ClipboardError, ClipboardRead};
-use bevy::color::Color;
+use bevy::color::{Alpha, Color};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::lifecycle::Remove;
@@ -14,7 +14,12 @@ use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::resource_exists;
 use bevy::ecs::system::{Commands, Query, Res, ResMut};
 use bevy::ecs::world::World;
-use bevy::ui::{BackgroundColor, percent, px};
+use bevy::math::Rect;
+use bevy::ui::widget::Text;
+use bevy::ui::{
+    BackgroundColor, ComputedNode, Display, Node, UiGlobalTransform,
+    percent, px,
+};
 use bevy_fynix::tokens::Tone;
 use bevy_fynix::views::{
     BehaviorExt, FrameProps, button, column, ghost, label, row,
@@ -89,7 +94,7 @@ pub fn build() -> PageView {
         }
         let previous = mem::replace(
             &mut *cx.world.resource_mut::<EditClipboard>(),
-            EditClipboard::new(CollabClipboard),
+            EditClipboard::new(CollabClipboard::default()),
         );
         cx.world.insert_resource(Previous(previous));
         let root = cx.build(
@@ -227,11 +232,13 @@ fn without_indent(
 
 fn fifty_carets(world: &mut World) {
     let (doc, editor) = on_show(world);
+    let buffer = editor.buffer();
     let head = editor.selections().primary().head;
-    let end = editor.buffer().line_end(editor.buffer().line_of(head));
+    let end = buffer.line_end(buffer.line_of(head));
     let carets = (0..50)
         .map(|i| {
-            let at = head + (end - head) * i / 49;
+            let at = buffer
+                .floor_char_boundary(head + (end - head) * i / 49);
             let label = format!("u{}", i + 1);
             RemoteCaret {
                 anchor: at,
@@ -366,7 +373,88 @@ pub fn remote_line(world: &mut World) -> String {
             }
         })
         .collect();
-    format!("remote {}: {}", each.len(), each.join(", "))
+    let carets = carets.0.clone();
+    format!(
+        "remote {}: {} | {}",
+        each.len(),
+        each.join(", "),
+        painted(world, &carets)
+    )
+}
+
+fn painted(world: &mut World, carets: &[RemoteCaret]) -> String {
+    let shown = |node: &Node,
+                 size: &ComputedNode,
+                 at: &UiGlobalTransform| {
+        (node.display != Display::None && size.size().x > 0.0).then(
+            || Rect::from_center_size(at.translation, size.size()),
+        )
+    };
+    let numbers = world
+        .query::<(&Node, &ComputedNode, &UiGlobalTransform, &LineNumber)>()
+        .iter(world)
+        .filter_map(|(node, size, at, _)| shown(node, size, at))
+        .map(|number| number.max.x)
+        .reduce(f32::max)
+        .unwrap_or(f32::NEG_INFINITY);
+    let colors: Vec<Color> = carets
+        .iter()
+        .flat_map(|caret| {
+            [
+                caret.color,
+                caret.color.with_alpha(caret.color.alpha() * 0.32),
+            ]
+        })
+        .collect();
+    let mut over_gutter = 0;
+    let mut edge_labels = Vec::new();
+    for (node, size, at, text, background) in world
+        .query::<(
+            &Node,
+            &ComputedNode,
+            &UiGlobalTransform,
+            Option<&Text>,
+            Option<&BackgroundColor>,
+        )>()
+        .iter(world)
+    {
+        let Some(area) = shown(node, size, at) else {
+            continue;
+        };
+        let remote = match (text, background) {
+            (Some(text), _) => {
+                if text.0.starts_with(['↑', '↓', '+']) {
+                    edge_labels.push(area);
+                    false
+                } else {
+                    carets.iter().any(|caret| caret.label == text.0)
+                }
+            }
+            (None, Some(background)) => {
+                colors.contains(&background.0)
+            }
+            (None, None) => false,
+        };
+        if remote && area.min.x < numbers {
+            over_gutter += 1;
+        }
+    }
+    let overlapping = edge_labels
+        .iter()
+        .enumerate()
+        .flat_map(|(i, a)| {
+            edge_labels[i + 1..].iter().map(move |b| (a, b))
+        })
+        .filter(|(a, b)| {
+            let both = a.intersect(**b);
+            both.width() > 0.5 && both.height() > 0.5
+        })
+        .count();
+    format!(
+        "over gutter {over_gutter} | edge labels {} overlapping \
+         {overlapping}",
+        edge_labels.len()
+    )
 }
 
 #[derive(Resource, Default)]
@@ -513,7 +601,18 @@ fn give_back_clipboard(
 
 const SOURCE: &str = "collab: ";
 
-struct CollabClipboard;
+#[derive(Default)]
+struct CollabClipboard {
+    last_written: Option<String>,
+}
+
+impl CollabClipboard {
+    fn hold(&mut self, world: &mut World, text: &str) {
+        let tagged = format!("{SOURCE}{text}");
+        world.resource_mut::<Paste>().0 = Some(tagged.clone());
+        self.last_written = Some(tagged);
+    }
+}
 
 impl ClipboardProvider for CollabClipboard {
     fn write(
@@ -521,21 +620,23 @@ impl ClipboardProvider for CollabClipboard {
         world: &mut World,
         text: &str,
     ) -> Result<(), ClipboardError> {
-        world.resource_mut::<Paste>().0 =
-            Some(format!("{SOURCE}{text}"));
+        self.hold(world, text);
         Ok(())
     }
 
     fn read(&mut self, world: &mut World) -> ClipboardRead {
-        let mut paste = world.resource_mut::<Paste>();
-        let Some(held) = paste.0.as_deref() else {
+        let Some(held) = world.resource::<Paste>().0.clone() else {
             return ClipboardRead::Ready(Err(
                 ClipboardError::ContentNotAvailable,
             ));
         };
-        let text =
-            held.strip_prefix(SOURCE).unwrap_or(held).to_owned();
-        paste.0 = Some(format!("{SOURCE}{text}"));
+        let text = match &self.last_written {
+            Some(tagged) if *tagged == held => {
+                held[SOURCE.len()..].to_owned()
+            }
+            _ => held,
+        };
+        self.hold(world, &text);
         ClipboardRead::Ready(Ok(text))
     }
 }
