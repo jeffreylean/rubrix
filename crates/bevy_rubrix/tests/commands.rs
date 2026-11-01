@@ -95,7 +95,7 @@ fn shared() -> Vec<(&'static str, Action)> {
 fn emacs() -> Vec<(&'static str, Action)> {
     vec![
         ("ctrl+k", command(Command::DeleteToLineEnd)),
-        ("ctrl+a", go(Motion::Home)),
+        ("ctrl+a", go(Motion::LineStart)),
         ("ctrl+e", go(Motion::End)),
         ("ctrl+p", go(Motion::Up)),
         ("ctrl+n", go(Motion::Down)),
@@ -134,6 +134,26 @@ fn only_macos_binds_the_emacs_keys() {
         Some(&command(Command::SelectAll)),
         "Ctrl+A still selects all on Linux"
     );
+}
+
+#[test]
+fn home_goes_to_column_zero_on_macos_and_to_the_indent_on_linux() {
+    let reach = |motion| {
+        command(Command::Move {
+            motion,
+            extend: true,
+        })
+    };
+    let macos = Keymap::macos();
+    assert_eq!(macos.get("home"), Some(&go(Motion::LineStart)));
+    assert_eq!(
+        macos.get("shift+home"),
+        Some(&reach(Motion::LineStart))
+    );
+    assert_eq!(macos.get("super+left"), Some(&go(Motion::Home)));
+    let linux = Keymap::linux();
+    assert_eq!(linux.get("home"), Some(&go(Motion::Home)));
+    assert_eq!(linux.get("shift+home"), Some(&reach(Motion::Home)));
 }
 
 #[test]

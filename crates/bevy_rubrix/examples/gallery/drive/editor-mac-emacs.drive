@@ -4,9 +4,10 @@ click 432.6 500
 log caret
 expect caret 1 primary 1 23:20..23:20 visible true
 oskey ctrl+a
-wait 60 until caret 1 primary 1 23:13..23:13 visible true
-oskey ctrl+a
 wait 60 until caret 1 primary 1 23:1..23:1 visible true
+oskey ctrl+a
+oskey ctrl+f
+wait 60 until caret 1 primary 1 23:2..23:2 visible true
 oskey ctrl+e
 wait 60 until caret 1 primary 1 23:41..23:41 visible true
 oskey ctrl+p

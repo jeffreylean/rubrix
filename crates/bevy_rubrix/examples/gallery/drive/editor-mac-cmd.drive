@@ -9,6 +9,19 @@ oskey mod+left
 wait 60 until caret 1 primary 1 23:1..23:1 visible true
 oskey mod+right
 wait 60 until caret 1 primary 1 23:41..23:41 visible true
+oskey alt+left
+wait 60 until caret 1 primary 1 23:39..23:39 visible true
+oskey home
+wait 60 until caret 1 primary 1 23:1..23:1 visible true
+oskey home
+oskey right
+wait 60 until caret 1 primary 1 23:2..23:2 visible true
+oskey mod+right
+wait 60 until caret 1 primary 1 23:41..23:41 visible true
+oskey alt+left
+wait 60 until caret 1 primary 1 23:39..23:39 visible true
+oskey shift+home
+wait 60 until caret 1 primary 1 23:1..23:39 visible true
 oskey mod+up
 wait 60 until caret 1 primary 1 1:1..1:1 visible true
 oskey mod+down
