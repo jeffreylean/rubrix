@@ -19,8 +19,8 @@ use bevy_rubrix::{
     Selection, Selections,
 };
 use support::{
-    Wrapping, edit_line, key_with, laid_out, mount_editor, text_of,
-    type_text,
+    Wrapping, edit_line, key_with, laid_out, mod_key, mount_editor,
+    text_of, type_text,
 };
 
 const TEXT: &str = "fn main() {\n    run();\n}\n";
@@ -237,7 +237,7 @@ fn a_commit_at_three_carets_is_one_undo_step() {
     assert_eq!(undo_depth(&app, doc), 1);
     key_with(
         &mut app,
-        &[KeyCode::ControlLeft],
+        &[mod_key()],
         KeyCode::KeyZ,
         Key::Character("z".into()),
     );

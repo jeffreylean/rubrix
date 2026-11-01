@@ -27,7 +27,9 @@ use bevy_rubrix::{
 use rubrix_edit::Buffer;
 use rubrix_edit::find::Search;
 use support::diff::Plain;
-use support::{chord, edit_line, editor, key_with, lay_out, list};
+use support::{
+    chord, edit_line, editor, key_with, lay_out, list, mod_key,
+};
 
 #[derive(Resource)]
 struct Editing(Entity);
@@ -102,7 +104,7 @@ fn counts_until_final(app: &mut App) -> Vec<usize> {
 }
 
 fn open(app: &mut App) -> Vec<usize> {
-    chord(app, &[KeyCode::ControlLeft], KeyCode::KeyF, "f");
+    chord(app, &[mod_key()], KeyCode::KeyF, "f");
     counts_until_final(app)
 }
 
@@ -145,7 +147,7 @@ fn replace_all_is_one_undo_step() {
     let (mut app, view, doc) = editing(text);
     chord(
         &mut app,
-        &[KeyCode::ControlLeft, KeyCode::AltLeft],
+        &[mod_key(), KeyCode::AltLeft],
         KeyCode::KeyF,
         "f",
     );
@@ -216,20 +218,23 @@ fn focused(app: &App) -> Option<Entity> {
 #[test]
 fn no_key_in_a_field_leaves_the_focus_on_nothing() {
     let (mut app, view, _) = editing("theme\ntheme\n");
-    let (ctrl, alt, shift) =
-        (KeyCode::ControlLeft, KeyCode::AltLeft, KeyCode::ShiftLeft);
+    let (primary, alt, shift) =
+        (mod_key(), KeyCode::AltLeft, KeyCode::ShiftLeft);
     let presses: [(&[KeyCode], KeyCode, Key); 6] = [
-        (&[ctrl], KeyCode::Enter, Key::Enter),
+        (&[primary], KeyCode::Enter, Key::Enter),
         (&[alt], KeyCode::Enter, Key::Enter),
-        (&[ctrl, shift], KeyCode::Enter, Key::Enter),
+        (&[primary, shift], KeyCode::Enter, Key::Enter),
         (&[shift, alt], KeyCode::Enter, Key::Enter),
         (&[shift], KeyCode::Escape, Key::Escape),
-        (&[ctrl], KeyCode::Escape, Key::Escape),
+        (&[primary], KeyCode::Escape, Key::Escape),
     ];
     for replacing in [false, true] {
         for (mods, code, key) in presses.clone() {
-            let open =
-                if replacing { &[ctrl, alt][..] } else { &[ctrl] };
+            let open = if replacing {
+                &[primary, alt][..]
+            } else {
+                &[primary]
+            };
             chord(&mut app, open, KeyCode::KeyF, "f");
             settle(&mut app);
             let field = focused(&app).filter(|&field| field != view);
