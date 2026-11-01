@@ -279,9 +279,11 @@ impl Laid<'_> {
     }
 
     fn row(&self, visual: u32) -> Range<usize> {
-        self.layout
-            .get(visual as usize)
-            .map_or(0..0, |line| line.text_range())
+        self.layout.get(visual as usize).map_or(0..0, |line| {
+            let range = line.text_range();
+            // parley starts a line with no text run at `usize::MAX`.
+            range.start.min(range.end)..range.end
+        })
     }
 }
 
