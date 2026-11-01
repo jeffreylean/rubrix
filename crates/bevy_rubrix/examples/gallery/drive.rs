@@ -1,8 +1,10 @@
 //! The scripted driver. `RUBRIX_DRIVE=<script>` runs a script, one
-//! step per line, and every step puts its input into the app as Bevy
+//! step per line, and a step puts its input into the app as Bevy
 //! messages, never through the OS. Hyprland gives the gallery window
 //! no focus, so an OS pointer warp or a synthetic key press never
-//! arrives.
+//! arrives. `wtype`, `oskey` and `pbcopy` are the steps that go
+//! through the OS, and `oskey` hands its keys to the window in
+//! process, so it needs no focus.
 //!
 //! A script is lines of `<step> <arguments>`. A blank line and a line
 //! that starts with `#` do nothing, and a bad line makes the gallery
@@ -15,10 +17,11 @@
 //! - `key <combo>` such as `mod+a`, and `type <text>`
 //! - `ime enable`, `ime disable`, `ime preedit [<text> [<start>
 //!   <end>]]`, `ime commit <text>`, `paste <text>`, `wtype <text>`
+//! - `oskey <combo>` and `pbcopy <text>`, on macOS only
 //! - `screenshot <path>`, `record start <dir>`, `record stop`
 //! - `frames start`, `frames stop <csv>`
-//! - `log <topic>`, `expect <topic> <text>`, `clipboard`; the `diff`
-//!   topic names the diff view's first visible row
+//! - `log <topic>`, `expect <topic> <text>`, `clipboard [system]`;
+//!   the `diff` topic names the diff view's first visible row
 //! - `resize <width> <height>`, `open <path>...`
 //!
 //! `mod` is the command key, Ctrl on Linux and Cmd on macOS. A topic
@@ -30,6 +33,17 @@
 //! newline, a tab and a backslash. `wtype` types through the OS, so
 //! it runs only under `launch.sh --ime-live`, which sets
 //! `RUBRIX_IME_LIVE=1` and gives the window focus.
+//!
+//! `oskey` sends a combo's keys to the window through AppKit as
+//! macOS virtual key codes, so `mod` is Cmd and the keyboard layout
+//! picks the text, as `ƒ` for `alt+f` on the ABC layout. Its keys
+//! arrive a frame or more later, so a script checks them with `wait
+//! <frames> until`. `pbcopy` writes its text, with `paste`'s escapes,
+//! to the system pasteboard through `/usr/bin/pbcopy`, and the
+//! `pbpaste` topic reads it back through `/usr/bin/pbpaste`. On any
+//! other system these exit with code 2. `clipboard system` makes
+//! copy, cut and paste use the system clipboard, the library's
+//! default provider, in place of the gallery's own.
 //!
 //! Positions are logical pixels in the window. A scroll `dy` below
 //! zero moves the content up, so the page scrolls down. A `scroll`
@@ -48,9 +62,10 @@
 //! and `wait ... until` steps, and exits with code 1 when one failed.
 
 use std::collections::VecDeque;
+use std::io::Write;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 use std::{fmt, fs, mem};
@@ -89,8 +104,8 @@ use bevy::window::{
 };
 use bevy_fynix::views::VirtualList;
 use bevy_rubrix::{
-    CodeDoc, CodeLine, CodeSelection, DiffDoc, DiffRow, EditDoc,
-    EditLine, EditView, Layout, Row,
+    CodeDoc, CodeLine, CodeSelection, DiffDoc, DiffRow,
+    EditClipboard, EditDoc, EditLine, EditView, Layout, Row,
 };
 use rubrix_highlight::{Kind, spans};
 
@@ -171,6 +186,8 @@ pub enum Step {
         chord: Vec<Press>,
     },
     Wtype(String),
+    Oskey(Vec<MacKey>),
+    Pbcopy(String),
     Screenshot(PathBuf),
     Log(String),
     FramesStart,
@@ -183,6 +200,7 @@ pub enum Step {
     },
     Open(Vec<PathBuf>),
     Clipboard,
+    SystemClipboard,
     Expect {
         topic: String,
         text: String,
@@ -212,6 +230,8 @@ impl Step {
             Self::Ime(_) => "ime",
             Self::Paste { .. } => "paste",
             Self::Wtype(_) => "wtype",
+            Self::Oskey(_) => "oskey",
+            Self::Pbcopy(_) => "pbcopy",
             Self::Screenshot(_) => "screenshot",
             Self::Log(_) => "log",
             Self::FramesStart => "frames start",
@@ -221,6 +241,7 @@ impl Step {
             Self::Resize { .. } => "resize",
             Self::Open(_) => "open",
             Self::Clipboard => "clipboard",
+            Self::SystemClipboard => "clipboard system",
             Self::Expect { .. } => "expect",
             Self::Exit => "exit",
             Self::Remote { .. } => "remote",
@@ -368,6 +389,21 @@ fn parse_line(text: &str, os: Os) -> Result<Option<Step>, String> {
             }
             Step::Wtype(rest.into())
         }
+        "oskey" => {
+            let [combo] = exact(&words, "oskey <combo>")?;
+            let presses = parse_combo(combo, Os::Macos)?;
+            Step::Oskey(mac_keys(&presses).ok_or_else(|| {
+                format!(
+                    "`{combo}` names a key with no macOS key code"
+                )
+            })?)
+        }
+        "pbcopy" => {
+            if rest.is_empty() {
+                return Err("usage: pbcopy <text>".into());
+            }
+            Step::Pbcopy(unescape(rest)?)
+        }
         "screenshot" => {
             let [path] = exact(&words, "screenshot <path>")?;
             Step::Screenshot(path.into())
@@ -410,10 +446,11 @@ fn parse_line(text: &str, os: Os) -> Result<Option<Step>, String> {
             }
             Step::Open(words.iter().map(PathBuf::from).collect())
         }
-        "clipboard" => {
-            exact::<0>(&words, "clipboard")?;
-            Step::Clipboard
-        }
+        "clipboard" => match words[..] {
+            [] => Step::Clipboard,
+            ["system"] => Step::SystemClipboard,
+            _ => return Err("usage: clipboard [system]".into()),
+        },
         "expect" => {
             let (topic, text) = split_topic(rest)?;
             if text.is_empty() {
@@ -657,6 +694,122 @@ fn parse_combo(combo: &str, os: Os) -> Result<Vec<Press>, String> {
     }
     presses.push(press);
     Ok(presses)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MacKey {
+    code: u16,
+    flags: u64,
+    down: bool,
+}
+
+/// The macOS virtual key code of each key a combo names, from the
+/// ANSI layout in Carbon's `Events.h`.
+const MAC_KEYS: [(KeyCode, u16); 54] = [
+    (KeyCode::KeyA, 0),
+    (KeyCode::KeyS, 1),
+    (KeyCode::KeyD, 2),
+    (KeyCode::KeyF, 3),
+    (KeyCode::KeyH, 4),
+    (KeyCode::KeyG, 5),
+    (KeyCode::KeyZ, 6),
+    (KeyCode::KeyX, 7),
+    (KeyCode::KeyC, 8),
+    (KeyCode::KeyV, 9),
+    (KeyCode::KeyB, 11),
+    (KeyCode::KeyQ, 12),
+    (KeyCode::KeyW, 13),
+    (KeyCode::KeyE, 14),
+    (KeyCode::KeyR, 15),
+    (KeyCode::KeyY, 16),
+    (KeyCode::KeyT, 17),
+    (KeyCode::Digit1, 18),
+    (KeyCode::Digit2, 19),
+    (KeyCode::Digit3, 20),
+    (KeyCode::Digit4, 21),
+    (KeyCode::Digit6, 22),
+    (KeyCode::Digit5, 23),
+    (KeyCode::Digit9, 25),
+    (KeyCode::Digit7, 26),
+    (KeyCode::Digit8, 28),
+    (KeyCode::Digit0, 29),
+    (KeyCode::KeyO, 31),
+    (KeyCode::KeyU, 32),
+    (KeyCode::KeyI, 34),
+    (KeyCode::KeyP, 35),
+    (KeyCode::Enter, 36),
+    (KeyCode::KeyL, 37),
+    (KeyCode::KeyJ, 38),
+    (KeyCode::KeyK, 40),
+    (KeyCode::KeyN, 45),
+    (KeyCode::KeyM, 46),
+    (KeyCode::Tab, 48),
+    (KeyCode::Space, 49),
+    (KeyCode::Backspace, 51),
+    (KeyCode::Escape, 53),
+    (KeyCode::SuperLeft, 55),
+    (KeyCode::ShiftLeft, 56),
+    (KeyCode::AltLeft, 58),
+    (KeyCode::ControlLeft, 59),
+    (KeyCode::Home, 115),
+    (KeyCode::PageUp, 116),
+    (KeyCode::Delete, 117),
+    (KeyCode::End, 119),
+    (KeyCode::PageDown, 121),
+    (KeyCode::ArrowLeft, 123),
+    (KeyCode::ArrowRight, 124),
+    (KeyCode::ArrowDown, 125),
+    (KeyCode::ArrowUp, 126),
+];
+
+/// The `CGEventFlags` bit a held modifier sets.
+fn mac_flag(code: KeyCode) -> u64 {
+    match code {
+        KeyCode::ShiftLeft => 0x2_0000,
+        KeyCode::ControlLeft => 0x4_0000,
+        KeyCode::AltLeft => 0x8_0000,
+        KeyCode::SuperLeft => 0x10_0000,
+        _ => 0,
+    }
+}
+
+/// winit reports a modifier key press only from that key's own
+/// `flagsChanged` event, and resets its modifier state from the
+/// flags on every event.
+fn mac_keys(presses: &[Press]) -> Option<Vec<MacKey>> {
+    let code = |press: &Press| {
+        MAC_KEYS
+            .iter()
+            .find(|(key, _)| *key == press.code)
+            .map(|&(_, code)| code)
+    };
+    let (key, held) = presses.split_last()?;
+    let mut events = Vec::new();
+    let mut flags = 0;
+    for press in held {
+        flags |= mac_flag(press.code);
+        events.push(MacKey {
+            code: code(press)?,
+            flags,
+            down: true,
+        });
+    }
+    for down in [true, false] {
+        events.push(MacKey {
+            code: code(key)?,
+            flags,
+            down,
+        });
+    }
+    for press in held.iter().rev() {
+        flags &= !mac_flag(press.code);
+        events.push(MacKey {
+            code: code(press)?,
+            flags,
+            down: false,
+        });
+    }
+    Some(events)
 }
 
 fn parse_ime(rest: &str) -> Result<Ime, String> {
@@ -923,8 +1076,8 @@ impl Drive {
         topic: String,
         text: String,
     ) {
-        let holds = topic_line(world, &topic)
-            .is_some_and(|line| line.contains(&text));
+        let holds = read_topic(world, &topic)
+            .is_ok_and(|line| line.contains(&text));
         if holds || left == 0 {
             self.judge(&topic, holds);
             self.done("wait");
@@ -1040,17 +1193,10 @@ impl Drive {
                 frames,
                 topic,
                 text,
-            } => {
-                if topic_line(world, &topic).is_some() {
-                    self.wait_until(world, frames, topic, text);
-                } else {
-                    self.fail(
-                        world,
-                        number,
-                        &format!("no log topic `{topic}`"),
-                    );
-                }
-            }
+            } => match read_topic(world, &topic) {
+                Ok(_) => self.wait_until(world, frames, topic, text),
+                Err(error) => self.fail(world, number, &error),
+            },
             Step::Move(at) => self.put_in(
                 world,
                 [vec![Input::Move(at)]].into(),
@@ -1150,6 +1296,14 @@ impl Drive {
                 Ok(()) => self.done(name),
                 Err(error) => self.fail(world, number, &error),
             },
+            Step::Oskey(keys) => match oskey(&keys) {
+                Ok(()) => self.done(name),
+                Err(error) => self.fail(world, number, &error),
+            },
+            Step::Pbcopy(text) => match pbcopy(&text) {
+                Ok(()) => self.done(name),
+                Err(error) => self.fail(world, number, &error),
+            },
             Step::Screenshot(path) => match make_parent(&path) {
                 Ok(()) => {
                     let mut paths = vec![path];
@@ -1160,28 +1314,20 @@ impl Drive {
                 }
                 Err(error) => self.fail(world, number, &error),
             },
-            Step::Log(topic) => match topic_line(world, &topic) {
-                Some(line) => {
+            Step::Log(topic) => match read_topic(world, &topic) {
+                Ok(line) => {
                     self.say(line);
                     self.done(name);
                 }
-                None => self.fail(
-                    world,
-                    number,
-                    &format!("no log topic `{topic}`"),
-                ),
+                Err(error) => self.fail(world, number, &error),
             },
             Step::Expect { topic, text } => {
-                match topic_line(world, &topic) {
-                    Some(line) => {
+                match read_topic(world, &topic) {
+                    Ok(line) => {
                         self.judge(&topic, line.contains(&text));
                         self.done(name);
                     }
-                    None => self.fail(
-                        world,
-                        number,
-                        &format!("no log topic `{topic}`"),
-                    ),
+                    Err(error) => self.fail(world, number, &error),
                 }
             }
             Step::FramesStart => {
@@ -1268,6 +1414,10 @@ impl Drive {
                     None => "clipboard: (nothing copied)".into(),
                 };
                 self.say(line);
+                self.done(name);
+            }
+            Step::SystemClipboard => {
+                world.insert_resource(EditClipboard::default());
                 self.done(name);
             }
             Step::Exit => {
@@ -1476,6 +1626,89 @@ fn wtype(text: &str) -> Result<(), String> {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
+fn oskey(_: &[MacKey]) -> Result<(), String> {
+    Err("oskey needs macOS".into())
+}
+
+/// Sends `keys` to the gallery's window through AppKit, in process,
+/// so they need no focus and no Accessibility permission.
+#[cfg(target_os = "macos")]
+fn oskey(keys: &[MacKey]) -> Result<(), String> {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSEvent};
+    use objc2_core_graphics::{
+        CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID,
+    };
+
+    let main = MainThreadMarker::new()
+        .ok_or("oskey runs off the main thread")?;
+    let window = NSApplication::sharedApplication(main)
+        .windows()
+        .firstObject()
+        .ok_or("oskey found no window")?;
+    let source = CGEventSource::new(CGEventSourceStateID::Private);
+    for key in keys {
+        let event = CGEvent::new_keyboard_event(
+            source.as_deref(),
+            key.code,
+            key.down,
+        )
+        .ok_or("CoreGraphics made no key event")?;
+        CGEvent::set_flags(Some(&event), CGEventFlags(key.flags));
+        let event = NSEvent::eventWithCGEvent(&event)
+            .ok_or("AppKit made no event of the key")?;
+        window.sendEvent(&event);
+    }
+    Ok(())
+}
+
+fn needs_macos(step: &str) -> Result<(), String> {
+    if cfg!(target_os = "macos") {
+        Ok(())
+    } else {
+        Err(format!("{step} needs macOS"))
+    }
+}
+
+fn pbcopy(text: &str) -> Result<(), String> {
+    needs_macos("pbcopy")?;
+    let mut child = Command::new("/usr/bin/pbcopy")
+        .stdin(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("cannot run pbcopy: {error}"))?;
+    child
+        .stdin
+        .take()
+        .expect("pbcopy's stdin is piped")
+        .write_all(text.as_bytes())
+        .map_err(|error| {
+            format!("cannot write to pbcopy: {error}")
+        })?;
+    let status = child
+        .wait()
+        .map_err(|error| format!("pbcopy did not finish: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("pbcopy failed with {status}"))
+    }
+}
+
+fn pbpaste() -> Result<String, String> {
+    needs_macos("pbpaste")?;
+    let output = Command::new("/usr/bin/pbpaste")
+        .output()
+        .map_err(|error| format!("cannot run pbpaste: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("pbpaste failed with {}", output.status));
+    }
+    Ok(format!(
+        "pbpaste {:?}",
+        String::from_utf8_lossy(&output.stdout)
+    ))
+}
+
 /// Writes `message` where bevy reads it from, and again as the
 /// window event that picking reads.
 fn send<M>(world: &mut World, message: M)
@@ -1546,6 +1779,17 @@ fn write_file(path: &Path, contents: String) -> Result<(), String> {
     fs::write(path, contents).map_err(|error| {
         format!("cannot write {}: {error}", path.display())
     })
+}
+
+fn read_topic(
+    world: &mut World,
+    topic: &str,
+) -> Result<String, String> {
+    if topic == "pbpaste" {
+        return pbpaste();
+    }
+    topic_line(world, topic)
+        .ok_or_else(|| format!("no log topic `{topic}`"))
 }
 
 fn topic_line(world: &mut World, topic: &str) -> Option<String> {
@@ -2099,6 +2343,9 @@ record stop
 resize 800 600
 open a.txt b.txt
 clipboard
+clipboard system
+oskey alt+f
+pbcopy one\\ttwo
 expect page about
 exit
 ";
@@ -2163,12 +2410,59 @@ exit
                 },
                 Step::Open(vec!["a.txt".into(), "b.txt".into()]),
                 Step::Clipboard,
+                Step::SystemClipboard,
+                Step::Oskey(vec![
+                    mac_key(58, OPTION, true),
+                    mac_key(3, OPTION, true),
+                    mac_key(3, OPTION, false),
+                    mac_key(58, 0, false),
+                ]),
+                Step::Pbcopy("one\ttwo".into()),
                 Step::Expect {
                     topic: "page".into(),
                     text: "about".into()
                 },
                 Step::Exit,
             ]
+        );
+    }
+
+    const SHIFT: u64 = 0x2_0000;
+    const OPTION: u64 = 0x8_0000;
+    const COMMAND: u64 = 0x10_0000;
+
+    fn mac_key(code: u16, flags: u64, down: bool) -> MacKey {
+        MacKey { code, flags, down }
+    }
+
+    #[test]
+    fn an_oskey_sends_each_modifier_as_its_own_key_around_the_key() {
+        let command_shift = COMMAND | SHIFT;
+        for os in [Os::Linux, Os::Macos] {
+            assert_eq!(
+                steps_on(os, "oskey mod+shift+z"),
+                [Step::Oskey(vec![
+                    mac_key(55, COMMAND, true),
+                    mac_key(56, command_shift, true),
+                    mac_key(6, command_shift, true),
+                    mac_key(6, command_shift, false),
+                    mac_key(56, COMMAND, false),
+                    mac_key(55, 0, false),
+                ])],
+                "mod is Cmd on {os:?} too"
+            );
+        }
+    }
+
+    #[test]
+    fn an_oskey_with_no_macos_key_code_is_refused() {
+        assert_eq!(
+            parse("wait 1\noskey mod+/"),
+            Err(ParseError {
+                line: 2,
+                reason: "`mod+/` names a key with no macOS key code"
+                    .into(),
+            })
         );
     }
 
@@ -3028,6 +3322,42 @@ exit
         assert_eq!(
             said.last().map(String::as_str),
             Some("drive: line 2: wtype needs launch.sh --ime-live")
+        );
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn the_macos_steps_exit_with_code_2_elsewhere() {
+        for (step, reason) in [
+            ("oskey mod+v", "oskey needs macOS"),
+            ("pbcopy hello", "pbcopy needs macOS"),
+            ("log pbpaste", "pbpaste needs macOS"),
+            ("expect pbpaste hello", "pbpaste needs macOS"),
+        ] {
+            let (exits, said) =
+                exits_and_said(&format!("wait 1\n{step}\nexit"));
+            assert_eq!(exits, [AppExit::from_code(2)], "{step}");
+            assert_eq!(
+                said.last(),
+                Some(&format!("drive: line 2: {reason}"))
+            );
+        }
+    }
+
+    #[test]
+    fn clipboard_system_takes_copies_off_the_gallery_clipboard() {
+        let mut app = headless(
+            "page editor\nwait 5\nclick 273 177\nkey mod+a\nkey \
+             mod+c\nwait 1\nclipboard system\nclick 273 177\ntype \
+             abc\nkey shift+left\nkey mod+c\nwait 1\nlog \
+             copied\nexit",
+        );
+        run(&mut app);
+        assert_eq!(logged(&app, "copied "), ["\"c\""]);
+        let kept = app.world().resource::<Paste>().0.clone();
+        assert!(
+            kept.is_some_and(|text| text.starts_with("//! The theme")),
+            "the gallery's clipboard keeps the copy from before"
         );
     }
 

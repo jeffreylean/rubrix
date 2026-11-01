@@ -1520,6 +1520,9 @@ version = "0.0.3"
 dependencies = [
  "bevy",
  "bevy_fynix",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-graphics",
  "parley",
  "rubrix_diff",
  "rubrix_edit",
