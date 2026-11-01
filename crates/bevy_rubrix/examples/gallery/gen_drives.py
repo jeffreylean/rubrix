@@ -3085,11 +3085,10 @@ steps += ["key end", "key shift+home", "key mod+c", "log copied", f"expect copie
 m3_script("add-words", PAIR, steps, "wait 30", "screenshot m3fb-add-words.png")
 
 
-# cf: the close-out fixes. B5 and the wrap flicker: each frame that
-# changes the doc or its wrap, and the frame after it, draws its rows
-# with no gap or overlap (`log torn`) and keeps the primary caret in
-# view (`log typing`). L1-F1: lines cut whole at N carets paste back
-# whole at N carets.
+# cf: each frame that changes the doc or its wrap, and the frame after
+# it, draws its rows with no gap or overlap (`log torn`) and keeps the
+# primary caret in view (`log typing`). Lines cut whole at N carets
+# paste back whole at N carets.
 def cf(name, *steps):
     editor(f"cf-{name}", *steps)
 
@@ -3098,8 +3097,7 @@ CF_LINE = 302
 
 
 def cf_at(doc, n, column):
-    """`Doc.at`, by the editor's own column grid: the m3 block rebinds
-    `column_x` to the diff's."""
+    """`Doc.at`, by the editor's own column grid."""
     return f"{round(TEXT_X + (column - 1) * ADVANCE + CLICK_INSET, 1)} {doc.y(n)}"
 CF_CLEAN = ["log torn", "expect torn torn 0", "log typing", "expect typing hidden 0", SEAMS_CLEAN]
 
@@ -3180,9 +3178,6 @@ cf("wrap-shrink", steps, "wait 30", "screenshot cf-wrap-shrink.png")
 doc = Doc(LARGE_RS_LINES)
 steps = [cf_wrapped(doc), cf_grow(doc, 3), "wait 10", cf_row(doc)]
 steps += [WRAP, "wait 10", CENTER, cf_lines(1), "log torn", "expect torn torn 0", SEAMS_CLEAN]
-# Turning wrap on still draws one torn frame: fynix fits each row cell
-# to the view a frame after the switch, and no text is shaped again
-# then. The PR's Limits name it, so the log records it with no expect.
 steps += [WRAP, "wait 10", CENTER, cf_row(doc), "log torn", SEAMS_CLEAN]
 cf("wrap-toggle", steps, "wait 30", "screenshot cf-wrap-toggle.png")
 

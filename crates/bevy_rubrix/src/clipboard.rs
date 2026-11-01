@@ -79,7 +79,8 @@ impl ClipboardProvider for SystemClipboard {
 
 /// Copies `text` from `view` through the provider, logging a refused
 /// write, and triggers [`CodeCopied`] on the view either way. Keeps
-/// `pieces`, the text each selection gave, for [`pieces`].
+/// `pieces`, the text each selection gave, for [`pieces`] when there
+/// are two or more.
 pub(crate) fn copy(
     world: &mut World,
     view: Entity,
