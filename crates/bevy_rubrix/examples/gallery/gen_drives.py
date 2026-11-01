@@ -1280,11 +1280,6 @@ class Doc:
         self.lines[n - 2 : n] = [self.line(n - 1) + self.line(n)]
         return (n - 1, column)
 
-    def home(self, n, column):
-        line = self.line(n)
-        first = len(line) - len(line.lstrip(" ")) + 1
-        return 1 if column == first else first
-
     def text(self, n):
         return [f"log text {n}", f"expect text {n} {rust_debug(self.line(n))}"]
 
@@ -1380,7 +1375,7 @@ def joins(doc, line, count):
     for _ in range(count):
         at = doc.join(line)
         steps += [f"click {doc.gutter(line)}", "key backspace", "key home"]
-    return steps, (at[0], doc.home(at[0], at[1]))
+    return steps, (at[0], 1)
 
 
 doc = Doc(LARGE_RS_LINES)
@@ -1401,8 +1396,7 @@ for key, column in [
 ]:
     steps += [f"key {key}", caret((LINE, column))]
 for _ in range(2):
-    column = doc.home(LINE, column)
-    steps += ["key home", caret((LINE, column))]
+    steps += ["key home", caret((LINE, 1))]
 goal = len(line) + 1
 steps += ["key end", caret((LINE, goal))]
 at = LINE
@@ -1534,7 +1528,7 @@ def accept(name, lines, text_x, setup, line):
     steps += [f"click {doc.end(line)}", caret(at)]
     at = doc.insert(at, "x" * 100)
     steps += [window(f"editor-acceptance-{name}.csv", ["type x"] * 100), doc.text(line), caret(at), undo(1, 0)]
-    at = (line, doc.home(*at))
+    at = (line, 1)
     steps += ["key home", caret(at)]
     head = at
     for _ in range(2):
@@ -2134,7 +2128,7 @@ def diff_rows(rows, shape="stacked"):
 
 
 def copy_line(text):
-    return ["key shift+home", "key mod+c", "log copied", f"expect copied {rust_debug(text.lstrip())}"]
+    return ["key shift+home", "key mod+c", "log copied", f"expect copied {rust_debug(text)}"]
 
 
 def diff_edit_lane(name, source, *steps):
@@ -2922,7 +2916,7 @@ head, end = 0, len(line.encode())
 starts = [i for i in range(end + 1) if i == end or (line.encode()[i] & 0xC0) != 0x80]
 columns = [len(line.encode()[: max(s for s in starts if s <= head + (end - head) * i // 49)].decode()) + 1 for i in range(50)]
 fifty = [f"u{i + 1} 120:{column} shown" for i, column in enumerate(columns)]
-steps = [doc.scroll_to(115), f"click {doc.end(120)}", f"paste {WIDE}", "key home", "key home", "wait 5", FIFTY_CARETS, "wait 5"]
+steps = [doc.scroll_to(115), f"click {doc.end(120)}", f"paste {WIDE}", "key home", "wait 5", FIFTY_CARETS, "wait 5"]
 steps += [remote("remote 50: ", *fifty), f"click {doc.at(120, 1)}", "type ab", "wait 5"]
 steps += [remote(*(f"u{i + 1} 120:{column + 2} shown" for i, column in enumerate(columns))), "key mod+z", "wait 5", remote(*fifty)]
 collab("m3-multibyte", steps, "screenshot m3fa-multibyte.png")
@@ -2940,7 +2934,7 @@ steps += ["log changed", "expect changed changed 1 rising true last 5"]
 collab("m3-revision", steps, "screenshot m3fa-revision.png")
 
 doc = Doc(LARGE_RS_LINES)
-steps = [doc.scroll_to(115), f"click {doc.end(120)}", "paste " + "abcdefghij" * 20, "key home", "key home", "wait 5"]
+steps = [doc.scroll_to(115), f"click {doc.end(120)}", "paste " + "abcdefghij" * 20, "key home", "wait 5"]
 steps += [CENTER, "scroll -30 0", "wait 10", "log rows", "expect rows x 30"]
 steps += ["remote Ada 120:1", "remote Gus 122:1 120:3", "remote Cy 121:1", "wait 5"]
 steps += [remote("Ada 120:1 shown", "Gus 122:1..120:3 shown", "over gutter 0")]
@@ -3250,6 +3244,14 @@ def os_caret(combo, anchor, head=None):
     return os_key(combo, "caret", caret_text(anchor, head))
 
 
+CARET_BOTTOM_DY = 9  # measured: the drawn bar's bottom below its visual row's grid y
+
+
+def drawn_caret(doc, n, column, row_first_column, visual):
+    x = round(TEXT_X + (column - row_first_column) * ADVANCE)
+    return ["log ime", f"expect ime caret {x} {doc.y(n) + ROW * visual + CARET_BOTTOM_DY}"]
+
+
 def os_inert(combo, then, anchor):
     return [f"oskey {combo}", os_caret(then, anchor)]
 
@@ -3267,6 +3269,9 @@ LINE = TONE_LINES[0]
 end = len(doc.line(LINE)) + 1
 steps = [f"click {doc.at(LINE, 20)}", caret((LINE, 20))]
 steps += [os_caret("mod+left", (LINE, TONE_COLUMN)), os_caret("mod+left", (LINE, 1)), os_caret("mod+right", (LINE, end))]
+middle = word_left(doc.line(LINE), end)
+steps += [os_caret("alt+left", (LINE, middle)), os_caret("home", (LINE, 1)), os_inert("home", "right", (LINE, 2))]
+steps += [os_caret("mod+right", (LINE, end)), os_caret("alt+left", (LINE, middle)), os_caret("shift+home", (LINE, middle), (LINE, 1))]
 steps += [os_caret("mod+up", (1, 1)), os_caret("mod+down", (doc.rows(), 1)), os_caret("mod+up", (1, 1))]
 LINE = TONE_LINES[1]
 before = doc.line(LINE)
@@ -3290,6 +3295,27 @@ steps += [f"click {doc.at(LINE, TONE_COLUMN)}", os_text("mod+v", doc, LINE), und
 LINE = TONE_LINES[4]
 steps += [f"click {doc.at(LINE, 20)}", os_inert("mod+backspace", "right", (LINE, 21)), doc.text(LINE), undo(3, 0)]
 steps += [os_caret("mod+a", (1, 1), (doc.rows(), 1))]
+LINE = TONE_LINES[0]
+assert max(map(len, doc.lines[:LINE])) < WRAP_COLUMNS
+TAIL = " ".join(["abcd"] * 24)
+doc.insert((LINE, len(doc.line(LINE)) + 1), " " + TAIL)
+starts = wrap_starts(doc.line(LINE))
+assert len(starts) == 2, starts
+second = starts[1]
+end = len(doc.line(LINE)) + 1
+row_two = doc.y(LINE) + ROW
+steps += [CENTER, "scroll 0 100000000", "wait 10", WRAP, "wait 60", f"click {doc.end(LINE)}", "key space", f"type {TAIL}", "wait 10", doc.text(LINE)]
+steps += [f"log row {LINE}", f"expect row {LINE} top {(LINE - 1) * ROW} height {2 * ROW} lines 2"]
+steps += [f"click {doc.at(LINE, 5)}", caret((LINE, 5))]
+steps += [os_caret("end", (LINE, second)), drawn_caret(doc, LINE, second, 1, 0)]
+steps += [os_caret("end", (LINE, second)), drawn_caret(doc, LINE, second, 1, 0)]
+steps += [os_caret("mod+left", (LINE, TONE_COLUMN)), os_caret("home", (LINE, 1))]
+steps += [f"click {column_x(5)} {row_two}", caret((LINE, second + 4)), drawn_caret(doc, LINE, second + 4, second, 1)]
+steps += [os_caret("mod+left", (LINE, second)), drawn_caret(doc, LINE, second, second, 1)]
+steps += [os_caret("home", (LINE, second)), drawn_caret(doc, LINE, second, second, 1)]
+steps += [os_caret("end", (LINE, end)), drawn_caret(doc, LINE, end, second, 1)]
+steps += [os_caret("shift+home", (LINE, end), (LINE, second))]
+steps += [os_caret("mod+shift+left", (LINE, end), (LINE, second))]
 editor("mac-cmd", steps)
 
 doc = Doc(LARGE_RS_LINES)
@@ -3330,7 +3356,7 @@ LINE = TONE_LINES[0]
 end = len(doc.line(LINE)) + 1
 above = (LINE - 1, min(end, len(doc.line(LINE - 1)) + 1))
 steps = [f"click {doc.at(LINE, 20)}", caret((LINE, 20))]
-steps += [os_caret("ctrl+a", (LINE, TONE_COLUMN)), os_caret("ctrl+a", (LINE, 1)), os_caret("ctrl+e", (LINE, end))]
+steps += [os_caret("ctrl+a", (LINE, 1)), os_inert("ctrl+a", "ctrl+f", (LINE, 2)), os_caret("ctrl+e", (LINE, end))]
 steps += [os_caret("ctrl+p", above), os_caret("ctrl+n", (LINE, end))]
 steps += [os_caret("ctrl+b", (LINE, end - 1)), os_caret("ctrl+f", (LINE, end)), doc.text(LINE), undo(0, 0)]
 LINE = TONE_LINES[1]

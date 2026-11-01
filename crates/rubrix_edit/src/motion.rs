@@ -1,8 +1,42 @@
+use alloc::vec::Vec;
 use core::ops::Range;
 
 use unicode_segmentation::{GraphemeCursor, UnicodeSegmentation};
 
 use crate::buffer::{Buffer, Spot};
+
+/// Which row a head at a wrap point is on. Where a line wraps, one
+/// offset ends a row and starts the next. `Upstream` keeps the head
+/// at the end of the row before the break, as End leaves it, and
+/// `Downstream` puts it at the start of the row after. Anywhere else
+/// the two are the same place.
+///
+/// The row motions act on the row the affinity names, so Home on a
+/// `Downstream` head at a wrap point stays on the row after it, and
+/// End goes to that row's end.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Affinity {
+    #[default]
+    Downstream,
+    Upstream,
+}
+
+impl Affinity {
+    /// The affinity of a head at `at` on `row`, a row of a line whose
+    /// content ends at `line_end`. `Upstream` at the end of a row the
+    /// line wraps after, and `Downstream` anywhere else.
+    pub fn on_row(
+        at: usize,
+        row: &Range<usize>,
+        line_end: usize,
+    ) -> Affinity {
+        if at == row.end && at < line_end {
+            Affinity::Upstream
+        } else {
+            Affinity::Downstream
+        }
+    }
+}
 
 /// Where a motion moves each selection's head.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -19,10 +53,14 @@ pub enum Motion {
     /// and Right do.
     WordLeft,
     WordRight,
-    /// The first non-blank character of the line, or column 0 when
-    /// the head is already there.
+    /// The first non-blank character of the head's row, or the row's
+    /// start when the head is already there. Cmd+Left on macOS.
     Home,
-    /// The end of the line's content, before any `\r\n`.
+    /// The start of the head's row. The Home key.
+    LineStart,
+    /// The end of the head's row, which is the wrap point with the
+    /// head kept on that row, or the end of the line's content before
+    /// any `\r\n`.
     End,
     /// One row, through [`Layout`], aiming for the goal x. Up on the
     /// first row goes to the start of the text, and Down on the last
@@ -37,36 +75,46 @@ pub enum Motion {
 }
 
 impl Motion {
-    /// Where the motion takes a head at `from`. A vertical motion
-    /// aims for `goal`, and sets it from [`Layout::x`] when unset.
+    /// Where the motion takes a head at `from` with `affinity`, and
+    /// the affinity it lands with. A vertical motion aims for `goal`,
+    /// and sets it from [`Layout::x`] when unset.
     pub(crate) fn target(
         self,
         buffer: &Buffer,
         layout: &impl Layout,
         from: usize,
+        affinity: Affinity,
         goal: &mut Option<f32>,
-    ) -> usize {
+    ) -> (usize, Affinity) {
+        use Affinity::Downstream;
         match self {
-            Motion::Left => prev_grapheme(buffer, from),
-            Motion::Right => next_grapheme(buffer, from),
-            Motion::WordLeft => word_stop(buffer, from, false),
-            Motion::WordRight => word_stop(buffer, from, true),
+            Motion::Left => (prev_grapheme(buffer, from), Downstream),
+            Motion::Right => {
+                (next_grapheme(buffer, from), Downstream)
+            }
+            Motion::WordLeft => {
+                (word_stop(buffer, from, false), Downstream)
+            }
+            Motion::WordRight => {
+                (word_stop(buffer, from, true), Downstream)
+            }
             Motion::Home => {
-                let Spot {
-                    start,
-                    content,
-                    rel,
-                    ..
-                } = buffer.spot(from);
-                let indent = indent(content).len();
-                start + if rel == indent { 0 } else { indent }
+                let row = layout.row(buffer, from, affinity);
+                let indent = row.start
+                    + indent(&buffer.slice(row.clone())).len();
+                let at =
+                    if from == indent { row.start } else { indent };
+                landing(buffer, &row, at)
+            }
+            Motion::LineStart => {
+                (layout.row(buffer, from, affinity).start, Downstream)
             }
             Motion::End => {
-                let Spot { start, content, .. } = buffer.spot(from);
-                start + content.len()
+                let row = layout.row(buffer, from, affinity);
+                landing(buffer, &row, row.end)
             }
-            Motion::DocStart => 0,
-            Motion::DocEnd => buffer.len(),
+            Motion::DocStart => (0, Downstream),
+            Motion::DocEnd => (buffer.len(), Downstream),
             Motion::Up
             | Motion::Down
             | Motion::PageUp
@@ -79,34 +127,66 @@ impl Motion {
                     Motion::PageUp => -page,
                     _ => page,
                 };
-                let x = *goal
-                    .get_or_insert_with(|| layout.x(buffer, from));
+                let x = *goal.get_or_insert_with(|| {
+                    layout.x(buffer, from, affinity)
+                });
                 let past = if rows < 0 { 0 } else { buffer.len() };
-                layout.vertical(buffer, from, rows, x).unwrap_or(past)
+                layout
+                    .vertical(buffer, from, affinity, rows, x)
+                    .unwrap_or((past, Downstream))
             }
         }
     }
 }
 
-/// What vertical motion needs from a view. The view knows its rows,
+fn landing(
+    buffer: &Buffer,
+    row: &Range<usize>,
+    at: usize,
+) -> (usize, Affinity) {
+    let line_end = buffer.line_end(buffer.line_of(at));
+    (at, Affinity::on_row(at, row, line_end))
+}
+
+/// What the row motions need from a view. The view knows its rows,
 /// wrapping and glyph widths. The editor keeps each selection's goal
-/// x and decides what happens past the first and last rows.
+/// x and affinity and decides what happens past the first and last
+/// rows. A head is an offset with an [`Affinity`], which tells the
+/// rows apart at a wrap point.
 pub trait Layout {
     /// The x of a caret at `offset`, in the layout's own units, from
     /// the start of its row.
-    fn x(&self, buffer: &Buffer, offset: usize) -> f32;
+    fn x(
+        &self,
+        buffer: &Buffer,
+        offset: usize,
+        affinity: Affinity,
+    ) -> f32;
 
     /// The grapheme boundary nearest `x` on the row `rows` rows below
     /// the row of `from`, or above it when `rows` is negative. An x
-    /// past that row's end gives the row's end. `None` when the row
-    /// would be above the first row or below the last.
+    /// past that row's end gives the row's end, `Upstream` when the
+    /// line wraps there. `None` when the row would be above the first
+    /// row or below the last.
     fn vertical(
         &self,
         buffer: &Buffer,
         from: usize,
+        affinity: Affinity,
         rows: i32,
         x: f32,
-    ) -> Option<usize>;
+    ) -> Option<(usize, Affinity)>;
+
+    /// The offsets of the row that holds the head at `offset`, from
+    /// its first byte to the wrap point after it, or to the end of
+    /// the line's content on its last row. A line that does not wrap
+    /// is one row.
+    fn row(
+        &self,
+        buffer: &Buffer,
+        offset: usize,
+        affinity: Affinity,
+    ) -> Range<usize>;
 
     /// The rows Page Up and Page Down move.
     fn page_rows(&self) -> u32;
@@ -115,18 +195,33 @@ pub trait Layout {
 /// A layout borrowed, so a `&dyn Layout` can go where
 /// [`Editor::apply`](crate::Editor::apply) takes `&impl Layout`.
 impl<L: Layout + ?Sized> Layout for &L {
-    fn x(&self, buffer: &Buffer, offset: usize) -> f32 {
-        (**self).x(buffer, offset)
+    fn x(
+        &self,
+        buffer: &Buffer,
+        offset: usize,
+        affinity: Affinity,
+    ) -> f32 {
+        (**self).x(buffer, offset, affinity)
     }
 
     fn vertical(
         &self,
         buffer: &Buffer,
         from: usize,
+        affinity: Affinity,
         rows: i32,
         x: f32,
-    ) -> Option<usize> {
-        (**self).vertical(buffer, from, rows, x)
+    ) -> Option<(usize, Affinity)> {
+        (**self).vertical(buffer, from, affinity, rows, x)
+    }
+
+    fn row(
+        &self,
+        buffer: &Buffer,
+        offset: usize,
+        affinity: Affinity,
+    ) -> Range<usize> {
+        (**self).row(buffer, offset, affinity)
     }
 
     fn page_rows(&self) -> u32 {
@@ -182,12 +277,15 @@ pub fn graphemes(text: &str) -> impl Iterator<Item = (usize, &str)> {
     text.grapheme_indices(true)
 }
 
-/// A fixed-width layout. One row per line, one column per grapheme
-/// cluster, and a tab to the next multiple of `tab` columns.
+/// A fixed-width layout. One column per grapheme cluster, a tab to
+/// the next multiple of `tab` columns, and one row per line unless
+/// `columns` is set, when a line wraps as [`Wrapped::wrap`] breaks
+/// it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Monospace {
     pub tab: u32,
     pub page_rows: u32,
+    pub columns: Option<u32>,
 }
 
 impl Default for Monospace {
@@ -195,60 +293,201 @@ impl Default for Monospace {
         Monospace {
             tab: 4,
             page_rows: 40,
+            columns: None,
         }
     }
 }
 
 impl Monospace {
-    /// The column after `grapheme`, which starts at `column`.
-    fn advance(&self, column: u32, grapheme: &str) -> u32 {
-        if grapheme == "\t" {
-            let tab = self.tab.max(1);
-            (column / tab + 1) * tab
-        } else {
-            column + 1
-        }
+    fn column(&self, content: &str, rel: usize) -> u32 {
+        content[..rel].graphemes(true).fold(0, |column, grapheme| {
+            advance(column, grapheme, self.tab)
+        })
+    }
+
+    fn rows(&self, content: &str) -> Wrapped {
+        Wrapped::wrap(
+            content,
+            self.columns.map(|columns| columns as usize),
+            self.tab,
+        )
     }
 }
 
 impl Layout for Monospace {
-    fn x(&self, buffer: &Buffer, offset: usize) -> f32 {
-        let spot = buffer.spot(offset);
-        let before = &spot.content[..spot.rel];
-        before.graphemes(true).fold(0, |column, grapheme| {
-            self.advance(column, grapheme)
-        }) as f32
+    fn x(
+        &self,
+        buffer: &Buffer,
+        offset: usize,
+        affinity: Affinity,
+    ) -> f32 {
+        let Spot { content, rel, .. } = buffer.spot(offset);
+        let rows = self.rows(content);
+        let row = rows.range(rows.index(rel, affinity));
+        (self.column(content, rel) - self.column(content, row.start))
+            as f32
     }
 
     fn vertical(
         &self,
         buffer: &Buffer,
         from: usize,
+        affinity: Affinity,
         rows: i32,
         x: f32,
-    ) -> Option<usize> {
-        let line = i64::from(buffer.line_of(from)) + i64::from(rows);
-        let line = u32::try_from(line)
-            .ok()
-            .filter(|&line| line < buffer.line_count())?;
-        let (mut best, mut nearest) = (0, x.abs());
-        let mut column = 0;
-        for (i, grapheme) in
-            buffer.content(line).grapheme_indices(true)
-        {
-            column = self.advance(column, grapheme);
-            let distance = (column as f32 - x).abs();
-            if distance < nearest {
-                (best, nearest) = (i + grapheme.len(), distance);
-            } else if column as f32 > x {
+    ) -> Option<(usize, Affinity)> {
+        let spot = buffer.spot(from);
+        let mut line = spot.line;
+        let mut wrapped = self.rows(spot.content);
+        let mut index = wrapped.index(spot.rel, affinity) as i64
+            + i64::from(rows);
+        loop {
+            if index < 0 {
+                line = line.checked_sub(1)?;
+                wrapped = self.rows(buffer.content(line));
+                index += wrapped.count() as i64;
+            } else if index >= wrapped.count() as i64 {
+                index -= wrapped.count() as i64;
+                line += 1;
+                if line >= buffer.line_count() {
+                    return None;
+                }
+                wrapped = self.rows(buffer.content(line));
+            } else {
                 break;
             }
         }
-        Some(buffer.line_start(line) + best)
+        let content = buffer.content(line);
+        let row = wrapped.range(index as usize);
+        let first = self.column(content, row.start);
+        let width = self.column(content, row.end) - first;
+        let x = x.clamp(0.0, width as f32);
+        let (mut best, mut nearest) = (row.start, x);
+        let mut column = first;
+        for (i, grapheme) in
+            content[row.clone()].grapheme_indices(true)
+        {
+            column = advance(column, grapheme, self.tab);
+            let distance = ((column - first) as f32 - x).abs();
+            if distance < nearest {
+                (best, nearest) =
+                    (row.start + i + grapheme.len(), distance);
+            } else if (column - first) as f32 > x {
+                break;
+            }
+        }
+        let start = buffer.line_start(line);
+        let row = start + row.start..start + row.end;
+        Some(landing(buffer, &row, start + best))
+    }
+
+    fn row(
+        &self,
+        buffer: &Buffer,
+        offset: usize,
+        affinity: Affinity,
+    ) -> Range<usize> {
+        let Spot {
+            start,
+            content,
+            rel,
+            ..
+        } = buffer.spot(offset);
+        let rows = self.rows(content);
+        let row = rows.range(rows.index(rel, affinity));
+        start + row.start..start + row.end
     }
 
     fn page_rows(&self) -> u32 {
         self.page_rows
+    }
+}
+
+fn advance(column: u32, grapheme: &str, tab: u32) -> u32 {
+    if grapheme == "\t" {
+        let tab = tab.max(1);
+        (column / tab + 1) * tab
+    } else {
+        column + 1
+    }
+}
+
+/// The visual rows one line's text breaks into, as the byte offset
+/// each starts at. The first starts at 0.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Wrapped {
+    starts: Vec<usize>,
+    len: usize,
+}
+
+impl Wrapped {
+    /// `text` broken at `columns`, greedily before the word that
+    /// would pass the edge, or inside a word wider than a row. One
+    /// row with `None`. A tab advances to the next multiple of `tab`
+    /// columns. Whitespace hangs past the edge, so a row after the
+    /// first never starts with it.
+    pub fn wrap(
+        text: &str,
+        columns: Option<usize>,
+        tab: u32,
+    ) -> Wrapped {
+        let mut starts = Vec::from([0]);
+        let Some(columns) = columns else {
+            return Wrapped {
+                starts,
+                len: text.len(),
+            };
+        };
+        let (mut column, mut first) = (0, 0);
+        let mut word: Option<(usize, u32)> = None;
+        for (byte, grapheme) in graphemes(text) {
+            let space = grapheme.chars().all(char::is_whitespace);
+            if !space && (column - first) as usize >= columns {
+                let row = *starts.last().expect("a first row");
+                let (at, at_column) = word
+                    .filter(|&(at, _)| at > row)
+                    .unwrap_or((byte, column));
+                starts.push(at);
+                first = at_column;
+            }
+            if space {
+                word = None;
+            } else if word.is_none() {
+                word = Some((byte, column));
+            }
+            column = advance(column, grapheme, tab);
+        }
+        Wrapped {
+            starts,
+            len: text.len(),
+        }
+    }
+
+    /// The number of rows, at least 1.
+    pub fn count(&self) -> usize {
+        self.starts.len()
+    }
+
+    /// The row that holds the head at `at`, which is at most the
+    /// text's length.
+    pub fn index(&self, at: usize, affinity: Affinity) -> usize {
+        let after = match affinity {
+            Affinity::Downstream => {
+                self.starts.partition_point(|&start| start <= at)
+            }
+            Affinity::Upstream => {
+                self.starts.partition_point(|&start| start < at)
+            }
+        };
+        after.saturating_sub(1)
+    }
+
+    /// The bytes of row `index`, to the next row's start or the
+    /// text's end.
+    pub fn range(&self, index: usize) -> Range<usize> {
+        let end =
+            self.starts.get(index + 1).map_or(self.len, |&next| next);
+        self.starts[index]..end
     }
 }
 

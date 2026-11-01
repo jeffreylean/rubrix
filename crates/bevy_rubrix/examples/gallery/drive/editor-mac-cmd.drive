@@ -9,6 +9,19 @@ oskey mod+left
 wait 60 until caret 1 primary 1 23:1..23:1 visible true
 oskey mod+right
 wait 60 until caret 1 primary 1 23:41..23:41 visible true
+oskey alt+left
+wait 60 until caret 1 primary 1 23:39..23:39 visible true
+oskey home
+wait 60 until caret 1 primary 1 23:1..23:1 visible true
+oskey home
+oskey right
+wait 60 until caret 1 primary 1 23:2..23:2 visible true
+oskey mod+right
+wait 60 until caret 1 primary 1 23:41..23:41 visible true
+oskey alt+left
+wait 60 until caret 1 primary 1 23:39..23:39 visible true
+oskey shift+home
+wait 60 until caret 1 primary 1 23:1..23:39 visible true
 oskey mod+up
 wait 60 until caret 1 primary 1 1:1..1:1 visible true
 oskey mod+down
@@ -56,4 +69,53 @@ log undo
 expect undo 3 redo 0
 oskey mod+a
 wait 60 until caret 1 primary 1 1:1..10373:1 visible true
+move 740 400
+scroll 0 100000000
+wait 10
+click 734 68
+wait 60
+click 1250 500
+key space
+type abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd
+wait 10
+log text 23
+expect text 23 "            Tone::Body => hex(0xFCFCFA), abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd abcd"
+log row 23
+expect row 23 top 374 height 34 lines 2
+click 306.6 500
+log caret
+expect caret 1 primary 1 23:5..23:5 visible true
+oskey end
+wait 60 until caret 1 primary 1 23:112..23:112 visible true
+log ime
+expect ime caret 1203 509
+oskey end
+wait 60 until caret 1 primary 1 23:112..23:112 visible true
+log ime
+expect ime caret 1203 509
+oskey mod+left
+wait 60 until caret 1 primary 1 23:13..23:13 visible true
+oskey home
+wait 60 until caret 1 primary 1 23:1..23:1 visible true
+click 306.6 517
+log caret
+expect caret 1 primary 1 23:116..23:116 visible true
+log ime
+expect ime caret 305 526
+oskey mod+left
+wait 60 until caret 1 primary 1 23:112..23:112 visible true
+log ime
+expect ime caret 271 526
+oskey home
+wait 60 until caret 1 primary 1 23:112..23:112 visible true
+log ime
+expect ime caret 271 526
+oskey end
+wait 60 until caret 1 primary 1 23:161..23:161 visible true
+log ime
+expect ime caret 683 526
+oskey shift+home
+wait 60 until caret 1 primary 1 23:112..23:161 visible true
+oskey mod+shift+left
+wait 60 until caret 1 primary 1 23:112..23:161 visible true
 exit

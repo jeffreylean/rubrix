@@ -7,7 +7,7 @@ use core::ops::Range;
 use rubrix_highlight::Lines;
 
 use crate::buffer::Buffer;
-use crate::motion::{Layout, word_at};
+use crate::motion::{Affinity, Layout, word_at};
 use crate::selection::{Selection, Selections};
 
 /// Mod+D: selects the word at each caret when there is a caret, or
@@ -61,7 +61,7 @@ fn expand_carets(
     };
     let mut expanded = selections.clone();
     let mut changed = false;
-    expanded.update(|selection, _| {
+    expanded.update(|selection, _, _| {
         if !selection.is_caret() {
             return selection;
         }
@@ -174,8 +174,11 @@ pub fn column(
             .into_iter()
             .find(|&at| buffer.line_of(at) == line)
             .unwrap_or_else(|| buffer.line_start(line));
-        let at =
-            |x| layout.vertical(buffer, row, 0, x).unwrap_or(row);
+        let at = |x| {
+            layout
+                .vertical(buffer, row, Affinity::Downstream, 0, x)
+                .map_or(row, |(at, _)| at)
+        };
         Selection {
             anchor: at(from.1),
             head: at(to.1),

@@ -36,8 +36,10 @@ use bevy_fynix::views::{
     VirtualList, drawn_layout, remeasure as remeasure_rows,
     rich_point,
 };
-use parley::{Affinity, Cursor, Layout as Parley};
-use rubrix_edit::{Buffer, Layout, graphemes};
+use parley::{Cursor, Layout as Parley};
+use rubrix_edit::{
+    Affinity, Buffer, Layout, TAB, Wrapped, graphemes,
+};
 use rubrix_highlight::LineEdit;
 
 use crate::code_view::Overflow;
@@ -226,12 +228,16 @@ impl Laid<'_> {
         1.0 / self.node.inverse_scale_factor()
     }
 
-    fn caret(&self, shown_byte: usize) -> CaretBox {
+    fn caret(
+        &self,
+        shown_byte: usize,
+        affinity: Affinity,
+    ) -> CaretBox {
         let logical = self.node.inverse_scale_factor();
         let bbox = Cursor::from_byte_index(
             self.layout,
             shown_byte,
-            Affinity::Downstream,
+            parley_affinity(affinity),
         )
         .geometry(self.layout, CARET_WIDTH * self.scale());
         let middle = ((bbox.y0 + bbox.y1) / 2.0) as f32;
@@ -271,37 +277,19 @@ impl Laid<'_> {
             (metrics.block_min_coord + metrics.block_max_coord) / 2.0;
         Cursor::from_point(self.layout, x * self.scale(), y).index()
     }
+
+    fn row(&self, visual: u32) -> Range<usize> {
+        self.layout
+            .get(visual as usize)
+            .map_or(0..0, |line| line.text_range())
+    }
 }
 
-/// The visual lines a row of `text` breaks into at `columns`,
-/// greedily at word starts, as the start of each in graphemes, and
-/// the row's length in graphemes.
-fn wrapped(
-    text: &str,
-    columns: Option<usize>,
-) -> (Vec<usize>, usize) {
-    let mut starts = vec![0];
-    let mut column = 0;
-    let mut word: Option<usize> = None;
-    for (_, grapheme) in graphemes(text) {
-        let space = grapheme.chars().all(char::is_whitespace);
-        if let Some(columns) = columns.filter(|_| !space) {
-            let line = *starts.last().expect("a first line");
-            if column - line >= columns {
-                let at = word
-                    .filter(|&word| word > line)
-                    .unwrap_or(column);
-                starts.push(at);
-            }
-        }
-        if space {
-            word = None;
-        } else if word.is_none() {
-            word = Some(column);
-        }
-        column += 1;
+fn parley_affinity(affinity: Affinity) -> parley::Affinity {
+    match affinity {
+        Affinity::Downstream => parley::Affinity::Downstream,
+        Affinity::Upstream => parley::Affinity::Upstream,
     }
-    (starts, column)
 }
 
 /// One view's rows as geometry: byte to caret box, point to byte, and
@@ -384,18 +372,25 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         })
     }
 
+    fn unlaid_rows(&self, shown: &Shown) -> Wrapped {
+        Wrapped::wrap(shown.text(), self.columns(), TAB as u32)
+    }
+
     /// The estimate of an unlaid row's caret at drawn byte `at`.
-    fn estimate(&self, shown: &Shown, at: usize) -> CaretBox {
-        let (starts, _) = wrapped(shown.text(), self.columns());
-        let before = &shown.text()[..at.min(shown.text().len())];
-        let column = graphemes(before).count();
-        let visual = starts
-            .partition_point(|&start| start <= column)
-            .saturating_sub(1);
+    fn estimate(
+        &self,
+        shown: &Shown,
+        at: usize,
+        affinity: Affinity,
+    ) -> CaretBox {
+        let at = at.min(shown.text().len());
+        let rows = self.unlaid_rows(shown);
+        let visual = rows.index(at, affinity);
+        let row = rows.range(visual);
+        let column = graphemes(&shown.text()[row.start..at]).count();
         CaretBox {
             visual: visual as u32,
-            x: (column - starts[visual]) as f32
-                * self.metrics.advance,
+            x: column as f32 * self.metrics.advance,
             top: visual as f32 * self.metrics.line_height,
             height: self.metrics.line_height,
         }
@@ -407,10 +402,11 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         line: u32,
         shown: &Shown,
         at: usize,
+        affinity: Affinity,
     ) -> CaretBox {
         match self.laid(line) {
-            Some(laid) => laid.caret(at),
-            None => self.estimate(shown, at),
+            Some(laid) => laid.caret(at, affinity),
+            None => self.estimate(shown, at, affinity),
         }
     }
 
@@ -419,21 +415,40 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         &self,
         buffer: &Buffer,
         offset: usize,
+        affinity: Affinity,
     ) -> CaretBox {
         let line = buffer.line_of(offset);
         let shown = self.shown(buffer, line);
         let at = shown.shown(offset - buffer.line_start(line));
-        self.caret_in(line, &shown, at)
+        self.caret_in(line, &shown, at, affinity)
     }
 
     fn visual_lines(&self, buffer: &Buffer, line: u32) -> u32 {
         match self.laid(line) {
             Some(laid) => laid.layout.len().max(1) as u32,
-            None => {
-                let shown = self.shown(buffer, line);
-                wrapped(shown.text(), self.columns()).0.len() as u32
-            }
+            None => self
+                .unlaid_rows(&self.shown(buffer, line))
+                .count() as u32,
         }
+    }
+
+    fn row_at(
+        &self,
+        buffer: &Buffer,
+        line: u32,
+        visual: u32,
+    ) -> Range<usize> {
+        let shown = self.shown(buffer, line);
+        let drawn = match self.laid(line) {
+            Some(laid) => laid.row(visual),
+            None => {
+                let rows = self.unlaid_rows(&shown);
+                rows.range((visual as usize).min(rows.count() - 1))
+            }
+        };
+        let start = buffer.line_start(line);
+        start + shown.source(drawn.start)
+            ..start + shown.source(drawn.end)
     }
 
     /// The byte offset nearest `x` on visual line `visual` of `line`.
@@ -448,19 +463,15 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         let drawn = match self.laid(line) {
             Some(laid) => laid.byte_at(visual, x),
             None => {
-                let (starts, length) =
-                    wrapped(shown.text(), self.columns());
-                let visual = (visual as usize).min(starts.len() - 1);
-                let end = starts
-                    .get(visual + 1)
-                    .map_or(length, |&next| next);
+                let rows = self.unlaid_rows(&shown);
+                let row = rows
+                    .range((visual as usize).min(rows.count() - 1));
                 let column = (x / self.metrics.advance.max(1.0))
                     .round()
                     .max(0.0) as usize;
-                let column = (starts[visual] + column).min(end);
-                graphemes(shown.text())
+                graphemes(&shown.text()[row.clone()])
                     .nth(column)
-                    .map_or(shown.text().len(), |(at, _)| at)
+                    .map_or(row.end, |(at, _)| row.start + at)
             }
         };
         buffer.line_start(line) + shown.source(drawn)
@@ -521,7 +532,7 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
             ))
         });
         let offset = pointed.map_or(start, |(offset, _)| offset);
-        let x = self.caret(buffer, offset).x;
+        let x = self.caret(buffer, offset, Affinity::Downstream).x;
         let pointer = pointed.map_or(x, |(_, pointer)| pointer);
         over.caret_x = x;
         Some((
@@ -543,15 +554,26 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
         &self,
         buffer: &Buffer,
         head: usize,
+        affinity: Affinity,
     ) -> Reveal {
         let line = buffer.line_of(head);
         let shown = self.shown(buffer, line);
         let rel = head - buffer.line_start(line);
         let marks =
             self.marks.into_iter().flat_map(|marks| marks.on(line));
-        let into = composing(marks, rel).flatten().unwrap_or(0);
-        let caret =
-            self.caret_in(line, &shown, shown.shown(rel) + into);
+        let preedit = composing(marks, rel);
+        let into = preedit.flatten().unwrap_or(0);
+        let affinity = if preedit.is_some() {
+            Affinity::Downstream
+        } else {
+            affinity
+        };
+        let caret = self.caret_in(
+            line,
+            &shown,
+            shown.shown(rel) + into,
+            affinity,
+        );
         let y = if self.laid(line).is_some() {
             caret.top..caret.top + caret.height
         } else {
@@ -578,8 +600,13 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
 }
 
 impl Layout for Geometry<'_, '_, '_> {
-    fn x(&self, buffer: &Buffer, offset: usize) -> f32 {
-        self.caret(buffer, offset).x
+    fn x(
+        &self,
+        buffer: &Buffer,
+        offset: usize,
+        affinity: Affinity,
+    ) -> f32 {
+        self.caret(buffer, offset, affinity).x
     }
 
     /// Walks visual lines a row at a time, so Page Down walks one
@@ -588,12 +615,14 @@ impl Layout for Geometry<'_, '_, '_> {
         &self,
         buffer: &Buffer,
         from: usize,
+        affinity: Affinity,
         rows: i32,
         x: f32,
-    ) -> Option<usize> {
+    ) -> Option<(usize, Affinity)> {
         let mut line = buffer.line_of(from);
-        let mut visual = i64::from(self.caret(buffer, from).visual)
-            + i64::from(rows);
+        let mut visual =
+            i64::from(self.caret(buffer, from, affinity).visual)
+                + i64::from(rows);
         loop {
             if visual < 0 {
                 line = line.checked_sub(1)?;
@@ -609,13 +638,24 @@ impl Layout for Geometry<'_, '_, '_> {
                 line += 1;
                 continue;
             }
-            return Some(self.byte_at(
-                buffer,
-                line,
-                visual as u32,
-                x,
-            ));
+            let visual = visual as u32;
+            let at = self.byte_at(buffer, line, visual, x);
+            let row = self.row_at(buffer, line, visual);
+            let affinity =
+                Affinity::on_row(at, &row, buffer.line_end(line));
+            return Some((at, affinity));
         }
+    }
+
+    fn row(
+        &self,
+        buffer: &Buffer,
+        offset: usize,
+        affinity: Affinity,
+    ) -> Range<usize> {
+        let line = buffer.line_of(offset);
+        let visual = self.caret(buffer, offset, affinity).visual;
+        self.row_at(buffer, line, visual)
     }
 
     fn page_rows(&self) -> u32 {
@@ -953,8 +993,12 @@ pub(crate) fn draw(
                     && range.start <= start
                     && range.end > end
                 {
-                    let caret =
-                        geometry.caret_in(row.line, &shown, 0);
+                    let caret = geometry.caret_in(
+                        row.line,
+                        &shown,
+                        0,
+                        Affinity::Downstream,
+                    );
                     let half = metrics.advance / 2.0;
                     let rect = [
                         0.0,
@@ -984,10 +1028,13 @@ pub(crate) fn draw(
         let origin =
             overlay_at.translation + overlay.border_box().min;
         let kids = kids.map_or(&[][..], |kids| &kids[..]);
-        let primary = editor.selections().primary();
+        let selections = editor.selections();
+        let primary = selections.primary();
+        let primary_affinity =
+            selections.affinity(selections.primary_index());
         let mut caret = None;
         let mut used = 0;
-        for selection in editor.selections().iter() {
+        for (index, selection) in selections.iter().enumerate() {
             let head = selection.head;
             let line = buffer.line_of(head);
             let Some(laid) = geometry.laid(line) else {
@@ -995,10 +1042,14 @@ pub(crate) fn draw(
             };
             let rel = head - buffer.line_start(line);
             let mut at = geometry.shown(buffer, line).shown(rel);
+            let mut affinity = selections.affinity(index);
             let mut drawn = true;
             if selection == primary {
                 match composing(marks.on(line), rel) {
-                    Some(Some(into)) => at += into,
+                    Some(Some(into)) => {
+                        at += into;
+                        affinity = Affinity::Downstream;
+                    }
                     Some(None) => drawn = false,
                     None => {}
                 }
@@ -1007,7 +1058,7 @@ pub(crate) fn draw(
             let bbox = Cursor::from_byte_index(
                 laid.layout,
                 at,
-                Affinity::Downstream,
+                parley_affinity(affinity),
             )
             .geometry(laid.layout, CARET_WIDTH * scale);
             let corner = (laid.transform.translation
@@ -1089,8 +1140,9 @@ pub(crate) fn draw(
                 centre.cmpge(min).all() && centre.cmple(max).all()
             })
         });
-        let again = (input.acted && !shown)
-            .then(|| geometry.reveal(buffer, primary.head));
+        let again = (input.acted && !shown).then(|| {
+            geometry.reveal(buffer, primary.head, primary_affinity)
+        });
         let drawn = &mut edit.bypass_change_detection().drawn;
         drawn.caret = caret;
         drawn.shown = shown;
@@ -1101,29 +1153,5 @@ pub(crate) fn draw(
         {
             reveal.to(&mut list);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_row_wraps_before_the_word_that_overflows() {
-        assert_eq!(wrapped("let x = 1;", None), (vec![0], 10));
-        assert_eq!(
-            wrapped("aaa bbb ccc", Some(5)),
-            (vec![0, 4, 8], 11)
-        );
-        assert_eq!(
-            wrapped("abcdefgh", Some(3)).0,
-            [0, 3, 6],
-            "a long word breaks at the column"
-        );
-        assert_eq!(
-            wrapped("ab    cd", Some(4)).0,
-            [0, 6],
-            "spaces hang past the edge"
-        );
     }
 }

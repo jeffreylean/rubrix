@@ -6,7 +6,6 @@ wait 10
 click 1250 211
 paste 李李李李李李李李李李
 key home
-key home
 wait 5
 click 734 68
 wait 5

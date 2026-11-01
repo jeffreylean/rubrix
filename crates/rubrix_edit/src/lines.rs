@@ -298,7 +298,7 @@ fn shifted(
 ) -> Selections {
     let mut after = selections.clone();
     let mut block = 0;
-    after.update(|selection, _| {
+    after.update(|selection, _, _| {
         let line = buffer.line_of(selection.start());
         while blocks[block].end <= line {
             block += 1;
@@ -326,7 +326,7 @@ pub(crate) fn blank_line_below(
     let mut opened: Option<(u32, usize)> = None;
     let mut added = 0;
     let mut after = selections.clone();
-    after.update(|selection, _| {
+    after.update(|selection, _, _| {
         let line = buffer.line_of(selection.head);
         if let Some((done, caret)) = opened
             && done == line
@@ -360,7 +360,7 @@ pub(crate) fn transpose(
 ) -> Option<Plan> {
     let mut edits: Vec<(Range<usize>, String)> = Vec::new();
     let mut after = selections.clone();
-    after.update(|selection, _| {
+    after.update(|selection, _, _| {
         if !selection.is_caret() {
             return selection;
         }

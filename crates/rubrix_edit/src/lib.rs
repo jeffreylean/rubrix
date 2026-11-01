@@ -30,7 +30,9 @@ pub use buffer::{Buffer, Eol};
 pub use change::{Assoc, Change, Replacement};
 pub use command::{Command, Editor};
 pub use history::History;
-pub use motion::{Layout, Monospace, Motion, graphemes, word_at};
+pub use motion::{
+    Affinity, Layout, Monospace, Motion, Wrapped, graphemes, word_at,
+};
 pub use selection::{Selection, Selections};
 
 #[cfg(feature = "std")]

@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 use core::ops::Range;
 
 use crate::change::{Assoc, Change};
+use crate::motion::Affinity;
 
 /// A selected range of a text. `head` is where the caret is drawn and
 /// what motions move, and `anchor` is the end that stays when Shift
@@ -56,6 +57,8 @@ struct Item {
     /// The x of the last vertical motion, which the next one aims
     /// for. Every other command clears it.
     goal: Option<f32>,
+    /// The row the head is on at a wrap point.
+    affinity: Affinity,
 }
 
 impl Item {
@@ -86,7 +89,16 @@ impl Item {
                 head: start,
             }
         };
-        Item { selection, ..newer }
+        let affinity = if selection.head == own.head {
+            newer.affinity
+        } else {
+            Affinity::Downstream
+        };
+        Item {
+            selection,
+            affinity,
+            ..newer
+        }
     }
 }
 
@@ -96,7 +108,8 @@ impl Item {
 /// Each selection remembers when it was added, and the primary is the
 /// one added last, as in Pierre. Selections that come to overlap
 /// merge into their union, which takes the newest member's slot: its
-/// age, its direction and its goal x. So a merge never loses the
+/// age, its direction, its goal x, and its affinity when the union's
+/// head is its own. So a merge never loses the
 /// primary. As in Pierre, two ranges overlap when they share a byte,
 /// so ranges that only touch stay apart, which lets adjacent
 /// occurrences be selected at once. A caret overlaps a range that
@@ -115,6 +128,7 @@ impl Selections {
                 selection,
                 age: 0,
                 goal: None,
+                affinity: Affinity::Downstream,
             }]),
             next_age: 1,
         }
@@ -136,6 +150,16 @@ impl Selections {
         self.items.iter().map(|item| item.selection)
     }
 
+    /// The affinity of the head of the selection at `index` in
+    /// [`Selections::iter`] order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is not below `len()`.
+    pub fn affinity(&self, index: usize) -> Affinity {
+        self.items[index].affinity
+    }
+
     /// The selection added last.
     pub fn primary(&self) -> Selection {
         self.items[self.primary_index()].selection
@@ -155,6 +179,7 @@ impl Selections {
             selection,
             age: self.next_age,
             goal: None,
+            affinity: Affinity::Downstream,
         });
         self.next_age += 1;
         self.normalize();
@@ -182,7 +207,7 @@ impl Selections {
     /// own text, not after the text typed over a range that touches
     /// it.
     pub(crate) fn map_through(&mut self, change: &Change) {
-        self.update(|selection, _| {
+        self.update(|selection, _, _| {
             let start = change.map(selection.start(), Assoc::After);
             let end = if selection.is_caret() {
                 start
@@ -203,14 +228,20 @@ impl Selections {
         });
     }
 
-    /// Replaces every selection with `f(selection, goal)`. `f` reads
-    /// and may set the goal x. Then merges.
+    /// Replaces every selection with `f(selection, goal, affinity)`.
+    /// `f` reads and may set the goal x and the head's affinity. Then
+    /// merges.
     pub(crate) fn update(
         &mut self,
-        mut f: impl FnMut(Selection, &mut Option<f32>) -> Selection,
+        mut f: impl FnMut(
+            Selection,
+            &mut Option<f32>,
+            &mut Affinity,
+        ) -> Selection,
     ) {
         for item in &mut self.items {
-            item.selection = f(item.selection, &mut item.goal);
+            item.selection =
+                f(item.selection, &mut item.goal, &mut item.affinity);
         }
         self.normalize();
     }
@@ -224,6 +255,12 @@ impl Selections {
     pub(crate) fn clear_goals(&mut self) {
         for item in &mut self.items {
             item.goal = None;
+        }
+    }
+
+    pub(crate) fn reset_affinity(&mut self) {
+        for item in &mut self.items {
+            item.affinity = Affinity::Downstream;
         }
     }
 

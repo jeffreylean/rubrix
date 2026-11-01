@@ -442,7 +442,7 @@ expect text 50000 "        let mut app = app();xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 log text 50001
 expect text 50001 "        let node = mount::<Test>("
 log caret
-expect caret 1 primary 1 50000:9..50000:9 visible true
+expect caret 1 primary 1 50000:1..50000:1 visible true
 log typing
 expect typing hidden 0
 log caret

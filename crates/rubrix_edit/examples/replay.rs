@@ -516,7 +516,11 @@ fn replay(
                     let at = at(pos, &editor)?;
                     Ok::<_, String>((
                         at,
-                        layout.x(editor.buffer(), at),
+                        layout.x(
+                            editor.buffer(),
+                            at,
+                            rubrix_edit::Affinity::Downstream,
+                        ),
                     ))
                 };
                 let selections = column(

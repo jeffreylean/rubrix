@@ -1,6 +1,7 @@
+use rubrix_edit::Affinity::{self, Downstream, Upstream};
 use rubrix_edit::{
-    Buffer, Command, Editor, History, Layout, Monospace, Motion,
-    Selection, Selections,
+    Buffer, Command, EditState, Editor, History, Layout, Monospace,
+    Motion, Selection, Selections, Wrapped,
 };
 
 mod common;
@@ -172,6 +173,18 @@ fn home_toggles_between_the_indent_and_column_zero() {
 }
 
 #[test]
+fn line_start_goes_to_column_zero_from_anywhere_on_the_line() {
+    let text = "first\n    let x = 1;";
+    for at in [text.len(), 10, 6] {
+        let mut editor = editor_at(text, at);
+        assert_eq!(
+            stops(&mut editor, go(Motion::LineStart), 2),
+            [6, 6]
+        );
+    }
+}
+
+#[test]
 fn end_and_document_motions() {
     let text = "ab\r\ncd\nef";
     let mut editor = editor_at(text, 0);
@@ -209,8 +222,8 @@ fn page_motion_moves_page_rows() {
         (0..100).map(|n| format!("{n:03}\n")).collect();
     let mut editor = editor_at(&text, 1);
     let layout = Monospace {
-        tab: 4,
         page_rows: 10,
+        ..Monospace::default()
     };
     let _ = editor.apply(go(Motion::PageDown), &layout);
     assert_eq!(head(&editor), 41);
@@ -224,13 +237,326 @@ fn page_motion_moves_page_rows() {
 fn monospace_counts_tabs_to_the_next_stop() {
     let buffer = Buffer::new("\tab\n  \tc\nxxxxxxxxx");
     let layout = Monospace::default();
-    assert_eq!(layout.x(&buffer, 1), 4.0);
-    assert_eq!(layout.x(&buffer, 3), 6.0);
-    assert_eq!(layout.x(&buffer, 7), 4.0);
-    assert_eq!(layout.vertical(&buffer, 13, -1, 3.0), Some(6));
-    assert_eq!(layout.vertical(&buffer, 13, -2, 2.0), Some(0));
-    assert_eq!(layout.vertical(&buffer, 13, -3, 2.0), None);
-    assert_eq!(layout.vertical(&buffer, 0, 3, 2.0), None);
+    let x = |at| layout.x(&buffer, at, Downstream);
+    assert_eq!(x(1), 4.0);
+    assert_eq!(x(3), 6.0);
+    assert_eq!(x(7), 4.0);
+    let up =
+        |rows, x| layout.vertical(&buffer, 13, Downstream, rows, x);
+    assert_eq!(up(-1, 3.0), Some((6, Downstream)));
+    assert_eq!(up(-2, 2.0), Some((0, Downstream)));
+    assert_eq!(up(-3, 2.0), None);
+    assert_eq!(layout.vertical(&buffer, 0, Downstream, 3, 2.0), None);
+    assert_eq!(
+        layout.vertical(&buffer, 0, Downstream, 1, f32::INFINITY),
+        Some((8, Downstream)),
+        "an x past the row's end lands on its end"
+    );
+}
+
+const INDENTED: &str = "  abcdefghij  klmnop";
+
+struct WrapAt(&'static [usize]);
+
+impl WrapAt {
+    fn wrapped(&self, buffer: &Buffer, line: u32) -> SoftRows {
+        SoftRows(
+            self.0,
+            buffer.line_end(line) - buffer.line_start(line),
+        )
+    }
+}
+
+struct SoftRows(&'static [usize], usize);
+
+impl SoftRows {
+    fn index(&self, at: usize, affinity: Affinity) -> usize {
+        let after = match affinity {
+            Downstream => {
+                self.0.partition_point(|&start| start <= at)
+            }
+            Upstream => self.0.partition_point(|&start| start < at),
+        };
+        after.saturating_sub(1)
+    }
+
+    fn range(&self, index: usize) -> std::ops::Range<usize> {
+        self.0[index]
+            ..self.0.get(index + 1).map_or(self.1, |&next| next)
+    }
+
+    fn count(&self) -> i32 {
+        self.0.len() as i32
+    }
+}
+
+impl Layout for WrapAt {
+    fn x(
+        &self,
+        buffer: &Buffer,
+        offset: usize,
+        affinity: Affinity,
+    ) -> f32 {
+        let line = buffer.line_of(offset);
+        let rel = offset - buffer.line_start(line);
+        let rows = self.wrapped(buffer, line);
+        (rel - rows.range(rows.index(rel, affinity)).start) as f32
+    }
+
+    fn vertical(
+        &self,
+        buffer: &Buffer,
+        from: usize,
+        affinity: Affinity,
+        rows: i32,
+        x: f32,
+    ) -> Option<(usize, Affinity)> {
+        let mut line = buffer.line_of(from);
+        let rel = from - buffer.line_start(line);
+        let mut index =
+            self.wrapped(buffer, line).index(rel, affinity) as i32
+                + rows;
+        while index < 0 {
+            line = line.checked_sub(1)?;
+            index += self.wrapped(buffer, line).count();
+        }
+        while index >= self.wrapped(buffer, line).count() {
+            index -= self.wrapped(buffer, line).count();
+            line += 1;
+            if line >= buffer.line_count() {
+                return None;
+            }
+        }
+        let start = buffer.line_start(line);
+        let row = self.wrapped(buffer, line).range(index as usize);
+        let at = (row.start + x as usize).min(row.end);
+        let line_end = buffer.line_end(line);
+        let row = start + row.start..start + row.end;
+        Some((
+            start + at,
+            Affinity::on_row(start + at, &row, line_end),
+        ))
+    }
+
+    fn row(
+        &self,
+        buffer: &Buffer,
+        offset: usize,
+        affinity: Affinity,
+    ) -> std::ops::Range<usize> {
+        let line = buffer.line_of(offset);
+        let start = buffer.line_start(line);
+        let rows = self.wrapped(buffer, line);
+        let row = rows.range(rows.index(offset - start, affinity));
+        start + row.start..start + row.end
+    }
+
+    fn page_rows(&self) -> u32 {
+        1
+    }
+}
+
+const INDENTED_ROWS: WrapAt = WrapAt(&[0, 12]);
+
+fn heads(editor: &Editor) -> (usize, Affinity) {
+    let selections = editor.selections();
+    (selections.primary().head, selections.affinity(0))
+}
+
+#[test]
+fn home_and_end_resolve_on_the_soft_row() {
+    let mut editor = editor_at(INDENTED, 16);
+    let _ = editor.apply(go(Motion::LineStart), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (12, Downstream), "start");
+    let mut editor = editor_at(INDENTED, 16);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (20, Downstream), "end");
+    let mut editor = editor_at(INDENTED, 16);
+    let _ = editor.apply(go(Motion::Home), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (14, Downstream), "textStart");
+    let _ = editor.apply(go(Motion::Home), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (12, Downstream), "textStart again");
+}
+
+#[test]
+fn end_on_a_wrapped_row_stays_upstream_of_the_break() {
+    let mut editor = editor_at(INDENTED, 5);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (12, Upstream));
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (12, Upstream), "a second End stays");
+    let _ = editor.apply(go(Motion::Home), &INDENTED_ROWS);
+    assert_eq!(
+        heads(&editor),
+        (2, Downstream),
+        "Home goes to row 0's indent"
+    );
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
+    let _ = editor.apply(go(Motion::LineStart), &INDENTED_ROWS);
+    assert_eq!(
+        heads(&editor),
+        (0, Downstream),
+        "LineStart goes to row 0's start"
+    );
+}
+
+#[test]
+fn home_on_a_continuation_row_stays_on_it() {
+    let mut editor = editor_at(INDENTED, 12);
+    let _ = editor.apply(go(Motion::Home), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (14, Downstream));
+    let _ = editor.apply(go(Motion::Home), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (12, Downstream));
+    let _ = editor.apply(go(Motion::LineStart), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (12, Downstream));
+}
+
+#[test]
+fn vertical_motion_from_a_row_end_keeps_its_row() {
+    let text = format!("{INDENTED}\n{INDENTED}");
+    let mut editor = editor_at(&text, 5);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (12, Upstream));
+    let _ = editor.apply(go(Motion::Down), &INDENTED_ROWS);
+    assert_eq!(
+        heads(&editor),
+        (20, Downstream),
+        "down lands at the end of row 1"
+    );
+    let _ = editor.apply(go(Motion::Up), &INDENTED_ROWS);
+    assert_eq!(
+        heads(&editor),
+        (12, Upstream),
+        "up comes back to the end of row 0"
+    );
+    let _ = editor.apply(go(Motion::Up), &INDENTED_ROWS);
+    assert_eq!(
+        heads(&editor),
+        (0, Downstream),
+        "up on the first row goes to the text's start"
+    );
+    let mut editor = editor_at(&text, 2);
+    let _ = editor.apply(go(Motion::Down), &INDENTED_ROWS);
+    assert_eq!(
+        heads(&editor),
+        (14, Downstream),
+        "down from row 0 lands on row 1 of the same line"
+    );
+    let _ = editor.apply(go(Motion::Down), &INDENTED_ROWS);
+    assert_eq!(
+        heads(&editor),
+        (23, Downstream),
+        "then on the next line"
+    );
+}
+
+#[test]
+fn typing_and_selection_changes_reset_the_affinity() {
+    let mut editor = editor_at(INDENTED, 5);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (12, Upstream));
+    let _ = editor.apply(Command::Type("x"), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (13, Downstream));
+    let mut editor = editor_at(INDENTED, 5);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
+    editor.set_selections(Selections::new(Selection::caret(12)));
+    assert_eq!(heads(&editor), (12, Downstream));
+    let mut editor = editor_at(INDENTED, 5);
+    let _ = editor.apply(shift(Motion::End), &INDENTED_ROWS);
+    assert_eq!(heads(&editor), (12, Upstream));
+    let _ = editor.apply(shift(Motion::Right), &INDENTED_ROWS);
+    assert_eq!(
+        heads(&editor),
+        (13, Downstream),
+        "an extended Right steps on from the break"
+    );
+    assert_eq!(selection(&editor).anchor, 5);
+}
+
+#[test]
+fn a_kept_head_keeps_its_affinity_through_a_save_and_a_merge() {
+    let mut editor = editor_at(INDENTED, 5);
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
+    let restored = EditState::save(&editor, 0).restore();
+    assert_eq!(heads(&restored), (12, Upstream));
+    let mut selections = Selections::new(Selection::caret(2));
+    selections.add(Selection::caret(5));
+    let mut editor = Editor::from_parts(
+        Buffer::new(INDENTED),
+        selections,
+        History::new(),
+    );
+    let _ = editor.apply(go(Motion::End), &INDENTED_ROWS);
+    assert_eq!(editor.selections().len(), 1);
+    assert_eq!(heads(&editor), (12, Upstream));
+}
+
+#[test]
+fn a_wrapping_monospace_breaks_before_the_word_that_overflows() {
+    let starts = |text, columns| {
+        let rows = Wrapped::wrap(text, columns, 4);
+        (0..rows.count())
+            .map(|i| rows.range(i).start)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(starts("let x = 1;", None), [0]);
+    assert_eq!(starts("aaa bbb ccc", Some(5)), [0, 4, 8]);
+    assert_eq!(
+        starts("abcdefgh", Some(3)),
+        [0, 3, 6],
+        "a long word breaks at the column"
+    );
+    assert_eq!(
+        starts("ab    cd", Some(4)),
+        [0, 6],
+        "spaces hang past the edge"
+    );
+    assert_eq!(
+        starts("\tab cd", Some(6)),
+        [0, 4],
+        "a tab takes its stop's columns"
+    );
+    assert_eq!(
+        starts("é你好", Some(2)),
+        [0, 5],
+        "rows start on grapheme boundaries"
+    );
+}
+
+#[test]
+fn end_and_home_on_a_mid_word_break() {
+    let layout = Monospace {
+        columns: Some(4),
+        ..Monospace::default()
+    };
+    let text = "abcdefgh\nij";
+    let mut editor = editor_at(text, 1);
+    let _ = editor.apply(go(Motion::End), &layout);
+    assert_eq!(heads(&editor), (4, Upstream));
+    let _ = editor.apply(go(Motion::Right), &layout);
+    assert_eq!(heads(&editor), (5, Downstream));
+    let _ = editor.apply(go(Motion::Home), &layout);
+    assert_eq!(
+        heads(&editor),
+        (4, Downstream),
+        "Home on row 1 goes to its start"
+    );
+    let _ = editor.apply(go(Motion::End), &layout);
+    assert_eq!(
+        heads(&editor),
+        (8, Downstream),
+        "End on the last row is the line's end"
+    );
+    let _ = editor.apply(go(Motion::Down), &layout);
+    assert_eq!(heads(&editor), (11, Downstream));
+    let _ = editor.apply(go(Motion::Up), &layout);
+    assert_eq!(
+        heads(&editor),
+        (8, Downstream),
+        "up keeps the goal x of the End before the short line"
+    );
+    assert_eq!(layout.x(editor.buffer(), 4, Upstream), 4.0);
+    assert_eq!(layout.x(editor.buffer(), 4, Downstream), 0.0);
 }
 
 #[test]
@@ -320,12 +646,13 @@ fn on_a_boundary(text: &str, at: usize) -> bool {
 
 #[test]
 fn random_motions_keep_carets_on_boundaries() {
-    const MOTIONS: [Motion; 12] = [
+    const MOTIONS: [Motion; 13] = [
         Motion::Left,
         Motion::Right,
         Motion::WordLeft,
         Motion::WordRight,
         Motion::Home,
+        Motion::LineStart,
         Motion::End,
         Motion::Up,
         Motion::Down,
@@ -339,8 +666,9 @@ fn random_motions_keep_carets_on_boundaries() {
     let text =
         format!("{CLUSTERS}\r\n\tfoo_bar(é)\r\n\r\n  你好 x\r\n");
     let layout = Monospace {
-        tab: 4,
         page_rows: 2,
+        columns: Some(6),
+        ..Monospace::default()
     };
     let mut selections = Selections::new(Selection::caret(0));
     for _ in 0..4 {
@@ -358,7 +686,7 @@ fn random_motions_keep_carets_on_boundaries() {
             2 => Command::Type("é🎉"),
             3 => Command::Enter,
             _ => Command::Move {
-                motion: MOTIONS[rng.below(12) as usize],
+                motion: MOTIONS[rng.below(13) as usize],
                 extend: rng.chance(40),
             },
         };

@@ -9,8 +9,8 @@ use crate::buffer::Buffer;
 use crate::change::{Change, Move};
 use crate::history::{History, Kind};
 use crate::motion::{
-    Layout, Motion, indent, next_grapheme, prev_grapheme, snap,
-    word_stop,
+    Affinity, Layout, Motion, indent, next_grapheme, prev_grapheme,
+    snap, word_stop,
 };
 use crate::selection::{Selection, Selections};
 use crate::{comment, lines, occurrence, surround};
@@ -190,15 +190,21 @@ impl Editor {
     /// Replaces the selections. Clamps each end to the text and moves
     /// it back to a grapheme boundary, so no caret sits inside a
     /// cluster or between a `\r` and its `\n`, then merges selections
-    /// that came to overlap. Clears every goal x.
+    /// that came to overlap. Clears every goal x. A head the snap
+    /// leaves in place keeps its affinity, and a head it moves is
+    /// `Downstream`.
     pub fn set_selections(&mut self, selections: Selections) {
         let buffer = &self.buffer;
         self.selections = selections;
-        self.selections.update(|selection, goal| {
+        self.selections.update(|selection, goal, affinity| {
             *goal = None;
+            let head = snap(buffer, selection.head);
+            if head != selection.head {
+                *affinity = Affinity::Downstream;
+            }
             Selection {
                 anchor: snap(buffer, selection.anchor),
-                head: snap(buffer, selection.head),
+                head,
             }
         });
     }
@@ -231,6 +237,9 @@ impl Editor {
             }
         ) {
             self.selections.clear_goals();
+        }
+        if !matches!(command, Command::Move { .. }) {
+            self.selections.reset_affinity();
         }
         match command {
             Command::Type(text) => {
@@ -315,7 +324,7 @@ impl Editor {
                 if self.selections.len() > 1 {
                     self.selections.keep_primary();
                 } else {
-                    self.selections.update(|selection, _| {
+                    self.selections.update(|selection, _, _| {
                         Selection::caret(selection.head)
                     });
                 }
@@ -479,24 +488,33 @@ impl Editor {
         layout: &impl Layout,
     ) {
         let buffer = &self.buffer;
-        self.selections.update(|selection, goal| {
+        self.selections.update(|selection, goal, affinity| {
             let from = match motion {
                 _ if extend => selection.head,
                 Motion::Left | Motion::WordLeft
                     if !selection.is_caret() =>
                 {
+                    *affinity = Affinity::Downstream;
                     return Selection::caret(selection.start());
                 }
                 Motion::Right | Motion::WordRight
                     if !selection.is_caret() =>
                 {
+                    *affinity = Affinity::Downstream;
                     return Selection::caret(selection.end());
                 }
                 Motion::Up => selection.start(),
                 Motion::Down => selection.end(),
                 _ => selection.head,
             };
-            let head = motion.target(buffer, layout, from, goal);
+            let at = if from == selection.head {
+                *affinity
+            } else {
+                Affinity::Downstream
+            };
+            let (head, to) =
+                motion.target(buffer, layout, from, at, goal);
+            *affinity = to;
             Selection {
                 anchor: if extend { selection.anchor } else { head },
                 head,

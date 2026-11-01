@@ -14,7 +14,7 @@ log caret
 expect caret 1 primary 1 5004:13..5004:13 visible true
 key home
 log caret
-expect caret 1 primary 1 5004:9..5004:9 visible true
+expect caret 1 primary 1 5004:1..5004:1 visible true
 key home
 log caret
 expect caret 1 primary 1 5004:1..5004:1 visible true
