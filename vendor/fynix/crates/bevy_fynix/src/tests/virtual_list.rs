@@ -32,7 +32,7 @@ use super::layout::laid_out;
 use crate::tests::Plain;
 use crate::views::{
     FrameProps, RowSlot, RowSpan, VirtualList, column, frame,
-    row as hrow, virtual_list,
+    remeasure, row as hrow, virtual_list,
 };
 use crate::{
     AnyView, Bevy, Prop, ViewExt, derived, every_frame, keyed, mount,
@@ -2100,21 +2100,21 @@ fn modelled_list(app: &mut App, count: usize) -> Entity {
 const SPLICED_HEIGHT: f32 = 22.0;
 
 fn splice_rows(
-    app: &mut App,
+    world: &mut World,
     area: Entity,
     at: usize,
     removed: usize,
     inserted: usize,
 ) {
-    let mut model = app.world_mut().resource_mut::<Model>();
+    let mut model = world.resource_mut::<Model>();
     let next =
         model.0.iter().map(|&(id, _)| id + 1).max().unwrap_or(0);
     let new =
         (next..next + inserted as u32).map(|id| (id, SPLICED_HEIGHT));
     model.0.splice(at..at + removed, new);
     let count = model.0.len();
-    app.world_mut().resource_mut::<Count>().0 = count;
-    app.world_mut()
+    world.resource_mut::<Count>().0 = count;
+    world
         .get_mut::<VirtualList>(area)
         .expect("a list")
         .splice(at, removed, inserted);
@@ -2185,7 +2185,7 @@ fn splice_case(
         core::iter::repeat_n(ESTIMATE, inserted),
     );
 
-    splice_rows(&mut app, area, at, removed, inserted);
+    splice_rows(app.world_mut(), area, at, removed, inserted);
     assert_fresh(state(&app, area), &heights, &when);
     settle(&mut app);
 
@@ -2225,10 +2225,10 @@ fn a_splice_that_frees_slots_measured_this_frame_leaves_no_gap() {
     let mut app = laid_out();
     let area = modelled_list(&mut app, 2_100);
 
-    splice_rows(&mut app, area, 10, 30, 0);
+    splice_rows(app.world_mut(), area, 10, 30, 0);
     app.update();
     assert_eq!(uncovered(&mut app, area), 0.0, "after the remove");
-    splice_rows(&mut app, area, 5, 20, 2);
+    splice_rows(app.world_mut(), area, 5, 20, 2);
     app.update();
     assert_eq!(uncovered(&mut app, area), 0.0, "after the replace");
     settle(&mut app);
@@ -2329,7 +2329,7 @@ fn a_splice_leaves_the_widest_row_of_a_fresh_list() {
         (0, 3, 2, 600.0),
         (7, 1, 0, 100.0),
     ] {
-        splice_rows(&mut app, area, at, removed, inserted);
+        splice_rows(app.world_mut(), area, at, removed, inserted);
         let spliced = widest(&mut app, area);
         let rows = app.world().resource::<Model>().0.clone();
         let mut fresh = laid_out();
@@ -2346,7 +2346,7 @@ fn a_scroll_to_past_a_splice_lands_on_the_row_it_named() {
     let area = modelled_list(&mut app, 10_000);
 
     scroll_to(&mut app, area, 9_000);
-    splice_rows(&mut app, area, 1_000, 0, 20);
+    splice_rows(app.world_mut(), area, 1_000, 0, 20);
     settle(&mut app);
 
     assert_eq!(state(&app, area).first_visible(), 9_020);
@@ -2387,7 +2387,7 @@ fn a_splice_above_the_view_leaves_the_rows_on_screen_still() {
         let mut moved = state(&app, area).first_visible();
 
         for &(at, removed, inserted) in splices {
-            splice_rows(&mut app, area, at, removed, inserted);
+            splice_rows(app.world_mut(), area, at, removed, inserted);
             moved = moved - removed + inserted;
         }
         assert_eq!(
@@ -2415,7 +2415,7 @@ fn a_splice_above_the_view_leaves_the_rows_on_screen_still() {
 fn a_splice_into_an_empty_list_shows_its_first_row() {
     let mut app = laid_out();
     let area = modelled_list(&mut app, 0);
-    splice_rows(&mut app, area, 0, 0, 100);
+    splice_rows(app.world_mut(), area, 0, 0, 100);
     settle(&mut app);
     assert_eq!(scroll(&app, area), 0.0);
     assert_eq!(state(&app, area).first_visible(), 0);
@@ -2439,7 +2439,7 @@ fn a_following_list_follows_through_a_splice_above() {
     };
 
     for (at, removed, inserted) in [(100, 0, 20), (100, 40, 0)] {
-        splice_rows(&mut app, area, at, removed, inserted);
+        splice_rows(app.world_mut(), area, at, removed, inserted);
         app.update();
         assert!(state(&app, area).following(), "at {at}");
         assert_eq!(scroll(&app, area), bottom(&app), "at {at}");
@@ -2460,7 +2460,7 @@ fn a_splice_of_the_first_visible_row_leaves_no_gap() {
     scroll_to(&mut app, area, 5_000);
     settle(&mut app);
 
-    splice_rows(&mut app, area, 4_990, 20, 0);
+    splice_rows(app.world_mut(), area, 4_990, 20, 0);
     assert_eq!(state(&app, area).first_visible(), 4_990);
     app.update();
     assert_eq!(uncovered(&mut app, area), 0.0);
@@ -2505,7 +2505,7 @@ fn a_slot_freed_and_given_its_index_again_shows_the_new_row() {
     let mut app = laid_out();
     let area = read_on_move_list(&mut app, 3);
 
-    splice_rows(&mut app, area, 1, 1, 0);
+    splice_rows(app.world_mut(), area, 1, 1, 0);
     app.update();
     assert_eq!(shown_ids(&mut app, area), [(0, 0), (1, 2)]);
 }
@@ -2516,7 +2516,7 @@ fn a_slot_moved_off_its_index_and_back_shows_the_new_row() {
     let area = read_on_move_list(&mut app, 2_100);
     let last = *state(&app, area).spawned().expect("rows").end();
 
-    splice_rows(&mut app, area, last, 0, 1);
+    splice_rows(app.world_mut(), area, last, 0, 1);
     app.update();
     assert_eq!(
         shown_ids(&mut app, area).last(),
@@ -2612,7 +2612,7 @@ fn a_sideways_reveal_moves_the_least_even_onto_a_row_spliced_wide() {
     settle(&mut app);
     assert_eq!(x(&app, area), 600.0 - room, "a range in view stays");
 
-    splice_rows(&mut app, area, 5, 0, 1);
+    splice_rows(app.world_mut(), area, 5, 0, 1);
     let id = app.world().resource::<Model>().0[5].0;
     app.world_mut().resource_mut::<Wide>().0.insert(id, 3_000.0);
     reveal_x(&mut app, area, 2_900.0..3_000.0);
@@ -2698,4 +2698,114 @@ fn a_still_sideways_list_writes_no_node() {
     app.update();
     app.update();
     assert_eq!(app.world().resource::<NodeWrites>().0, 0);
+}
+
+/// Heights for `remeasure` to give the list between
+/// `UiSystems::Content` and `UiSystems::Layout` on the next update, a
+/// splice of the modelled rows to make just before, after the list
+/// placed its rows, and what `remeasure` returned.
+#[derive(Resource, Default)]
+struct Remeasured {
+    pending: Vec<(usize, f32)>,
+    splice: Option<(usize, usize, usize)>,
+    moved: Option<bool>,
+}
+
+fn remeasure_pending(world: &mut World) {
+    let mut remeasured = world.resource_mut::<Remeasured>();
+    let pending = core::mem::take(&mut remeasured.pending);
+    let splice = remeasured.splice.take();
+    if pending.is_empty() {
+        return;
+    }
+    let list = world
+        .query_filtered::<Entity, With<VirtualList>>()
+        .single(world)
+        .expect("one list");
+    if let Some((at, removed, inserted)) = splice {
+        splice_rows(world, list, at, removed, inserted);
+    }
+    let moved = remeasure(world, list, &pending);
+    world.resource_mut::<Remeasured>().moved = Some(moved);
+}
+
+fn remeasuring(app: &mut App) {
+    app.init_resource::<Remeasured>().add_systems(
+        PostUpdate,
+        remeasure_pending
+            .after(UiSystems::Content)
+            .before(UiSystems::Layout),
+    );
+}
+
+fn remeasure_next(app: &mut App, measured: &[(usize, f32)]) -> bool {
+    app.world_mut().resource_mut::<Remeasured>().pending =
+        measured.to_vec();
+    app.update();
+    app.world_mut()
+        .resource_mut::<Remeasured>()
+        .moved
+        .take()
+        .expect("remeasure ran")
+}
+
+fn slot_height(app: &mut App, index: usize) -> f32 {
+    let slot = app
+        .world_mut()
+        .query::<(&Shows, &ChildOf)>()
+        .iter(app.world())
+        .find(|(shows, _)| shows.0 == index)
+        .map(|(_, slot)| slot.parent())
+        .expect("a built row");
+    height(app, slot)
+}
+
+#[test]
+fn a_height_given_before_layout_moves_the_rows_in_that_frame() {
+    let mut app = laid_out();
+    remeasuring(&mut app);
+    let area = list(&mut app, 100, grown);
+    let above = shown_at(&mut app, area, 3).expect("row 3 built");
+
+    app.insert_resource(Grown(3, 60.0));
+    assert!(remeasure_next(&mut app, &[(3, 60.0)]), "a new height");
+    assert_eq!(slot_height(&mut app, 3), 60.0);
+    assert_eq!(shown_at(&mut app, area, 3), Some(above));
+    assert_eq!(shown_at(&mut app, area, 4), Some(above + 60.0));
+    assert_apart(&mut app, area, "the frame of the height");
+
+    settle(&mut app);
+    assert!(
+        !remeasure_next(&mut app, &[(3, 60.0)]),
+        "a known height"
+    );
+    assert_eq!(shown_at(&mut app, area, 4), Some(above + 60.0));
+}
+
+#[test]
+fn a_remeasure_after_a_splice_in_the_same_frame_keeps_the_rows_apart()
+{
+    for (view, at, removed, inserted) in [
+        (0, 0, 0, 5),
+        (0, 10, 30, 0),
+        (1_000, 100, 1_900, 0),
+        (1_000, 990, 20, 40),
+    ] {
+        let when = format!("{removed} for {inserted} at {at}");
+        let mut app = laid_out();
+        remeasuring(&mut app);
+        let area = modelled_list(&mut app, 2_100);
+        scroll_to(&mut app, area, view);
+        settle(&mut app);
+        let count = 2_100 - removed + inserted;
+
+        app.world_mut().resource_mut::<Remeasured>().splice =
+            Some((at, removed, inserted));
+        let measured = [(at.min(count - 1), SPLICED_HEIGHT + 1.0)];
+        assert!(remeasure_next(&mut app, &measured), "{when}");
+        settle(&mut app);
+        assert_apart(&mut app, area, &when);
+        assert_eq!(uncovered(&mut app, area), 0.0, "{when}");
+        assert_eq!(state(&app, area).count(), count, "{when}");
+    }
 }

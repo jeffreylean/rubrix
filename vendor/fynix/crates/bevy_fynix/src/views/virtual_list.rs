@@ -907,7 +907,10 @@ impl VirtualList {
     }
 
     /// Puts each slot at its row's top and height, each on a whole
-    /// physical pixel.
+    /// physical pixel. After a [`splice`](Self::splice) and before
+    /// the next fill, a slot whose row was removed, or moved out of
+    /// the rows built, keeps its place: the fill builds its row
+    /// again.
     fn stack(&mut self) {
         let start = self.spawned.start;
         let whole = |y: f64| {
@@ -920,8 +923,15 @@ impl VirtualList {
             .take(self.slots.len() + 1)
             .map(whole)
             .collect::<Vec<_>>();
+        let last = tops.len() - 1;
         for placed in &mut self.slots {
-            let at = placed.index - start;
+            let Some(at) = placed
+                .index
+                .checked_sub(start)
+                .filter(|&at| at < last)
+            else {
+                continue;
+            };
             placed.top = tops[at] as f32;
             placed.height = (tops[at + 1] - tops[at]) as f32;
         }
@@ -969,7 +979,10 @@ impl VirtualList {
 /// lays them out at, known before it runs, as from text shaped since
 /// the last layout, and moves the built rows to match. The first
 /// visible row keeps its place on screen. Call it after
-/// `UiSystems::Content` and before `UiSystems::Layout`.
+/// `UiSystems::Content` and before `UiSystems::Layout`. A
+/// [`splice`](VirtualList::splice) earlier in the frame leaves the
+/// rows it removed or moved out of the built ones for the next
+/// update.
 ///
 /// Without it a row's height reaches the list from the layout that
 /// drew it, a frame late, so the frame that changes the height draws
