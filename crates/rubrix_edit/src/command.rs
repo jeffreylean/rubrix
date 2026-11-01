@@ -25,6 +25,12 @@ pub enum Command<'a> {
     /// The same as `Type`, but always its own undo step. The whole
     /// text goes in at every caret.
     Paste(&'a str),
+    /// Replaces selection `i`, in buffer order, with piece `i`, its
+    /// line breaks written as the buffer's [`Eol`](crate::Eol), as
+    /// one undo step. The pieces of [`Editor::copy_pieces`] at as
+    /// many selections go back whole, each to its own. With another
+    /// number of pieces it does nothing.
+    PasteEach(&'a [String]),
     /// Deletes every selection, as its own undo step. The deleted
     /// text is in the returned [`Change`].
     Cut,
@@ -174,6 +180,13 @@ impl Editor {
         lines::copy(&self.buffer, &self.selections)
     }
 
+    /// The text each selection gives a copy, in buffer order: each
+    /// range's text and each bare caret's line with its line break,
+    /// one piece per selection, for [`Command::PasteEach`].
+    pub fn copy_pieces(&self) -> Vec<String> {
+        lines::pieces(&self.buffer, &self.selections)
+    }
+
     /// Replaces the selections. Clamps each end to the text and moves
     /// it back to a grapheme boundary, so no caret sits inside a
     /// cluster or between a `\r` and its `\n`, then merges selections
@@ -244,6 +257,16 @@ impl Editor {
                     Some(plan) => self.commit(Kind::Boundary, plan),
                     None => self.replace_each(Kind::Boundary, &text),
                 }
+            }
+            Command::PasteEach(pieces) => {
+                let eol = self.buffer.eol();
+                let pieces: Vec<Cow<str>> = pieces
+                    .iter()
+                    .map(|piece| eol.normalize(piece))
+                    .collect();
+                let plan =
+                    lines::paste_each(&self.selections, &pieces)?;
+                self.commit(Kind::Boundary, plan)
             }
             Command::Cut => self.commit(
                 Kind::Boundary,

@@ -1,0 +1,68 @@
+page editor
+wait 120
+click 734 68
+wait 60
+move 740 400
+scroll 0 -4947
+wait 10
+click 1250 296
+wait 2
+log caret
+expect caret 1 primary 1 302:49..302:49 visible true
+key space
+type wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap
+key space
+wait 3
+type a
+wait 3
+type b
+wait 3
+type c
+wait 3
+type d
+wait 3
+type e
+wait 3
+type f
+wait 3
+type g
+wait 3
+type h
+wait 3
+type i
+wait 3
+type j
+wait 3
+type k
+wait 3
+wait 10
+log row 302
+expect row 302 top 5117 
+expect row 302 lines 3
+click 734 68
+wait 10
+move 740 400
+log row 302
+expect row 302 top 5117 
+expect row 302 lines 1
+log torn
+expect torn frames 33 torn 0
+log typing
+expect typing edits 14 hidden 0
+log seams
+expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok
+click 734 68
+wait 10
+move 740 400
+log row 302
+expect row 302 top 5117 
+expect row 302 lines 3
+log torn
+expect torn frames 36 torn 0
+log typing
+expect typing edits 14 hidden 0
+log seams
+expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok
+wait 30
+screenshot cf-wrap-toggle.png
+exit

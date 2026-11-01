@@ -14,6 +14,9 @@ editor-ime-live.drive      skip         types through fcitx5 Pinyin under launch
 
 again='
 editor-mouse.drive  RUBRIX_SCALE=2  the mouse lane again at a Mac Retina scale
+editor-cf-wrap-grow.drive  RUBRIX_SCALE=2  a wrap that grows a row, at a Mac Retina scale
+editor-cf-wrap-shrink.drive  RUBRIX_SCALE=2  a wrap that shrinks a row, at a Mac Retina scale
+editor-cf-wrap-toggle.drive  RUBRIX_SCALE=2  the wrap toggle, at a Mac Retina scale
 '
 
 replay_files='

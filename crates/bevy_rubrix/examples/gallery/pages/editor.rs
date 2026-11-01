@@ -61,12 +61,14 @@ fn large_rs() -> EditDoc {
 }
 
 pub fn plugin(app: &mut App) {
-    app.init_resource::<Typing>().add_systems(
-        PostUpdate,
-        count_typing
-            .after(EditSystems::Draw)
-            .run_if(resource_exists::<EditorFile>),
-    );
+    app.init_resource::<Typing>()
+        .init_resource::<Torn>()
+        .add_systems(
+            PostUpdate,
+            (count_typing, count_torn)
+                .after(EditSystems::Draw)
+                .run_if(resource_exists::<EditorFile>),
+        );
 }
 
 pub fn build() -> PageView {
@@ -268,6 +270,63 @@ pub fn typing(world: &World) -> String {
     format!("typing edits {} hidden {}", typing.edits, typing.hidden)
 }
 
+/// The frames that changed the doc on show or its wrap, with the
+/// frame after a doc change and the two after a wrap change, and how
+/// many of those drew a gap or an overlap between two shown rows or a
+/// line number off its row. A wrap change settles over three frames:
+/// the text takes the new wrap, the row cells refit, and the list
+/// reads the refit rows. `log seams` reads only a settled frame.
+#[derive(Resource, Default)]
+struct Torn {
+    doc: Option<Entity>,
+    seq: u64,
+    overflow: Overflow,
+    after: u8,
+    frames: u32,
+    torn: u32,
+}
+
+fn count_torn(world: &mut World) {
+    let file = world.resource::<EditorFile>();
+    let (doc, overflow) = (file.doc, file.overflow);
+    let Some(seq) = world.get::<EditDoc>(doc).map(EditDoc::seq)
+    else {
+        return;
+    };
+    let torn = world.resource::<Torn>();
+    if torn.doc != Some(doc) {
+        *world.resource_mut::<Torn>() = Torn {
+            doc: Some(doc),
+            seq,
+            overflow,
+            ..Torn::default()
+        };
+        return;
+    }
+    let edited = seq > torn.seq;
+    let wrapped = overflow != torn.overflow;
+    let drawn = (edited || wrapped || torn.after > 0)
+        .then(|| first_view(world))
+        .flatten()
+        .and_then(|(view, _)| shown_rows(world, view))
+        .map(|rows| seams_of(&rows));
+    let mut torn = world.resource_mut::<Torn>();
+    let after = if wrapped { 2 } else { u8::from(edited) };
+    torn.after = after.max(torn.after.saturating_sub(1));
+    (torn.seq, torn.overflow) = (seq, overflow);
+    if let Some(seams) = drawn {
+        torn.frames += 1;
+        torn.torn += u32::from(
+            seams.gaps + seams.overlaps > 0 || seams.jump.is_some(),
+        );
+    }
+}
+
+pub fn torn(world: &World) -> String {
+    let torn = world.resource::<Torn>();
+    format!("torn frames {} torn {}", torn.frames, torn.torn)
+}
+
 /// A built row of the first editable view, in logical pixels.
 struct Shown {
     line: u32,
@@ -386,6 +445,42 @@ fn expand_tabs(line: &str) -> String {
     out
 }
 
+/// Where neighbouring rows fail to meet: a gap or an overlap between
+/// them, or a line skipped, and the first line whose number is not
+/// its own or not at its row's top.
+struct Seams {
+    gaps: u32,
+    overlaps: u32,
+    missing: u32,
+    jump: Option<u32>,
+}
+
+fn seams_of(rows: &[Shown]) -> Seams {
+    let mut seams = Seams {
+        gaps: 0,
+        overlaps: 0,
+        missing: 0,
+        jump: None,
+    };
+    for pair in rows.windows(2) {
+        let (above, below) = (&pair[0], &pair[1]);
+        seams.missing += u32::from(below.line != above.line + 1);
+        let seam = below.top - above.bottom;
+        seams.gaps += u32::from(seam > 0.5);
+        seams.overlaps += u32::from(seam < -0.5);
+    }
+    seams.jump = rows
+        .iter()
+        .find(|row| {
+            row.number.as_ref().is_none_or(|(number, top)| {
+                number.trim() != (row.line + 1).to_string()
+                    || (top - row.top).abs() > 0.5
+            })
+        })
+        .map(|row| row.line + 1);
+    seams
+}
+
 /// Checks the rows of the first editable view that show: no gap or
 /// overlap between neighbours, no line skipped, each row's text its
 /// line's, and each line number its line's, at its row's top.
@@ -400,14 +495,12 @@ pub fn seams(world: &mut World) -> String {
     else {
         return "seams none".into();
     };
-    let (mut gaps, mut overlaps, mut missing) = (0, 0, 0);
-    for pair in rows.windows(2) {
-        let (above, below) = (&pair[0], &pair[1]);
-        missing += u32::from(below.line != above.line + 1);
-        let seam = below.top - above.bottom;
-        gaps += u32::from(seam > 0.5);
-        overlaps += u32::from(seam < -0.5);
-    }
+    let Seams {
+        gaps,
+        overlaps,
+        missing,
+        jump,
+    } = seams_of(&rows);
     let edit = world.get::<EditDoc>(doc);
     let mismatched = rows
         .iter()
@@ -418,18 +511,8 @@ pub fn seams(world: &mut World) -> String {
                 != Some(row.text.as_str())
         })
         .count();
-    let numbers = rows
-        .iter()
-        .find(|row| {
-            row.number.as_ref().is_none_or(|(number, top)| {
-                number.trim() != (row.line + 1).to_string()
-                    || (top - row.top).abs() > 0.5
-            })
-        })
-        .map_or_else(
-            || "ok".into(),
-            |row| format!("jump {}", row.line + 1),
-        );
+    let numbers = jump
+        .map_or_else(|| "ok".into(), |line| format!("jump {line}"));
     format!(
         "seams shown {}..={} gaps {gaps} overlaps {overlaps} \
          missing {missing} mismatched {mismatched} numbers {numbers}",

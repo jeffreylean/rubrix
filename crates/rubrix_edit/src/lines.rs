@@ -467,20 +467,38 @@ pub(crate) fn paste_lines(
     }
     let eol = buffer.eol().as_str();
     let text = text.strip_suffix(eol).unwrap_or(text);
-    if text.split(eol).count() != selections.len() {
-        return None;
-    }
-    let edits = selections
-        .iter()
-        .zip(text.split(eol))
-        .map(|(selection, line)| {
-            (selection.range(), String::from(line))
-        })
-        .collect();
-    Some(Plan {
-        edits,
+    paste_each(selections, &text.split(eol).collect::<Vec<_>>())
+}
+
+/// Piece `i` in place of selection `i`, in buffer order. `None`
+/// unless there are as many pieces as selections.
+pub(crate) fn paste_each(
+    selections: &Selections,
+    pieces: &[impl AsRef<str>],
+) -> Option<Plan> {
+    (pieces.len() == selections.len()).then(|| Plan {
+        edits: selections
+            .iter()
+            .zip(pieces)
+            .map(|(selection, piece)| {
+                (selection.range(), String::from(piece.as_ref()))
+            })
+            .collect(),
         after: After::Map,
     })
+}
+
+/// The text each selection gives a copy, in buffer order: a range's
+/// text, or a bare caret's line with its line break. Pierre's
+/// `getSelectionClipboardTexts`.
+pub(crate) fn pieces(
+    buffer: &Buffer,
+    selections: &Selections,
+) -> Vec<String> {
+    regions(buffer, selections, line_with_break_after)
+        .into_iter()
+        .map(|region| buffer.slice(region).into_owned())
+        .collect()
 }
 
 fn line_with_break_after(buffer: &Buffer, line: u32) -> Range<usize> {

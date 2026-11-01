@@ -3083,3 +3083,157 @@ m3_script("down", HUNDRED_K_PAIR, steps, "move 740 400", "wait 30", "screenshot 
 steps = [at_end(changed_y), "wait 60", f"click {column_x(9)} {changed_y} double mod", "type Q", "wait 3"]
 steps += ["key end", "key shift+home", "key mod+c", "log copied", f"expect copied {rust_debug(CHANGED.replace('Component', 'Q') + 'Q')}"]
 m3_script("add-words", PAIR, steps, "wait 30", "screenshot m3fb-add-words.png")
+
+
+# cf: each frame that changes the doc or its wrap, and the frame after
+# it, draws its rows with no gap or overlap (`log torn`) and keeps the
+# primary caret in view (`log typing`). Lines cut whole at N carets
+# paste back whole at N carets.
+def cf(name, *steps):
+    editor(f"cf-{name}", cf_pinned(steps))
+
+
+CF_CLEAN = object()
+
+
+def cf_pinned(steps):
+    """`steps` with each `CF_CLEAN` made the checks that pin how many
+    frames `log torn` and edits `log typing` have counted by then, so a
+    counter that saw nothing fails. Frames are counted as drive.rs runs
+    the steps, from the editor page's first frame."""
+    out, frame, checked, edits = [], 0, set(), 0
+    for step in flat(steps):
+        if step is CF_CLEAN:
+            seen = sum(1 for f in checked if f < frame)
+            clean = ["log torn", f"expect torn frames {seen} torn 0", "log typing", f"expect typing edits {edits} hidden 0", *SEAMS_CLEAN]
+            out += clean
+            frame += len(clean)
+            continue
+        out.append(step)
+        if step == WRAP:
+            checked.update(range(frame + 2, frame + 5))
+        elif step.startswith("type ") or step in ("key space", "key backspace"):
+            checked.update(range(frame, frame + 2))
+            edits += 1
+        frame += cf_frames(step)
+    return out
+
+
+def cf_frames(step):
+    """The frames drive.rs takes to run `step`: `wait n` is the step's
+    frame and n more, a key is down then up, and a click moves, then
+    presses and releases once per click, then lets go of any held key."""
+    word, *rest = step.split()
+    if word == "wait":
+        return int(rest[0]) + 1
+    if word == "key":
+        return 2
+    if word == "click":
+        clicks = {"double": 2, "triple": 3}.get(rest[2] if len(rest) > 2 else "", 1)
+        return 1 + 2 * clicks + any(held in rest for held in ("shift", "mod", "alt"))
+    assert word in ("type", "move", "scroll", "log", "expect", "screenshot"), f"cf: no frame count for {step!r}"
+    return 1
+
+
+CF_LINE = 302
+
+
+def cf_at(doc, n, column):
+    """`Doc.at`, by the editor's own column grid."""
+    return f"{round(TEXT_X + (column - 1) * ADVANCE + CLICK_INSET, 1)} {doc.y(n)}"
+
+
+def cf_row(doc):
+    """`log row` by its top and visual line count: at scale 2 three
+    rows measure 50.5 px, not 51."""
+    rows = len(wrap_starts(doc.line(CF_LINE)))
+    return cf_lines(rows)
+
+
+def cf_lines(rows):
+    return [f"log row {CF_LINE}", f"expect row {CF_LINE} top {(CF_LINE - 1) * ROW} ", f"expect row {CF_LINE} lines {rows}"]
+
+
+def cf_grow(doc, rows):
+    """Steps that type at the end of the line until it wraps onto
+    `rows` visual rows: whole words to a word short of the wrap, then
+    one letter a frame across it and two past it."""
+    n = CF_LINE
+    count = lambda: len(wrap_starts(doc.line(n)))
+    words = 0
+    while len(wrap_starts(doc.line(n) + " " + " ".join(["wrap"] * (words + 2)) + " ")) < rows:
+        words += 1
+    steps = []
+    if words:
+        bulk = " ".join(["wrap"] * words)
+        doc.lines[n - 1] += " " + bulk + " "
+        steps += ["key space", f"type {bulk}", "key space", "wait 3"]
+    past = None
+    for letter in "abcdefghijklmnopqrstuvwxyz":
+        doc.lines[n - 1] += letter
+        steps += [f"type {letter}", "wait 3"]
+        past = past if past is not None or count() < rows else 0
+        if past is not None:
+            past += 1
+            if past == 3:
+                break
+    assert count() == rows, (count(), rows)
+    return steps
+
+
+def cf_shrink(doc, rows):
+    """Steps that press Backspace at the end of the line, one a frame,
+    until it takes `rows` visual rows, and twice more."""
+    n = CF_LINE
+    steps, past = [], None
+    while past is None or past < 3:
+        doc.lines[n - 1] = doc.lines[n - 1][:-1]
+        steps += ["key backspace", "wait 3"]
+        if past is None and len(wrap_starts(doc.line(n))) == rows:
+            past = 0
+        if past is not None:
+            past += 1
+    assert len(wrap_starts(doc.line(CF_LINE))) == rows
+    return steps
+
+
+def cf_wrapped(doc):
+    end = (CF_LINE, len(doc.line(CF_LINE)) + 1)
+    return [WRAP, "wait 60", doc.scroll_to(CF_LINE - 10), f"click {doc.end(CF_LINE)}", "wait 2", caret(end)]
+
+
+doc = Doc(LARGE_RS_LINES)
+steps = [cf_wrapped(doc)]
+for rows in [2, 3]:
+    steps += [cf_grow(doc, rows), "wait 10", cf_row(doc), CF_CLEAN]
+steps += [doc.text(CF_LINE), caret((CF_LINE, len(doc.line(CF_LINE)) + 1))]
+cf("wrap-grow", steps, "wait 30", "screenshot cf-wrap-grow.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [cf_wrapped(doc), cf_grow(doc, 3), "wait 10", cf_row(doc)]
+for rows in [2, 1]:
+    steps += [cf_shrink(doc, rows), "wait 10", cf_row(doc), CF_CLEAN]
+steps += [doc.text(CF_LINE), caret((CF_LINE, len(doc.line(CF_LINE)) + 1))]
+cf("wrap-shrink", steps, "wait 30", "screenshot cf-wrap-shrink.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [cf_wrapped(doc), cf_grow(doc, 3), "wait 10", cf_row(doc)]
+steps += [WRAP, "wait 10", CENTER, cf_lines(1), CF_CLEAN]
+steps += [WRAP, "wait 10", CENTER, cf_row(doc), CF_CLEAN]
+cf("wrap-toggle", steps, "wait 30", "screenshot cf-wrap-toggle.png")
+
+doc = Doc(LARGE_RS_LINES)
+cut, column = [22, 24], 13
+whole = doc.lines[:]
+steps = [f"click {cf_at(doc, cut[0], column)}", f"click {cf_at(doc, cut[1], column)} mod", carets_at([(n, column) for n in cut])]
+copied = "".join(doc.line(n) + "\n" for n in cut)
+for n in reversed(cut):
+    del doc.lines[n - 1]
+after_cut = doc.lines[:]
+steps += ["key mod+x", "wait 3", "log copied", f"expect copied {rust_debug(copied)}", carets_at([(22, 1), (23, 1)])]
+steps += [doc.text(n) for n in range(21, 25)]
+doc.lines = whole
+steps += ["key mod+v", "wait 3", [doc.text(n) for n in range(21, 27)], carets_at([(23, 1), (25, 1)]), undo(2, 0)]
+doc.lines = after_cut
+steps += ["key mod+z", "wait 3", [doc.text(n) for n in range(21, 25)], undo(1, 1)]
+cf("paste-lines", steps, "wait 30", "screenshot cf-paste-lines.png")
