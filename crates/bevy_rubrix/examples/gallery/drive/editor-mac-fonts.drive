@@ -20,32 +20,32 @@ expect text 3 "cjk 你好世界 end"
 click 297.8 126
 log caret
 expect caret 1 primary 1 1:8..1:8 visible true
-wait 5 until ime caret 296
+wait 5 until ime caret 296 135
 log ime
 oskey right
 wait 60 until caret 1 primary 1 1:15..1:15 visible true
-wait 60 until ime caret 310
+wait 60 until ime caret 310 135
 log ime
 log text 1
 expect text 1 "family 👨\u{200d}👩\u{200d}👧\u{200d}👦 end"
 screenshot fonts-right-1.png
 oskey right
 wait 60 until caret 1 primary 1 1:16..1:16 visible true
-wait 60 until ime caret 318
+wait 60 until ime caret 318 135
 log ime
 log text 1
 expect text 1 "family 👨\u{200d}👩\u{200d}👧\u{200d}👦 end"
 screenshot fonts-right-2.png
 oskey backspace
 wait 60 until caret 1 primary 1 1:15..1:15 visible true
-wait 60 until ime caret 310
+wait 60 until ime caret 310 135
 log ime
 log text 1
 expect text 1 "family 👨\u{200d}👩\u{200d}👧\u{200d}👦end"
 screenshot fonts-backspace-1.png
 oskey backspace
 wait 60 until caret 1 primary 1 1:8..1:8 visible true
-wait 60 until ime caret 296
+wait 60 until ime caret 296 135
 log ime
 log text 1
 expect text 1 "family end"
@@ -53,32 +53,32 @@ screenshot fonts-backspace-2.png
 click 323.0 143
 log caret
 expect caret 1 primary 1 2:11..2:11 visible true
-wait 5 until ime caret 321
+wait 5 until ime caret 321 152
 log ime
 oskey right
 wait 60 until caret 1 primary 1 2:13..2:13 visible true
-wait 60 until ime caret 329
+wait 60 until ime caret 329 152
 log ime
 log text 2
 expect text 2 "accent cafe\u{301} end"
 screenshot fonts-right-3.png
 oskey right
 wait 60 until caret 1 primary 1 2:14..2:14 visible true
-wait 60 until ime caret 338
+wait 60 until ime caret 338 152
 log ime
 log text 2
 expect text 2 "accent cafe\u{301} end"
 screenshot fonts-right-4.png
 oskey backspace
 wait 60 until caret 1 primary 1 2:13..2:13 visible true
-wait 60 until ime caret 329
+wait 60 until ime caret 329 152
 log ime
 log text 2
 expect text 2 "accent cafe\u{301}end"
 screenshot fonts-backspace-3.png
 oskey backspace
 wait 60 until caret 1 primary 1 2:11..2:11 visible true
-wait 60 until ime caret 321
+wait 60 until ime caret 321 152
 log ime
 log text 2
 expect text 2 "accent cafend"
@@ -86,60 +86,60 @@ screenshot fonts-backspace-4.png
 click 272.6 160
 log caret
 expect caret 1 primary 1 3:5..3:5 visible true
-wait 5 until ime caret 271
+wait 5 until ime caret 271 170
 log ime
 oskey right
 wait 60 until caret 1 primary 1 3:6..3:6 visible true
-wait 60 until ime caret 285
+wait 60 until ime caret 285 170
 log ime
 log text 3
 expect text 3 "cjk 你好世界 end"
 screenshot fonts-right-5.png
 oskey right
 wait 60 until caret 1 primary 1 3:7..3:7 visible true
-wait 60 until ime caret 299
+wait 60 until ime caret 299 170
 log ime
 log text 3
 expect text 3 "cjk 你好世界 end"
 screenshot fonts-right-6.png
 oskey right
 wait 60 until caret 1 primary 1 3:8..3:8 visible true
-wait 60 until ime caret 313
+wait 60 until ime caret 313 170
 log ime
 log text 3
 expect text 3 "cjk 你好世界 end"
 screenshot fonts-right-7.png
 oskey right
 wait 60 until caret 1 primary 1 3:9..3:9 visible true
-wait 60 until ime caret 327
+wait 60 until ime caret 327 170
 log ime
 log text 3
 expect text 3 "cjk 你好世界 end"
 screenshot fonts-right-8.png
 oskey backspace
 wait 60 until caret 1 primary 1 3:8..3:8 visible true
-wait 60 until ime caret 313
+wait 60 until ime caret 313 170
 log ime
 log text 3
 expect text 3 "cjk 你好世 end"
 screenshot fonts-backspace-5.png
 oskey backspace
 wait 60 until caret 1 primary 1 3:7..3:7 visible true
-wait 60 until ime caret 299
+wait 60 until ime caret 299 170
 log ime
 log text 3
 expect text 3 "cjk 你好 end"
 screenshot fonts-backspace-6.png
 oskey backspace
 wait 60 until caret 1 primary 1 3:6..3:6 visible true
-wait 60 until ime caret 285
+wait 60 until ime caret 285 170
 log ime
 log text 3
 expect text 3 "cjk 你 end"
 screenshot fonts-backspace-7.png
 oskey backspace
 wait 60 until caret 1 primary 1 3:5..3:5 visible true
-wait 60 until ime caret 271
+wait 60 until ime caret 271 169
 log ime
 log text 3
 expect text 3 "cjk  end"

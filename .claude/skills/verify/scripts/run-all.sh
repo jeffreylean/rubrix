@@ -14,7 +14,7 @@ editor-mac-cmd.drive       skip-linux   oskey needs macOS
 editor-mac-option.drive    skip-linux   oskey needs macOS
 editor-mac-emacs.drive     skip-linux   oskey needs macOS
 editor-mac-clipboard.drive skip-linux   oskey, pbcopy and pbpaste need macOS
-editor-mac-fonts.drive     skip-linux   oskey needs macOS, and CoreText font fallback is the check
+editor-mac-fonts.drive     skip-linux   oskey needs macOS, CoreText font fallback is the check, and its screenshots need the window in view
 editor-ime-live.drive      skip         types through fcitx5 Pinyin under launch.sh --ime-live, a hand check at milestone 1
 '
 

@@ -1841,9 +1841,10 @@ CARET_BOTTOM = 9
 
 
 def ime_debug(text):
-    """`{:?}` of text with no control character, as Rust prints it."""
+    """`{:?}` of text with no control character, as Rust prints it, which escapes a ZWJ and a combining mark."""
     assert all(c >= " " and c != "\x7f" for c in text), text
-    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    text = text.replace("\\", "\\\\").replace('"', '\\"')
+    return '"' + "".join(f"\\u{{{ord(c):x}}}" if c == "\u200d" or unicodedata.combining(c) else c for c in text) + '"'
 
 
 def ime_text(doc, n):
@@ -2840,10 +2841,9 @@ for query, error, shot in [("e(", "unclosed group", "m2fa-error.png"), ("(?<=a)b
 find_script("m2-error", steps)
 
 FAMILY = "\U0001f468‍\U0001f469‍\U0001f467"
-SHOWN = FAMILY.replace("‍", "\\u{200d}")
 steps = [f"click {Doc(LARGE_RS_LINES).at(1, 1)}", f"paste family {FAMILY} end\\n", "wait 5"]
 steps += ["key mod+alt+f", "wait 5", FIND_FIELD, "key mod+a", "type \U0001f469", "wait 10", "log find", 'expect find open query "\U0001f469" 0 of 0', 'expect find label "No results"']
-steps += ["key mod+a", f"type {FAMILY}", "wait 10", "log find", f'expect find open query "{SHOWN}" 1 of 1', caret((1, 8), (1, 13)), "wait 30", "screenshot m2fa-cluster.png"]
+steps += ["key mod+a", f"type {FAMILY}", "wait 10", "log find", f"expect find open query {ime_debug(FAMILY)} 1 of 1", caret((1, 8), (1, 13)), "wait 30", "screenshot m2fa-cluster.png"]
 steps += [REPLACE_FIELD, "type Y", "key enter", "wait 10", "log text 1", 'expect text 1 "family Y end"']
 find_script("m2-cluster", steps)
 
@@ -3429,9 +3429,14 @@ def graphemes(line):
     return clusters
 
 
-def debug_text(text):
-    """`{:?}` of text, which escapes a ZWJ and a combining mark."""
-    return "".join(f"\\u{{{ord(c):x}}}" if c == ZWJ or unicodedata.combining(c) else c for c in ime_debug(text))
+PINGFANG_DY = 1  # measured: the caret on a line with PingFang text ends a pixel lower (#50)
+
+
+def drawn_caret_at(doc, n, column):
+    """`ime caret <x> <y>`. The y ends the match, so a caret at x + 0.5 fails it."""
+    line = doc.line(n)
+    tall = any(unicodedata.name(c, "").startswith("CJK UNIFIED") for c in line)
+    return f"ime caret {drawn_x(line, column)} {doc.y(n) + CARET_BOTTOM_DY + PINGFANG_DY * tall}"
 
 
 def drawn_x(line, column):
@@ -3450,10 +3455,9 @@ def font_step(doc, combo, at, shot):
     n, column = at
     return [
         os_caret(combo, at),
-        f"wait {OS_KEY_TIMEOUT_FRAMES} until ime caret {drawn_x(doc.line(n), column)}",
+        f"wait {OS_KEY_TIMEOUT_FRAMES} until {drawn_caret_at(doc, n, column)}",
         "log ime",
-        f"log text {n}",
-        f"expect text {n} {debug_text(doc.line(n))}",
+        ime_text(doc, n),
         f"screenshot {shot}.png",
     ]
 
@@ -3462,14 +3466,14 @@ lines = (Path(__file__).parent / "drive" / GRAPHEMES).read_text().split("\n")
 doc = Doc(lines[:-1], text_x=TEXT_X_ONE_DIGIT)
 assert [len(graphemes(doc.line(n))) for n in [1, 2, 3]] == [12, 15, 12], doc.lines
 steps = [f"open {GRAPHEMES}", "wait 30", "screenshot fonts-load.png", SEAMS_CLEAN]
-steps += [[f"log runs {n}", f"log row {n}", f"log text {n}", f"expect text {n} {debug_text(doc.line(n))}"] for n in [1, 2, 3]]
+steps += [[f"log runs {n}", f"log row {n}", ime_text(doc, n)] for n in [1, 2, 3]]
 rights = backs = 0
 for n, column in [(1, 8), (2, 11), (3, 5)]:
     line = doc.line(n)
     clusters = graphemes(line)
     first = len(graphemes(line[: column - 1]))
     moves = 4 if n == 3 else 2
-    steps += [f"click {doc.at(n, column)}", caret((n, column)), f"wait 5 until ime caret {drawn_x(line, column)}", "log ime"]
+    steps += [f"click {doc.at(n, column)}", caret((n, column)), f"wait 5 until {drawn_caret_at(doc, n, column)}", "log ime"]
     for cluster in clusters[first : first + moves]:
         column += len(cluster)
         rights += 1
