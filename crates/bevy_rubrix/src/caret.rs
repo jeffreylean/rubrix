@@ -673,12 +673,13 @@ pub(crate) fn blink(
 
 /// Gives each editable view's list, before this frame's layout, the
 /// height of every built row whose text Bevy shaped again since the
-/// last layout, and moves the line numbers with the rows. The height
-/// is the one Bevy's text measure gives this layout: the text broken
-/// at the room its row leaves it, rounded up to a physical pixel. So
-/// the frame that wraps a line onto more or fewer visual lines draws
-/// it whole, with its caret, and with the rows below in their places.
-/// A row not laid out yet keeps its estimate.
+/// last layout, or whose row cell refit to wrap since, and moves the
+/// line numbers with the rows. The height is the one Bevy's text
+/// measure gives this layout: the text broken at the room its row
+/// leaves it, rounded up to a physical pixel. So the frame that wraps
+/// a line onto more or fewer visual lines draws it whole, with its
+/// caret, and with the rows below in their places. A row not laid out
+/// yet keeps its estimate.
 pub(crate) fn remeasure(
     world: &mut World,
     rows: &mut QueryState<(
@@ -692,15 +693,21 @@ pub(crate) fn remeasure(
 ) {
     measured.clear();
     for (entity, tag, block, text, node) in rows.iter(world) {
-        if !block.is_changed() || node.size().x <= 0.0 {
+        if node.size().x <= 0.0 {
             continue;
         }
         let height = if text.linebreak == LineBreak::NoWrap {
+            if !block.is_changed() {
+                continue;
+            }
             block.buffer().height()
         } else {
-            let Some(room) = room(world, entity) else {
+            let Some((room, refit)) = room(world, entity) else {
                 continue;
             };
+            if !block.is_changed() && !refit {
+                continue;
+            }
             let mut layout = block.buffer().clone();
             layout.break_all_lines(Some(room));
             layout.height()
@@ -731,21 +738,28 @@ pub(crate) fn remeasure(
 }
 
 /// The width in physical pixels that a wrapping row's text breaks at:
-/// that of its nearest ancestor that takes its row cell's whole
-/// width, less the padding and border of the nodes in between. A text
-/// is only as wide as its widest line, so its own width is too
-/// narrow.
-fn room(world: &World, text: Entity) -> Option<f32> {
+/// the content width of its row cell, less the padding and border of
+/// the nodes in between, and whether the cell refit since this system
+/// last ran. The cell's child that takes the cell's whole width, at
+/// most 3 nodes up, marks a row that wraps. The cell is read, not
+/// that child: on the frame the child switches to the whole width,
+/// its last layout still has its unwrapped width, and the cell's
+/// width is the same in both modes. A text is only as wide as its
+/// widest line, so its own width is too narrow.
+fn room(world: &World, text: Entity) -> Option<(f32, bool)> {
     let mut inset = 0.0;
     let mut at = world.get::<ChildOf>(text)?.parent();
     for _ in 0..3 {
         let node = world.get::<ComputedNode>(at)?;
-        let content = node.content_box().width();
-        if world.get::<Node>(at)?.width == percent(100.0) {
-            return Some(content - inset);
+        inset += node.size().x - node.content_box().width();
+        let cell = world.get::<ChildOf>(at)?.parent();
+        let whole = world.entity(at).get_ref::<Node>()?;
+        if whole.width == percent(100.0) {
+            let cell = world.get::<ComputedNode>(cell)?;
+            let room = cell.content_box().width() - inset;
+            return Some((room, whole.is_changed()));
         }
-        inset += node.size().x - content;
-        at = world.get::<ChildOf>(at)?.parent();
+        at = cell;
     }
     None
 }
