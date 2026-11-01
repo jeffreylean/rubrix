@@ -23,17 +23,17 @@ use rubrix_edit::{
 use rubrix_highlight::LineEdit;
 
 use crate::caret::{Geometry, Hit, Reveal, RowParts};
-use crate::clipboard;
 use crate::damage::{BUILT_MAX, reach, splice_rows};
 use crate::editor::{
     Applied, Composing, Drag, EditDoc, EditInput, EditLine,
-    EditRequest, EditView, EditorChanged,
+    EditRequest, EditView, EditorChanged, Pressed,
 };
 use crate::keymap::{
     Action, Gesture, Keymap, Keys, Resolved, Stroke,
 };
 use crate::marks::Marks;
 use crate::select::{self, Over, Pointers};
+use crate::{clipboard, ime};
 
 const PARTS: &str = "the editor's resources, which RubrixPlugin adds";
 
@@ -657,28 +657,14 @@ fn strokes(
             .unwrap_or_default();
         let pressed_now = !pressed.is_empty();
         for press in pressed {
-            let found = {
-                let parts = frame.parts.get_mut(world).expect(PARTS);
-                let gesture = parts.scene.keymap.gesture(
-                    parts.scene.keys.for_press(),
-                    press.count,
-                );
-                parts.docs.get(doc).ok().and_then(|(_, held)| {
-                    let (hit, _) = EditView::hit(
-                        &parts.scene,
-                        view,
-                        held.editor().buffer(),
-                        press.at,
-                        false,
-                    )
-                    .filter(|(_, over)| !over.bar)?;
-                    Some((
-                        gesture,
-                        hit,
-                        held.editor().selections().clone(),
-                    ))
-                })
-            };
+            let mut found = located(world, frame, view, doc, &press);
+            if found.is_some()
+                && let Some(preedit) = ime::end(world, view)
+            {
+                Tx::new(world, &mut frame.parts, doc, Some(view))
+                    .apply(Command::Paste(&preedit));
+                found = located(world, frame, view, doc, &press);
+            }
             let Some((gesture, hit, base)) = found else {
                 continue;
             };
@@ -746,6 +732,30 @@ fn strokes(
         }
     }
     pressed_views
+}
+
+fn located(
+    world: &mut World,
+    frame: &mut Frame,
+    view: Entity,
+    doc: Entity,
+    press: &Pressed,
+) -> Option<(Gesture, Hit, Selections)> {
+    let parts = frame.parts.get_mut(world).expect(PARTS);
+    let gesture = parts
+        .scene
+        .keymap
+        .gesture(parts.scene.keys.for_press(), press.count);
+    let (_, held) = parts.docs.get(doc).ok()?;
+    let (hit, _) = EditView::hit(
+        &parts.scene,
+        view,
+        held.editor().buffer(),
+        press.at,
+        false,
+    )
+    .filter(|(_, over)| !over.bar)?;
+    Some((gesture, hit, held.editor().selections().clone()))
 }
 
 /// One key, through the transaction of the view it was sent to.
