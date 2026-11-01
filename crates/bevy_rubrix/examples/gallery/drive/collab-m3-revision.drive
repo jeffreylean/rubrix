@@ -1,0 +1,19 @@
+page collab
+wait 120
+click 1250 279
+type abc
+key enter
+wait 5
+log changed
+expect changed changed 4 rising true last 4
+click 882 68
+wait 30
+click 1250 279
+key mod+z
+wait 5
+log undo
+expect undo 1 redo 1
+log changed
+expect changed changed 1 rising true last 5
+screenshot m3fa-revision.png
+exit

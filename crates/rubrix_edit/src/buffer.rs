@@ -217,6 +217,16 @@ impl Buffer {
         self.line_start(line) + content
     }
 
+    /// `offset`, or the start of the character it falls inside, held
+    /// to `len()`: the place an offset from outside the editor, such
+    /// as an app's, stands for.
+    pub fn floor_char_boundary(&self, offset: usize) -> usize {
+        let offset = offset.min(self.len());
+        let line = self.line_of(offset);
+        let start = self.line_start(line);
+        start + self.line(line).floor_char_boundary(offset - start)
+    }
+
     /// The text in `range`. Borrowed when the range lies inside one
     /// line, joined with `\n` otherwise.
     ///

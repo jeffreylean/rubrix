@@ -2859,3 +2859,96 @@ steps += [f"type {UNBOUNDED_QUERY}", "wait 120", f"# python re.findall(r'{UNBOUN
 steps += [f"click {doc.at(EDIT_LINE, 1)}", "frames start", "wait 60", [[f"type {c}", "wait 9"] for c in EDIT_TYPED], "wait 20"]
 steps += ["frames stop editor-find-m2-edit-100k.csv", "wait 120", doc.text(EDIT_LINE), counted(UNBOUNDED_QUERY, hits)]
 find_script("m2-edit-100k", steps, "wait 30", "screenshot m2fa-edit-100k.png")
+
+TO_TOP = "scroll 0 100000000"
+
+
+def rescroll(doc, n):
+    doc.top = n
+    return [CENTER, TO_TOP, LEFT, to_line(n), "wait 10"]
+
+
+def annotations(line):
+    return ["log annotations", f"expect annotations annotations 1: {line} review"]
+
+
+def texts(*lines):
+    return [[f"log text {n}", f"expect text {n} {rust_debug(text)}"] for n, text in lines]
+
+
+doc = Doc(LARGE_RS_LINES)
+steps = [ANNOTATE, "wait 5", doc.scroll_to(190), annotations(200)]
+swapped = texts((200, doc.line(201)), (201, doc.line(200)))
+steps += [f"click {doc.at(201, 1)}", "key alt+up", "wait 5", swapped, annotations(201)]
+steps += ["key mod+z", "wait 5", annotations(200), "key mod+shift+z", "wait 5", annotations(201), "key mod+z", "wait 5"]
+steps += [f"click {doc.at(200, 1)}", "key alt+down", "wait 5", swapped, annotations(201)]
+steps += ["key mod+z", "wait 5", annotations(200)]
+collab("m3-move-annotation", steps, "screenshot m3fa-move-annotation.png")
+
+doc = Doc(LARGE_RS_LINES)
+error, warning, info = (trimmed(doc, n) for n in (130, 131, 132))
+
+
+def on_line(span, n):
+    return ((n, span[0][1]), (n, span[1][1]))
+
+
+original = f"markers 3: {marker('error', error)}, {marker('warning', warning)}, {marker('info', info)}"
+up = f"markers 3: {marker('error', error)}, {marker('info', on_line(info, 131))}, {marker('warning', on_line(warning, 132))}"
+down = f"markers 3: {marker('warning', on_line(warning, 130))}, {marker('error', on_line(error, 131))}, {marker('info', info)}"
+steps = [doc.scroll_to(120), MARKERS, "wait 5", "log markers", f"expect markers {original}"]
+steps += [f"click {doc.at(132, 1)}", "key alt+up", "wait 5", "log markers", f"expect markers {up}"]
+steps += ["key mod+z", "wait 5", "log markers", f"expect markers {original}"]
+steps += [f"click {doc.end(130)}", "key alt+down", "wait 5", "log markers", f"expect markers {down}"]
+steps += ["key mod+z", "wait 5", "log markers", f"expect markers {original}"]
+collab("m3-move-marker", steps, "screenshot m3fa-move-marker.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [doc.scroll_to(95), "remote W 119:12", "remote P 120:12", "wait 5", remote("W 119:12 shown, P 120:12 shown")]
+steps += [f"click {doc.at(120, 1)}", "key alt+up", "wait 5", texts((119, doc.line(120)), (120, doc.line(119)))]
+steps += [remote("W 120:12 shown, P 119:12 shown")]
+steps += ["key mod+z", "wait 5", remote("W 119:12 shown, P 120:12 shown")]
+steps += ["key mod+shift+z", "wait 5", remote("W 120:12 shown, P 119:12 shown")]
+steps += [f"click {doc.end(119)}", "key alt+up", "wait 5", remote("W 120:12 shown, P 118:12 shown")]
+collab("m3-move-remote", steps, "screenshot m3fa-move-remote.png")
+
+doc = Doc(LARGE_RS_LINES)
+WIDE = "李" * 10
+line = doc.line(120) + WIDE
+head, end = 0, len(line.encode())
+starts = [i for i in range(end + 1) if i == end or (line.encode()[i] & 0xC0) != 0x80]
+columns = [len(line.encode()[: max(s for s in starts if s <= head + (end - head) * i // 49)].decode()) + 1 for i in range(50)]
+fifty = [f"u{i + 1} 120:{column} shown" for i, column in enumerate(columns)]
+steps = [doc.scroll_to(115), f"click {doc.end(120)}", f"paste {WIDE}", "key home", "key home", "wait 5", FIFTY_CARETS, "wait 5"]
+steps += [remote("remote 50: ", *fifty), f"click {doc.at(120, 1)}", "type ab", "wait 5"]
+steps += [remote(*(f"u{i + 1} 120:{column + 2} shown" for i, column in enumerate(columns))), "key mod+z", "wait 5", remote(*fifty)]
+collab("m3-multibyte", steps, "screenshot m3fa-multibyte.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [doc.scroll_to(115), f"click {doc.end(120)}", "paste collab: hi", "wait 5"]
+doc.insert((120, len(doc.line(120)) + 1), "collab: hi")
+steps += [doc.text(120), "log paste", f"expect paste {rust_debug('collab: collab: hi')}"]
+collab("m3-paste-tag", steps, "screenshot m3fa-paste-tag.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [f"click {doc.end(10)}", "type abc", "key enter", "wait 5", "log changed", "expect changed changed 4 rising true last 4"]
+steps += [RESPAWN, "wait 30", f"click {doc.end(10)}", "key mod+z", "wait 5", undo(1, 1)]
+steps += ["log changed", "expect changed changed 1 rising true last 5"]
+collab("m3-revision", steps, "screenshot m3fa-revision.png")
+
+doc = Doc(LARGE_RS_LINES)
+steps = [doc.scroll_to(115), f"click {doc.end(120)}", "paste " + "abcdefghij" * 20, "key home", "key home", "wait 5"]
+steps += [CENTER, "scroll -30 0", "wait 10", "log rows", "expect rows x 30"]
+steps += ["remote Ada 120:1", "remote Gus 122:1 120:3", "remote Cy 121:1", "wait 5"]
+steps += [remote("Ada 120:1 shown", "Gus 122:1..120:3 shown", "over gutter 0")]
+collab("m3-gutter", steps, "screenshot m3fa-gutter.png")
+
+doc = Doc(STRESS_LINES, text_x=TEXT_X_100K)
+LINE = 50_000
+steps = [TOGGLE_100K, "wait 60", doc.scroll_to(LINE), f"click {doc.at(LINE, 1)}", FIFTY_CARETS, "wait 5"]
+EDGE_LABELS_THAT_FIT = 20
+FOLDED = f"edge labels {EDGE_LABELS_THAT_FIT + 1} overlapping 0"
+steps += [rescroll(doc, LINE + 100), "wait 5", remote("u1 edge top at", "u50 edge top at", FOLDED)]
+steps += ["screenshot m3fa-edge-top.png", rescroll(doc, LINE - 100), "wait 5"]
+steps += [remote("u1 edge bottom at", "u50 edge bottom at", FOLDED)]
+collab("m3-edge-labels", steps, "screenshot m3fa-edge-bottom.png")

@@ -4,6 +4,8 @@ use core::ops::Range;
 
 use rubrix_highlight::LineEdit;
 
+use crate::buffer::Buffer;
+
 /// What one [`Buffer::replace`](crate::Buffer::replace) did to a
 /// text: replacements sorted by offset, none overlapping, in the byte
 /// offsets of the text before it.
@@ -17,6 +19,22 @@ use rubrix_highlight::LineEdit;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Change {
     reps: Vec<Rep>,
+    moves: Vec<Move>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Move {
+    pub(crate) from: Range<usize>,
+    pub(crate) to: usize,
+}
+
+impl Move {
+    fn inverse(&self) -> Move {
+        Move {
+            from: self.to..self.to + self.from.len(),
+            to: self.from.start,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,9 +80,30 @@ pub enum Assoc {
 
 impl Change {
     pub(crate) fn new(reps: Vec<Rep>) -> Change {
-        let mut change = Change { reps };
+        let mut change = Change {
+            reps,
+            moves: Vec::new(),
+        };
         change.place();
         change
+    }
+
+    pub(crate) fn moving(mut self, moves: Vec<Move>) -> Change {
+        debug_assert!(
+            moves
+                .windows(2)
+                .all(|pair| pair[0].from.end < pair[1].from.start),
+            "moves out of order or overlapping"
+        );
+        debug_assert!(
+            moves.len().is_multiple_of(2)
+                && moves
+                    .chunks_exact(2)
+                    .all(|pair| pair[1].to == pair[0].from.start),
+            "moves not in swapping pairs"
+        );
+        self.moves = moves;
+        self
     }
 
     /// The number of replacements. A typing keystroke has one per
@@ -111,8 +150,17 @@ impl Change {
     /// offset or starts a replaced range there, and the offset lands
     /// at the start of its new text. An offset inside a replaced
     /// range lands at the end of the new text with [`Assoc::After`]
-    /// and at its start with `Before`. O(log n) in the replacements.
+    /// and at its start with `Before`.
+    ///
+    /// A change that carries text whole, as a line move carries both
+    /// lines it swaps, takes every offset in that text, its end
+    /// included, along with it. With `Before` its start is left to
+    /// the replacements, so the end of a range before the text stays
+    /// behind. O(log n) in the replacements.
     pub fn map(&self, offset: usize, assoc: Assoc) -> usize {
+        if let Some(to) = self.moved(offset, assoc) {
+            return to;
+        }
         let ends_past_offset = |rep: &Rep| match assoc {
             Assoc::After => offset < rep.end(),
             Assoc::Before => offset < rep.end().max(rep.start + 1),
@@ -130,6 +178,62 @@ impl Change {
                     + self.end_after(i - 1)
             }
         }
+    }
+
+    pub(crate) fn map_range(
+        &self,
+        range: Range<usize>,
+    ) -> Range<usize> {
+        let Range { start, end } = range;
+        if self.moves.is_empty() {
+            return self.map(start, Assoc::After)
+                ..self.map(end, Assoc::Before);
+        }
+        for pair in self.moves.chunks_exact(2) {
+            let (first, second) = (&pair[0], &pair[1]);
+            let swap = first.from.start..second.from.end;
+            if end <= swap.start {
+                break;
+            }
+            if swap.end <= start
+                || (start <= swap.start && swap.end <= end)
+            {
+                continue;
+            }
+            if start < swap.start {
+                return start..swap.start;
+            }
+            let pieces = [
+                (first.from.clone(), first.to),
+                (
+                    first.from.end..second.from.start,
+                    second.to + second.from.len(),
+                ),
+                (second.from.clone(), second.to),
+            ];
+            let (piece, to) = pieces
+                .into_iter()
+                .find(|(piece, _)| start < piece.end)
+                .expect("the swap holds the start");
+            let end = end.min(piece.end);
+            return to + start - piece.start..to + end - piece.start;
+        }
+        range
+    }
+
+    pub(crate) fn moved(
+        &self,
+        offset: usize,
+        assoc: Assoc,
+    ) -> Option<usize> {
+        let i =
+            self.moves.partition_point(|text| text.from.end < offset);
+        let text = self.moves.get(i)?;
+        let inside = match assoc {
+            Assoc::After => text.from.start <= offset,
+            Assoc::Before => text.from.start < offset,
+        };
+        inside.then(|| text.to + offset - text.from.start)
     }
 
     /// The change as `LineEdit`s for
@@ -172,24 +276,28 @@ impl Change {
         })
     }
 
-    /// The replacements that undo this change, in the offsets of the
-    /// text after it, ready for `Buffer::replace`.
-    pub(crate) fn inverse(
-        &self,
-    ) -> impl Iterator<Item = (Range<usize>, &str)> + '_ {
-        self.reps.iter().map(|rep| {
-            (rep.after..rep.after + rep.new.len(), rep.old.as_str())
-        })
+    pub(crate) fn undo(&self, buffer: &mut Buffer) -> Change {
+        let mut moves: Vec<Move> =
+            self.moves.iter().map(Move::inverse).collect();
+        moves.sort_by_key(|text| text.from.start);
+        buffer
+            .replace(self.reps.iter().map(|rep| {
+                (
+                    rep.after..rep.after + rep.new.len(),
+                    rep.old.as_str(),
+                )
+            }))
+            .moving(moves)
     }
 
-    /// The replacements that redo this change, in the offsets of the
-    /// text before it.
-    pub(crate) fn forward(
-        &self,
-    ) -> impl Iterator<Item = (Range<usize>, &str)> + '_ {
-        self.reps
-            .iter()
-            .map(|rep| (rep.start..rep.end(), rep.new.as_str()))
+    pub(crate) fn redo(&self, buffer: &mut Buffer) -> Change {
+        buffer
+            .replace(
+                self.reps.iter().map(|rep| {
+                    (rep.start..rep.end(), rep.new.as_str())
+                }),
+            )
+            .moving(self.moves.clone())
     }
 
     pub(crate) fn start_after(&self, i: usize) -> usize {
