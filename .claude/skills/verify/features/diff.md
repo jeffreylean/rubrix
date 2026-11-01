@@ -108,3 +108,16 @@ Gotchas:
 - The list places a row it has not built at 17 px, so a scroll far down lands by that estimate, and only the rows the list has built take their real heights. `reach` models it with the 51 rows the list builds on show.
 - Where a line that ` // edit` changes repeats its neighbour, the diff matches the old line to the neighbour, which adds a context row between the removed and the added line. `100k pair` has two such lines, at 0-based indexes 47,000 and 71,700.
 - `type` drops leading spaces, so the lanes send `key space` first. A click at x 1250 can land inside a long split-row line, so the lanes press End after each click.
+
+`log caret` prints `caret <count> primary <index> <start>..<end> ... bracket <line:col>` for the file whose new side holds the caret, with 1-based lines and columns, or `caret n/a` while no new-side press has placed one. `bracket` is the far end of the pair at the primary caret, or `none`.
+
+The `m3fb` block of `gen_drives.py` writes one `diff-m3-<name>.drive` per milestone 3 fix. Each ends `drive: <n> of <n> checks pass` at head and fails at 218d8a3:
+
+- `diff-m3-drag.drive` drags across new line 7,997 of `pair` and copies `e(Component, C`, holds a drag above the `100k pair` list until it reaches row 0 and selects to line 1, then holds one below it for 60 frames.
+- `diff-m3-gap-buttons.drive` reverts the last hunk of `pair` and clicks `↓ down` on the lower piece of the split trailing gap, which grows the rows from 32 to 132.
+- `diff-m3-undo-gaps.drive` merges `merge.rs`'s two hunks and undoes it, then grows a `100k pair` hunk by typing on new line 3 and undoes it. The rows return to 142 and 9,342.
+- `diff-m3-empty.drive` empties `retype.rs`'s new side, moves the caret to `merge.rs`, clicks the one empty row left, and types `x`.
+- `diff-m3-gestures.drive` adds a caret with mod+click, makes a column with Alt+drag across the 93-line gap below new line 4 (three carets, none on a hidden line), and extends with Shift+click, on `100k pair`.
+- `diff-m3-bracket.drive` puts the caret after the `{` that ends new line 4,994 of `pair` and checks `bracket 5010:1`. Its screenshot shows both braces tinted.
+- `diff-m3-down.drive` presses Down from new line 104 of `100k pair`, above a 93-line gap, and lands on line 198, then Up back to 104.
+- `diff-m3-add-words.drive` adds the word `Component` as a second selection with mod+double-click and types `Q` into both.

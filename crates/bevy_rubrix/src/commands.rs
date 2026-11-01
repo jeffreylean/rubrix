@@ -3,9 +3,10 @@
 //! and the bracket pair at the primary caret.
 
 use bevy::color::{Alpha, Color};
-use bevy::ecs::change_detection::DetectChangesMut;
+use bevy::ecs::change_detection::{DetectChangesMut, Mut};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
+use bevy::ecs::query::Without;
 use bevy::ecs::system::{Commands, Query};
 use rubrix_edit::{
     Brackets, Buffer, Command, SCAN_LINES, Selection, bracket_skips,
@@ -13,6 +14,7 @@ use rubrix_edit::{
 };
 
 use crate::caret::CaretLayer;
+use crate::diff_edit::LiveFile;
 use crate::editor::{EditDoc, EditView};
 use crate::frame::Tx;
 use crate::keymap::{Gesture, added};
@@ -91,58 +93,38 @@ impl BracketMatch {
 /// The layer of [`Marks`] that holds the bracket pair.
 pub const BRACKET: MarkLayer = MarkLayer("bracket");
 
-const BRACKET_ALPHA: f32 = 0.3;
+pub(crate) const BRACKET_ALPHA: f32 = 0.3;
 
+/// The bracket match of every doc but a diff's: a diff lexes and
+/// matches its own docs in one pass with its rows' window.
 pub(crate) fn match_brackets(
-    mut docs: Query<(
-        Entity,
-        &mut EditDoc,
-        Option<&mut BracketMatch>,
-    )>,
+    mut docs: Query<
+        (Entity, &mut EditDoc, Option<&mut BracketMatch>),
+        Without<LiveFile>,
+    >,
     mut views: Query<(&EditView, &mut Marks)>,
     layers: Query<&CaretLayer>,
     mut commands: Commands,
 ) {
     for (entity, mut doc, held) in &mut docs {
-        let head = doc.editor().selections().primary().head;
-        let line = doc.editor().buffer().line_of(head);
+        let line = doc
+            .editor()
+            .buffer()
+            .line_of(doc.editor().selections().primary().head);
         doc.bypass_change_detection()
             .catch_up(line.saturating_add(SCAN_LINES));
-        let doc = &*doc;
-        let lexed = doc.highlight_seq();
-        let find = || {
-            matching_bracket(doc.editor().buffer(), head, |line| {
-                doc.current_runs(line).map(bracket_skips)
-            })
-        };
-        let brackets = match held {
-            Some(held)
-                if (held.lexed, held.head) == (lexed, head) =>
-            {
-                held.brackets
+        let fresh = refreshed(&doc, held.as_deref());
+        let brackets = match (held, fresh) {
+            (Some(held), None) => held.brackets,
+            (Some(held), Some(fresh)) => {
+                keep(held, fresh);
+                fresh.brackets
             }
-            Some(mut held) => {
-                let brackets = find();
-                let held = if held.brackets == brackets {
-                    held.bypass_change_detection()
-                } else {
-                    &mut *held
-                };
-                *held = BracketMatch {
-                    brackets,
-                    lexed,
-                    head,
-                };
-                brackets
-            }
-            None => {
-                let brackets = find();
-                commands.entity(entity).insert(BracketMatch {
-                    brackets,
-                    lexed,
-                    head,
-                });
-                brackets
+            (None, fresh) => {
+                if let Some(fresh) = fresh {
+                    commands.entity(entity).insert(fresh);
+                }
+                fresh.and_then(|fresh| fresh.brackets)
             }
         };
         for (view, mut marks) in &mut views {
@@ -159,6 +141,40 @@ pub(crate) fn match_brackets(
                 marks.set(BRACKET, want);
             }
         }
+    }
+}
+
+/// The bracket pair at `doc`'s primary caret, or `None` while
+/// `held` was found at the same caret and lexing.
+pub(crate) fn refreshed(
+    doc: &EditDoc,
+    held: Option<&BracketMatch>,
+) -> Option<BracketMatch> {
+    let head = doc.editor().selections().primary().head;
+    let lexed = doc.highlight_seq();
+    if held
+        .is_some_and(|held| (held.lexed, held.head) == (lexed, head))
+    {
+        return None;
+    }
+    let brackets =
+        matching_bracket(doc.editor().buffer(), head, |line| {
+            doc.current_runs(line).map(bracket_skips)
+        });
+    Some(BracketMatch {
+        brackets,
+        lexed,
+        head,
+    })
+}
+
+/// Writes `fresh` over `held`, marking it changed only when the pair
+/// moved.
+pub(crate) fn keep(mut held: Mut<BracketMatch>, fresh: BracketMatch) {
+    if held.brackets == fresh.brackets {
+        *held.bypass_change_detection() = fresh;
+    } else {
+        *held = fresh;
     }
 }
 

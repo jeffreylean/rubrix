@@ -2230,7 +2230,10 @@ at_first = [CENTER, TOP, "wait 10", at_changed]
 steps = [at_changed, "key space", "type one", "wait 5", diff_edit(f"file 0 hunks 3 undo 1 rediff")]
 steps += [reached, at_end(y), diff_edit(f"file 1 hunks 2 undo 0 rediff")]
 steps += ["key space", "type two", "wait 5", diff_edit(f"file 1 hunks 2 undo 1 rediff"), copy_line(MERGE_V3 + " two")]
-steps += [at_end(y), "key mod+z", "wait 5", diff_edit(f"file 1 hunks 2 undo 0 rediff"), at_end(y), copy_line(MERGE_V3)]
+# The drive runs about a frame a millisecond, and Bevy counts presses on one
+# row within 500 ms as a double or triple click, so each click waits past it.
+APART = "wait 600"
+steps += [APART, at_end(y), "key mod+z", "wait 5", diff_edit(f"file 1 hunks 2 undo 0 rediff"), APART, at_end(y), copy_line(MERGE_V3)]
 steps += [at_first, diff_edit(f"file 0 hunks 3 undo 1 rediff", FRESH), copy_line(CHANGED + " one")]
 diff_edit_lane("undo", PAIRS, steps, "wait 30", "screenshot e7-undo.png")
 
@@ -2952,3 +2955,131 @@ steps += [rescroll(doc, LINE + 100), "wait 5", remote("u1 edge top at", "u50 edg
 steps += ["screenshot m3fa-edge-top.png", rescroll(doc, LINE - 100), "wait 5"]
 steps += [remote("u1 edge bottom at", "u50 edge bottom at", FOLDED)]
 collab("m3-edge-labels", steps, "screenshot m3fa-edge-bottom.png")
+
+# m3fb: the milestone 3 fixes to the diff's new side. `shown`, `top` and
+# `TOP` were rebound above, so these scripts reach rows through their own.
+def m3_rows(*pairs):
+    return [row for file, pair in enumerate(pairs) for row in pair.rows(file)]
+
+
+def top_of(rows, index):
+    return sum(map(tall, rows[:index]))
+
+
+def m3_reach(rows, index):
+    global top, TOP
+    saved = top, TOP
+    top, TOP = top_of, "scroll 0 100000000"
+    try:
+        return reach(rows, index)
+    finally:
+        top, TOP = saved
+
+
+def m3_script(name, source, *steps):
+    write(f"diff-m3-{name}", "page diff", "wait 30", source, SETTLE, EDIT, "wait 10", *steps, "exit")
+
+
+def m3_y(rows, index):
+    reached, y = m3_reach(rows, index)
+    assert not reached, f"row {index} needs a scroll"
+    return y
+
+
+def m3_caret(count, *ranges, bracket="none"):
+    return ["log caret", f"expect caret {count} primary {count} {' '.join(ranges)} bracket {bracket}"]
+
+
+pair_rows = m3_rows(LARGE_PAIR)
+changed_y = m3_y(pair_rows, row_of(pair_rows, 0, new=CHANGED_NEW))
+text_x = 318
+column_x = lambda column: round(text_x + 8.571 * column, 1)
+big = m3_rows(hundred_k)
+first_shown = row_of(big, 0, new=1)
+far = 80
+reached, far_y = m3_reach(big, far)
+steps = [f"drag {column_x(7)} {changed_y} {column_x(21)} {changed_y}", "wait 5", "key mod+c", "log copied", f"expect copied {rust_debug(CHANGED[7:21])}"]
+steps += [HUNDRED_K_PAIR, SETTLE, reached, f"press 339 {far_y}", "move 700 60", "wait 240"]
+steps += ["log diff", f"expect diff first 0 {described(big, 0)}", "release", "wait 5", m3_caret(1, f"1:1..{big[far][3]}:1")]
+steps += ["type X", "wait 10", diff_edit("line 1 "), m3_caret(1, "1:2..1:2"), "key mod+z", "wait 10"]
+low = max(i for i, row in enumerate(big[:60]) if row[1] == "line" and row[3] and top_of(big, i) < VIEW_SHOWN)
+steps += [f"press 339 {m3_y(big, low)}", "move 700 799", "wait 60", "log diff", "release", "wait 5"]
+steps += ["# 60 frames held past the bottom scroll the list to row 78", "expect diff first 78 ", "log caret", "expect caret 1 primary 1 304:1..1204:"]
+m3_script("drag", PAIR, steps, "wait 30", "screenshot m3fb-drag.png")
+
+reverted = Pair("large.rs", len(LARGE_RS_LINES), LARGE_RS_EDITS[:2])
+reverted_rows = m3_rows(reverted)
+middle = len(pair_rows) - 1 - len(reverted_rows)
+assert pair_rows[23][1] == "gap" and pair_rows[-1][1] == "gap"
+lower = len(pair_rows) - 2
+lower_y = LIST_TOP + top_of(pair_rows, 23) + HEADER + (lower - 24) * ROW + HEADER // 2
+steps = [diff_rows(pair_rows), at_end(changed_y), ["key backspace"] * len(" // changed"), "wait 30", diff_edit("file 0 hunks 2 undo")]
+steps += ["log diff", f"expect diff files 1 rows {lower + 1} stacked", "wait 10", "screenshot m3fb-gap-split.png"]
+steps += [f"click 250 {lower_y}", "wait 30", "log diff", f"expect diff files 1 rows {lower + 1 + 100} stacked"]
+m3_script("gap-buttons", PAIR, steps, "wait 30", "screenshot m3fb-gap-buttons.png")
+
+pairs_rows = m3_rows(*ALL_PAIRS)
+merge_line = row_of(pairs_rows, 1, new=MERGE_LINE)
+reached, y = m3_reach(pairs_rows, merge_line)
+steps = [diff_rows(pairs_rows), reached, at_end(y), diff_edit("file 1 hunks 2 undo 0"), "key space", "type // edited", "wait 5"]
+steps += [diff_edit("file 1 hunks 1 undo 1"), "key mod+z", "wait 30", diff_edit("file 1 hunks 2 undo 0"), diff_rows(pairs_rows)]
+steps += [HUNDRED_K_PAIR, SETTLE, diff_rows(big)]
+below = row_of(big, 0, new=3)
+grown = m3_rows(Pair("large.rs", HUNDRED_K_LINES, sorted(hundred_k.changes + [(2, 1, 1)])))
+steps += [at_end(m3_y(big, below)), "type x", "wait 5", diff_edit("file 0 hunks"), diff_rows(grown)]
+steps += ["key mod+z", "wait 30", diff_rows(big)]
+m3_script("undo-gaps", PAIRS, steps, "wait 30", "screenshot m3fb-undo-gaps.png")
+
+retype_line = row_of(pairs_rows, 2, new=1)
+reached, y = m3_reach(pairs_rows, retype_line)
+empty_y = y + 3 * ROW
+steps = [reached, at_end(y), diff_edit("file 2 hunks 1 undo 0"), "key mod+a", "key backspace", "wait 10"]
+steps += [diff_edit("file 2 hunks 1 undo 1", "hunk @@ -1,3 +0,0 @@"), diff_rows(pairs_rows), "wait 10", "screenshot m3fb-empty.png", reached]
+steps += [f"click {LINE_END_X} {y - ROW - 2 * HEADER}", "wait 5", diff_edit("file 1 ")]
+steps += [f"click {LINE_END_X} {empty_y}", "wait 5", "type x", "wait 10", diff_edit("file 2 hunks 1 undo 2", "line 1 hunk @@ -1,3 +1 @@")]
+m3_script("empty", PAIRS, steps, "wait 30", "screenshot m3fb-empty-typed.png")
+
+lines = lambda *numbers: [HUNDRED_K_OLD[n - 1] for n in numbers]
+rows_y = {new: m3_y(big, row_of(big, 0, new=new)) for new in (4, 98, 99)}
+copied = lambda *texts: ["key mod+c", "log copied", f"expect copied {rust_debug(chr(10).join(texts) + chr(10))}"]
+steps = [f"click 339 {rows_y[98]}", "wait 30", f"click 339 {rows_y[99]} mod", "wait 5", "type Z", "wait 5"]
+steps += [copied(*(f"Z{line}" for line in lines(98, 99))), m3_caret(2, "98:2..98:2", "99:2..99:2")]
+steps += ["key mod+z", "wait 10", f"drag 339 {rows_y[4]} 339 {rows_y[99]} alt", "wait 5", "type W", "wait 5"]
+steps += [copied(*(f"W{line}" for line in lines(4, 98, 99))), m3_caret(3, "4:2..4:2", "98:2..98:2", "99:2..99:2"), "key mod+z", "wait 10"]
+steps += ["key escape", f"click 380 {rows_y[98]}", "wait 30", f"click 380 {rows_y[99]} shift", "wait 5", "key mod+c", "log copied"]
+steps += [f"expect copied {rust_debug(lines(98)[0][5:] + chr(10) + lines(99)[0][:5])}"]
+m3_script("gestures", HUNDRED_K_PAIR, steps, "wait 30", "screenshot m3fb-gestures.png")
+
+
+def closing_brace(lines, line):
+    depth = 0
+    for at in range(line - 1, len(lines)):
+        code = lines[at].split("//")[0]
+        for column, char in enumerate(code):
+            if at == line - 1 and column < code.rindex("{"):
+                continue
+            depth += {"{": 1, "}": -1}.get(char, 0)
+            if depth == 0:
+                return at + 1, column + 1
+
+
+OPEN_OLD = 5000
+assert LARGE_RS_LINES[OPEN_OLD - 1].endswith("{")
+close_old, close_column = closing_brace(LARGE_RS_LINES, OPEN_OLD)
+assert OPEN_OLD < close_old < CHANGED_OLD
+open_new, shift = OPEN_OLD - 6, 2 - 6
+open_y = m3_y(pair_rows, row_of(pair_rows, 0, new=open_new))
+end_column = len(LARGE_RS_LINES[OPEN_OLD - 1]) + 1
+steps = [at_end(open_y), diff_edit(f"line {open_new} "), m3_caret(1, f"{open_new}:{end_column}..{open_new}:{end_column}", bracket=f"{close_old + shift}:{close_column}")]
+m3_script("bracket", PAIR, steps, "move 740 400", "wait 30", "screenshot m3fb-bracket.png")
+
+above_gap = row_of(big, 0, new=104)
+assert big[above_gap + 1][1] == "gap"
+below_gap = big[above_gap + 2][3]
+steps = [at_end(m3_y(big, above_gap)), diff_edit("line 104 "), "key down", "wait 10", diff_edit(f"line {below_gap} ")]
+steps += ["key up", "wait 10", diff_edit("line 104 ")]
+m3_script("down", HUNDRED_K_PAIR, steps, "move 740 400", "wait 30", "screenshot m3fb-down.png")
+
+steps = [at_end(changed_y), "wait 60", f"click {column_x(9)} {changed_y} double mod", "type Q", "wait 3"]
+steps += ["key end", "key shift+home", "key mod+c", "log copied", f"expect copied {rust_debug(CHANGED.replace('Component', 'Q') + 'Q')}"]
+m3_script("add-words", PAIR, steps, "wait 30", "screenshot m3fb-add-words.png")

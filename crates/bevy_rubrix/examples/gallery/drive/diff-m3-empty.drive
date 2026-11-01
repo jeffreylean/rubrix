@@ -1,0 +1,47 @@
+page diff
+wait 30
+click 304 32
+wait 120
+click 1178 68
+wait 10
+move 740 400
+scroll 0 100000000
+scroll 0 -945
+wait 10
+log diff
+expect diff first 49 line 1 old 15 new 15
+click 1250 242
+key end
+wait 5
+log diff-edit
+expect diff-edit file 2 hunks 1 undo 0
+key mod+a
+key backspace
+wait 10
+log diff-edit
+expect diff-edit file 2 hunks 1 undo 1
+expect diff-edit hunk @@ -1,3 +0,0 @@
+log diff
+expect diff files 9 rows 142 stacked
+wait 10
+screenshot m3fb-empty.png
+move 740 400
+scroll 0 100000000
+scroll 0 -945
+wait 10
+log diff
+expect diff first 49 line 1 old 15 new 15
+click 1250 159
+wait 5
+log diff-edit
+expect diff-edit file 1 
+click 1250 293
+wait 5
+type x
+wait 10
+log diff-edit
+expect diff-edit file 2 hunks 1 undo 2
+expect diff-edit line 1 hunk @@ -1,3 +1 @@
+wait 30
+screenshot m3fb-empty-typed.png
+exit

@@ -1,0 +1,36 @@
+page diff
+wait 30
+click 586 68
+wait 120
+click 1178 68
+wait 10
+log diff
+expect diff files 1 rows 33 stacked
+click 1250 665
+key end
+wait 5
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+key backspace
+wait 30
+log diff-edit
+expect diff-edit file 0 hunks 2 undo
+log diff
+expect diff files 1 rows 32 stacked
+wait 10
+screenshot m3fb-gap-split.png
+click 250 724
+wait 30
+log diff
+expect diff files 1 rows 132 stacked
+wait 30
+screenshot m3fb-gap-buttons.png
+exit

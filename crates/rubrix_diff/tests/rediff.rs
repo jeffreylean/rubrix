@@ -3,8 +3,8 @@ use std::ops::Range;
 use std::time::Instant;
 
 use rubrix_diff::{
-    Block, Expansion, FileDiff, Hunk, Layout, LineRef, Lines, Rediff,
-    Row, RowSplice, Rows, Side, diff_texts, realign, rows,
+    Anchor, Block, Expansion, FileDiff, Hunk, Layout, LineRef, Lines,
+    Rediff, Row, RowSplice, Rows, Side, diff_texts, realign, rows,
 };
 
 #[path = "../../bevy_rubrix/examples/gallery/fixtures/diff/\
@@ -181,20 +181,59 @@ fn check_splice(
     }
 }
 
-fn shown_old_lines(table: &Rows, count: u32) -> Vec<bool> {
+fn shown_lines(
+    table: &Rows,
+    count: u32,
+    line: impl Fn(&Row) -> Option<LineRef>,
+) -> Vec<bool> {
     let mut shown = vec![false; count as usize];
     for row in table.range(..) {
-        if let Some(line) = row.old_line() {
-            shown[line.index as usize] = true;
+        let index = line(&row).map(|line| line.index as usize);
+        if let Some(seen) = index.and_then(|i| shown.get_mut(i)) {
+            *seen = true;
         }
     }
     shown
+}
+
+fn one_line_gaps(diff: &FileDiff) -> Vec<u32> {
+    let spans = diff.hunks().iter().map(|hunk| {
+        let blocks = hunk.blocks();
+        let last = blocks[blocks.len() - 1];
+        blocks[0].old_range().start..last.old_range().end
+    });
+    let mut at = 0;
+    let mut lines = Vec::new();
+    let end = diff.old_lines().len();
+    for span in spans.chain(std::iter::once(end..end)) {
+        if span.start == at + 1 {
+            lines.push(at);
+        }
+        at = span.end;
+    }
+    lines
+}
+
+fn revealed_old(row: &Row) -> Option<LineRef> {
+    match *row {
+        Row::Expanded { old, .. } => Some(old),
+        _ => None,
+    }
+}
+
+struct Undo {
+    lines: Range<u32>,
+    text: String,
+    caret_shown: bool,
+    hunks: Vec<Hunk>,
+    rows: [Rows; 2],
 }
 
 struct Doc {
     diff: FileDiff,
     expansion: Expansion,
     rows: [Rows; 2],
+    last: Option<Undo>,
 }
 
 impl Doc {
@@ -208,12 +247,27 @@ impl Doc {
             diff,
             expansion,
             rows,
+            last: None,
         }
     }
 
     fn edit(&mut self, lines: Range<u32>, text: &str) -> Rediff {
         let count = self.diff.old_lines().len();
-        let shown = shown_old_lines(&self.rows[0], count);
+        let mut revealed =
+            shown_lines(&self.rows[0], count, revealed_old);
+        for line in one_line_gaps(&self.diff) {
+            revealed[line as usize] = false;
+        }
+        let new = self.diff.new_lines();
+        let carets =
+            shown_lines(&self.rows[0], new.len(), Row::new_line);
+        let replaced: String =
+            lines.clone().map(|i| new.raw(i)).collect();
+        let caret_shown = lines
+            .end
+            .checked_sub(1)
+            .is_none_or(|i| carets[i as usize]);
+        let hunks = self.diff.hunks().to_vec();
         let before = self.rows.clone();
         let rediff = self.diff.edit_new(
             lines,
@@ -230,10 +284,68 @@ impl Doc {
             check_splice(before, table, splice, &rediff);
         }
         check_hunks(&self.diff);
-        let now = shown_old_lines(&self.rows[0], count);
-        let lost = (0..count as usize).find(|&i| shown[i] && !now[i]);
-        assert_eq!(lost, None, "an old line shown before is hidden");
+        let written =
+            rediff.lines.start..rediff.lines.start + rediff.inserted;
+        if !self.diff.hunks().is_empty() {
+            let now =
+                shown_lines(&self.rows[0], count, Row::old_line);
+            let lost =
+                (0..count as usize).find(|&i| revealed[i] && !now[i]);
+            assert_eq!(
+                lost, None,
+                "an old line revealed before is hidden"
+            );
+            let new = self.diff.new_lines().len();
+            let now = shown_lines(&self.rows[0], new, Row::new_line);
+            let last = written.end.checked_sub(1);
+            assert!(
+                last.is_none_or(|line| now[line as usize]),
+                "the last line the edit wrote is hidden"
+            );
+        }
+        self.last = Some(Undo {
+            lines: written,
+            text: replaced,
+            caret_shown,
+            hunks,
+            rows: before,
+        });
         rediff
+    }
+
+    fn undo(&mut self) {
+        let Some(undo) = self.last.take() else {
+            return;
+        };
+        let new = self.diff.new_lines();
+        let text = &undo.text;
+        let at_end = undo.lines.end == new.len();
+        if !undo.caret_shown
+            || !(text.is_empty() || text.ends_with('\n') || at_end)
+            || !text.is_empty()
+                && undo.lines.start >= new.len()
+                && new.missing_newline()
+        {
+            return;
+        }
+        self.edit(undo.lines.clone(), text);
+        if self.diff.hunks() != undo.hunks {
+            return;
+        }
+        for (now, before) in self.rows.iter().zip(&undo.rows) {
+            let first = now
+                .range(..)
+                .zip(before.range(..))
+                .position(|(a, b)| a != b);
+            assert!(
+                now == before,
+                "{:?} rows differ after an undo, from row \
+                 {first:?}, {} rows where {} were",
+                now.layout(),
+                now.len(),
+                before.len()
+            );
+        }
     }
 
     fn replace(
@@ -257,7 +369,15 @@ impl Doc {
     }
 
     fn reveal(&mut self, hunk: u32, side: Side, lines: u32) {
+        self.last = None;
         self.expansion.reveal(hunk, side, lines);
+        self.rows = LAYOUTS
+            .map(|layout| rows(&self.diff, layout, &self.expansion));
+    }
+
+    fn reveal_at(&mut self, row: u32, side: Side, lines: u32) {
+        self.last = None;
+        self.expansion.reveal_at(&self.rows[0], row, side, lines);
         self.rows = LAYOUTS
             .map(|layout| rows(&self.diff, layout, &self.expansion));
     }
@@ -394,9 +514,15 @@ fn random_edit(doc: &mut Doc, rng: &mut Rng) {
         doc.reveal(rng.below(gaps), side, rng.below(150) + 1);
         return;
     }
-    if rng.below(5) == 0 && revert(doc, rng) {
-        return;
+    if !(rng.below(5) == 0 && revert(doc, rng)) {
+        type_somewhere(doc, rng);
     }
+    if rng.below(4) == 0 {
+        doc.undo();
+    }
+}
+
+fn type_somewhere(doc: &mut Doc, rng: &mut Rng) {
     let line = target(doc, rng);
     let text = content(doc.diff.new_lines(), line).to_owned();
     match rng.below(4) {
@@ -519,17 +645,130 @@ fn a_reverted_hunks_caret_line_stays_shown_in_the_merged_gap() {
     let mut doc = Doc::new(&old, &new);
     doc.replace(10..11, &["line 10"]);
     let table = doc.table();
-    assert_eq!(&table[..3], ["G0 7", "E 8/8", "E 9/9"]);
+    assert_eq!(&table[..3], ["G0 7 up", "E 8/8", "E 9/9"]);
     assert_eq!(
         table[3..8],
         ["E 10/10", "E 11/11", "E 12/12", "E 13/13", "E 14/14"]
     );
-    assert_eq!(table[8], "G0 13 up");
+    assert_eq!(table[8], "G0 13 up down");
     assert_eq!(table[9], "C 28/28");
     let caret = doc.rows[0].get(4);
     assert!(
         matches!(caret, Some(Row::Expanded { new, .. }) if new.index == 10)
     );
+}
+
+#[test]
+fn every_hidden_piece_of_a_split_gap_expands_from_its_own_row() {
+    let (old, new) = pair(300, &[20, 280]);
+    let mut doc = Doc::new(&old, &new);
+    doc.replace(280..281, &["line 280"]);
+    assert_eq!(doc.diff.hunks().len(), 1);
+    let table = doc.table();
+    let gaps: Vec<&String> =
+        table.iter().filter(|row| row.starts_with("G1")).collect();
+    assert_eq!(gaps, ["G1 253 up down", "G1 16 down"]);
+
+    let row = |doc: &Doc, tag: &str| {
+        doc.table().iter().position(|row| row == tag).unwrap() as u32
+    };
+    let lower = row(&doc, "G1 16 down");
+    doc.reveal_at(lower, Side::Down, 3);
+    let table = doc.table();
+    let at = table.iter().position(|row| row == "E 284/284").unwrap();
+    assert_eq!(
+        table[at..].iter().take(5).collect::<Vec<_>>(),
+        [
+            "E 284/284",
+            "E 285/285",
+            "E 286/286",
+            "E 287/287",
+            "G1 13 down"
+        ]
+    );
+
+    let upper = row(&doc, "G1 253 up down");
+    doc.reveal_at(upper, Side::Up, 3);
+    let table = doc.table();
+    let at = table.iter().position(|row| row == "E 278/278").unwrap();
+    assert_eq!(
+        table[at - 4..=at],
+        [
+            "G1 250 up down",
+            "E 275/275",
+            "E 276/276",
+            "E 277/277",
+            "E 278/278"
+        ]
+    );
+}
+
+fn shown_tables(doc: &Doc) -> [Vec<String>; 2] {
+    doc.rows.each_ref().map(show)
+}
+
+#[test]
+fn undoing_an_edit_that_merged_two_hunks_restores_their_rows() {
+    let (old, new) = pair(40, &[10, 20]);
+    let mut doc = Doc::new(&old, &new);
+    let before = shown_tables(&doc);
+    doc.replace(13..14, &["line 13 typed"]);
+    assert_eq!(doc.diff.hunks().len(), 1);
+    doc.replace(13..14, &["line 13"]);
+    assert_eq!(doc.diff.hunks().len(), 2);
+    assert_eq!(shown_tables(&doc), before);
+}
+
+#[test]
+fn undoing_an_edit_that_grew_a_hunk_hides_the_lines_it_took() {
+    let (old, new) = pair(40, &[10, 30]);
+    let mut doc = Doc::new(&old, &new);
+    let before = shown_tables(&doc);
+    let old_len = doc.diff.hunks()[0].old_len();
+    doc.replace(12..13, &["line 12 typed"]);
+    assert_eq!(doc.diff.hunks()[0].old_len(), old_len + 2);
+    doc.replace(12..13, &["line 12"]);
+    assert_eq!(shown_tables(&doc), before);
+}
+
+#[test]
+fn undoing_a_replace_across_a_gap_hides_the_lines_it_wrote_back() {
+    let (old, new) = pair(60, &[10, 50]);
+    let mut doc = Doc::new(&old, &new);
+    let before = shown_tables(&doc);
+    let text = doc.diff.new_lines().text().to_owned();
+    let lines: Vec<&str> = text.lines().collect();
+    doc.replace(5..54, &["x"]);
+    doc.replace(5..6, &lines[5..54]);
+    assert_eq!(shown_tables(&doc), before);
+}
+
+#[test]
+fn emptying_the_new_side_keeps_one_row_that_takes_the_caret() {
+    let (old, new) = pair(10, &[4]);
+    let mut doc = Doc::new(&old, &new);
+    let len = doc.diff.new_lines().len();
+    doc.edit(0..len, "");
+    assert!(doc.diff.new_lines().is_empty());
+    for table in &doc.rows {
+        let last = table.len() - 1;
+        let row = table.get(last).unwrap();
+        let line = row.new_line().map(|l| (l.index, l.number.get()));
+        assert!(matches!(row, Row::Addition { .. }), "{row:?}");
+        assert_eq!(line, Some((0, 1)));
+        assert_eq!(row.words(&doc.diff), None);
+        assert_eq!(table.find(Anchor::New(0)), Some(last));
+        assert_eq!(table.hunk_rows(0), 0..table.len());
+        assert_eq!(table.len(), 11);
+    }
+    doc.edit(0..0, "x");
+    let mut full = diff_texts(&old, "x", CONTEXT);
+    realign(&mut full);
+    assert_eq!(doc.diff.hunks(), full.hunks());
+    for table in &doc.rows {
+        let fresh = rows(&full, table.layout(), &Expansion::new());
+        assert_eq!(show(table), show(&fresh));
+    }
 }
 
 #[test]

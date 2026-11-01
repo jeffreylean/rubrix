@@ -10,10 +10,14 @@ use bevy_fynix::views::{
     BehaviorExt, FrameProps, column, label, row,
 };
 use bevy_fynix::{ViewExt, resource};
-use bevy_rubrix::{DiffSource, Layout, Overflow, diff_view};
+use bevy_rubrix::{
+    BracketMatch, DiffDoc, DiffSource, EditDoc, Layout, Overflow,
+    diff_view,
+};
 
 use super::code::read_file;
-use super::{control, wrapping};
+use super::editor::one_based_line_col;
+use super::{Ask, control, wrapping};
 use crate::PageView;
 
 #[path = "../fixtures/diff/large_pairs.rs"]
@@ -86,6 +90,45 @@ impl Default for DiffFile {
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<DiffFile>();
+}
+
+/// The `log caret` answer: the selections of the file whose new side
+/// holds the caret, and the bracket that matches the one at its
+/// primary, as the editor page prints its own, without `visible`.
+pub fn answer(world: &mut World, ask: Ask) -> Option<String> {
+    if ask != Ask::Caret {
+        return None;
+    }
+    let doc = world
+        .query::<&DiffDoc>()
+        .iter(world)
+        .find_map(DiffDoc::edit_doc)?;
+    let editor = world.get::<EditDoc>(doc)?.editor();
+    let buffer = editor.buffer();
+    let selections = editor.selections();
+    let each = selections
+        .iter()
+        .map(|s| {
+            format!(
+                "{}..{}",
+                one_based_line_col(buffer, s.start()),
+                one_based_line_col(buffer, s.end())
+            )
+        })
+        .collect::<Vec<_>>();
+    let bracket = world
+        .get::<BracketMatch>(doc)
+        .and_then(BracketMatch::brackets)
+        .map_or_else(
+            || "none".into(),
+            |pair| one_based_line_col(buffer, pair.far),
+        );
+    Some(format!(
+        "{} primary {} {} bracket {bracket}",
+        selections.len(),
+        selections.primary_index() + 1,
+        each.join(" "),
+    ))
 }
 
 pub(super) fn patch(text: &str) -> DiffSource {

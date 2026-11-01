@@ -33,7 +33,9 @@ use rubrix_highlight::{Highlights, Lang, Run, Stream, highlight};
 use crate::code_view::Overflow;
 use crate::diff_edit;
 use crate::editor::EditDoc;
-use crate::rows::{LINE_HEIGHT, Shown, digits, filling, line_spans};
+use crate::rows::{
+    ADVANCE, LINE_HEIGHT, Shown, digits, filling, line_spans,
+};
 use crate::select::{self, Column, RowText, Selectable, selectable};
 use crate::tokens::{Styles, SyntaxTokens, Tint};
 
@@ -405,7 +407,21 @@ impl<'a> FileRef<'a> {
         }
     }
 
+    /// Line `index` of `lane`'s side, or `""` for the line past its
+    /// end, which the one row of an emptied new side names.
+    fn line(&self, lane: Lane, index: u32) -> &'a str {
+        let lines = self.lines(lane);
+        if index < lines.len() {
+            lines.line(index)
+        } else {
+            ""
+        }
+    }
+
     fn runs(&self, lane: Lane, index: u32) -> &'a [Run] {
+        if index >= self.lines(lane).len() {
+            return &[];
+        }
         match (lane, self.new) {
             (Lane::New, Some(doc)) => doc.runs(index as usize),
             (Lane::New, None) => self.source.new.line(index),
@@ -526,13 +542,33 @@ impl DiffDoc {
 
     /// Reveals [`Expansion::STEP`] more lines of file `file`'s gap
     /// above hunk `hunk` from the `side` end, or all of it, as
-    /// [`Expansion::reveal`] does. A gap row names its `hunk`.
+    /// [`Expansion::reveal`] does. A gap row names its `hunk`. Of a
+    /// gap whose middle shows, this reveals around the top hidden
+    /// run.
     pub fn reveal(&mut self, file: usize, hunk: u32, side: Side) {
+        let gap = self
+            .files
+            .get(file)
+            .and_then(|shown| shown.rows.find(Anchor::Gap(hunk)));
+        if let Some(row) = gap {
+            self.reveal_gap(file, row, side);
+        }
+    }
+
+    /// Reveals [`Expansion::STEP`] more of the lines that file
+    /// `file`'s gap row `row` hides, from the `side` end of that
+    /// hidden run, or all of it, as [`Expansion::reveal_at`] does.
+    fn reveal_gap(&mut self, file: usize, row: u32, side: Side) {
         let layout = self.layout();
         let Some(shown) = self.files.get_mut(file) else {
             return;
         };
-        shown.expansion.reveal(hunk, side, Expansion::STEP);
+        shown.expansion.reveal_at(
+            &shown.rows,
+            row,
+            side,
+            Expansion::STEP,
+        );
         let diff = shown.diff(&self.source.0[file].diff);
         shown.rows = rows(diff, layout, &shown.expansion);
         self.index();
@@ -815,7 +851,7 @@ impl Selectable for DiffDoc {
             Column::Old => (Lane::Old, row.old_line()?, ""),
             Column::New => (Lane::New, row.new_line()?, ""),
         };
-        let line = file.lines(lane).line(line.index);
+        let line = file.line(lane, line.index);
         Some(RowText { lead, line })
     }
 
@@ -988,7 +1024,11 @@ where
         let mut view = cx.world.entity_mut(root);
         view.insert(DiffDoc::new());
         select::attach::<DiffDoc>(&mut view);
-        diff_edit::attach(&mut view, style.caret);
+        diff_edit::attach(
+            &mut view,
+            style.caret,
+            style.size * ADVANCE,
+        );
         cx.effect(root, self.source, |world, root, source| {
             let docs = doc_mut(world, root).show(source.clone());
             diff_edit::restart(world, root, docs);
@@ -1415,7 +1455,7 @@ fn line_text(
     line: LineRef,
     style: &RowStyle,
 ) -> Vec<Span> {
-    let text = file.lines(lane).line(line.index);
+    let text = file.line(lane, line.index);
     let spans =
         line_spans(text, file.runs(lane, line.index), &style.styles);
     let marks = match row {
@@ -1639,10 +1679,12 @@ where
                 .and_then(|doc| doc.row(index));
             if let Some(DiffRow::Body {
                 file,
-                row: Row::Gap { hunk, .. },
+                row: Row::Gap { .. },
             }) = gap
             {
-                doc_mut(world, root).reveal(file, hunk, side);
+                let mut doc = doc_mut(world, root);
+                let row = index - doc.body_start(file);
+                doc.reveal_gap(file, row as u32, side);
             }
         })
         .boxed()

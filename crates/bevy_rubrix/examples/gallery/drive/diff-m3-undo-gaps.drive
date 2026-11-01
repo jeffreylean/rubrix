@@ -1,0 +1,50 @@
+page diff
+wait 30
+click 304 32
+wait 120
+click 1178 68
+wait 10
+log diff
+expect diff files 9 rows 142 stacked
+move 740 400
+scroll 0 100000000
+scroll 0 -725
+wait 10
+log diff
+expect diff first 37 line 1 old 4 new 4
+click 1250 210
+key end
+wait 5
+log diff-edit
+expect diff-edit file 1 hunks 2 undo 0
+key space
+type // edited
+wait 5
+log diff-edit
+expect diff-edit file 1 hunks 1 undo 1
+key mod+z
+wait 30
+log diff-edit
+expect diff-edit file 1 hunks 2 undo 0
+log diff
+expect diff files 9 rows 142 stacked
+click 380 32
+wait 120
+log diff
+expect diff files 1 rows 9342 stacked
+click 1250 209
+key end
+wait 5
+type x
+wait 5
+log diff-edit
+expect diff-edit file 0 hunks
+log diff
+expect diff files 1 rows 9345 stacked
+key mod+z
+wait 30
+log diff
+expect diff files 1 rows 9342 stacked
+wait 30
+screenshot m3fb-undo-gaps.png
+exit

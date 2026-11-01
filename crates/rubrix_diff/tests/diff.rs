@@ -113,12 +113,16 @@ fn empty_new_side_is_one_deletion_block() {
     assert!(diff.new_lines().is_empty());
     assert_eq!(replay(&diff), "");
     let table = rows(&diff, Layout::Split, &Expansion::new());
-    for (row, number) in table.range(..).zip(1..) {
+    for (row, number) in table.range(..2).zip(1..) {
         assert!(matches!(row, Row::Deletion { .. }));
         assert_eq!(row.new_line(), None);
         assert_eq!(row.old_line().unwrap().number.get(), number);
     }
-    assert_eq!(table.len(), 2);
+    let caret = table.get(2).unwrap();
+    assert!(matches!(caret, Row::Addition { .. }));
+    let line = caret.new_line().unwrap();
+    assert_eq!((line.index, line.number.get()), (0, 1));
+    assert_eq!(table.len(), 3);
 }
 
 #[test]
