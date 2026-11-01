@@ -4,13 +4,13 @@
 //! puts the candidate box under the primary caret. A composition
 //! shows as an underlined [`Preedit`] at the primary caret, outside
 //! the buffer and the history, and its commit goes in at every caret
-//! as one undo step. A press that moves the caret ends a composition
-//! as a native text view does: the preedit goes in where it was, and
-//! then the press takes effect.
+//! as one undo step. A press on the view's text ends a composition
+//! as a native text view does: the preedit goes in at every caret,
+//! and then the press takes effect.
 
 use bevy::app::{App, PostUpdate, PreUpdate};
 use bevy::color::Color;
-use bevy::ecs::change_detection::DetectChangesMut;
+use bevy::ecs::change_detection::{DetectChangesMut, Mut};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
@@ -18,7 +18,7 @@ use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::message::{MessageReader, MessageWriter};
 use bevy::ecs::query::{Has, With, Without};
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::system::{Commands, NonSendMarker, Query, Res};
+use bevy::ecs::system::{Commands, Query, Res};
 use bevy::ecs::world::World;
 use bevy::input::InputSystems;
 use bevy::input_focus::InputFocus;
@@ -29,7 +29,7 @@ use bevy::ui::{
     BackgroundColor, CalculatedClip, ComputedNode, Node, Overflow,
     PositionType, UiGlobalTransform, UiScale, ZIndex, px,
 };
-use bevy::window::{Ime, PrimaryWindow, RawHandleWrapper, Window};
+use bevy::window::{Ime, PrimaryWindow, Window};
 use bevy_fynix::views::drawn_layout;
 use rubrix_edit::Command;
 
@@ -82,17 +82,34 @@ impl Preedit {
     }
 }
 
-#[derive(Component)]
-pub(crate) struct Ended;
+/// A composition a press ended, until the input method lets go of it
+/// too. Without that it keeps composing the old letters.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Ended {
+    /// The frame of the press. [`enable`] turns the window's IME off,
+    /// so winit clears its marked text on macOS and disables the text
+    /// input on Wayland and X11.
+    Off,
+    /// The IME is on again, and the input method has not said so yet
+    /// with `Ime::Enabled`. On every backend winit sends that before
+    /// any event of the next composition, so a preedit or commit that
+    /// arrives first is the ended composition's, which the doc
+    /// already holds, and [`read`] drops it.
+    Stale,
+}
 
 pub(crate) fn end(world: &mut World, view: Entity) -> Option<String> {
     let mut entity = world.entity_mut(view);
     let preedit = entity.take::<Preedit>()?;
-    entity.remove::<Composing>().insert(Ended);
-    if let Some(mut marks) = entity.get_mut::<Marks>() {
-        marks.bypass_change_detection().set(IME, Vec::new());
+    entity.remove::<Composing>().insert(Ended::Off);
+    if let Some(marks) = entity.get_mut::<Marks>() {
+        clear(marks);
     }
     Some(preedit.value)
+}
+
+fn clear(mut marks: Mut<Marks>) {
+    marks.bypass_change_detection().set(IME, Vec::new());
 }
 
 pub(crate) fn plugin(app: &mut App) {
@@ -100,7 +117,7 @@ pub(crate) fn plugin(app: &mut App) {
         .add_systems(
             PreUpdate,
             (
-                (reset, read)
+                (age, read)
                     .chain()
                     .after(InputSystems)
                     .before(EditSystems::Apply),
@@ -111,6 +128,11 @@ pub(crate) fn plugin(app: &mut App) {
             PostUpdate,
             (enable, underline).after(EditSystems::Draw),
         );
+    #[cfg(target_os = "macos")]
+    app.add_systems(
+        PreUpdate,
+        discard.after(InputSystems).before(age),
+    );
 }
 
 /// Takes this frame's IME messages into the focused view, in order:
@@ -122,19 +144,19 @@ pub(crate) fn plugin(app: &mut App) {
 fn read(
     mut ime: MessageReader<Ime>,
     focus: Option<Res<InputFocus>>,
-    views: Query<(Entity, &EditView, Option<&Preedit>)>,
+    views: Query<(Entity, &EditView, Option<&Preedit>, Has<Ended>)>,
     mut requests: MessageWriter<EditRequest>,
     mut commands: Commands,
 ) {
     let focused = focus
         .and_then(|focus| focus.get())
         .filter(|&view| views.contains(view));
-    for (view, _, preedit) in &views {
+    for (view, _, preedit, _) in &views {
         if preedit.is_some() && focused != Some(view) {
             commands.entity(view).remove::<(Preedit, Composing)>();
         }
     }
-    let Some((view, edit, was)) =
+    let Some((view, edit, was, mut ended)) =
         focused.and_then(|view| views.get(view).ok())
     else {
         ime.clear();
@@ -143,6 +165,9 @@ fn read(
     let mut now = was.cloned();
     for message in ime.read() {
         now = match message {
+            Ime::Preedit { .. } | Ime::Commit { .. } if ended => {
+                continue;
+            }
             Ime::Preedit { value, cursor, .. } => {
                 Preedit::new(value, *cursor)
             }
@@ -159,7 +184,14 @@ fn read(
                 }
                 None
             }
-            Ime::Enabled { .. } | Ime::Disabled { .. } => None,
+            Ime::Enabled { .. } => {
+                if ended {
+                    commands.entity(view).remove::<Ended>();
+                    ended = false;
+                }
+                None
+            }
+            Ime::Disabled { .. } => None,
         };
     }
     if now.as_ref() == was {
@@ -191,8 +223,8 @@ fn place(
     layers: Query<&CaretLayer>,
 ) {
     for view in ended.read() {
-        if let Ok(mut marks) = cleared.get_mut(view) {
-            marks.bypass_change_detection().set(IME, Vec::new());
+        if let Ok(marks) = cleared.get_mut(view) {
+            clear(marks);
         }
     }
     for (edit, preedit, mut marks) in &mut views {
@@ -220,31 +252,36 @@ fn place(
     }
 }
 
+fn age(mut views: Query<&mut Ended>) {
+    for mut ended in &mut views {
+        if *ended == Ended::Off {
+            *ended = Ended::Stale;
+        }
+    }
+}
+
 /// winit's macOS view never tells its input context when the IME
 /// goes off (its `set_ime_allowed(false)` only clears its own marked
 /// text), so the input method would keep composing the old text. On
 /// Linux the IME going off and on is the reset, through winit.
-fn reset(
-    views: Query<Entity, With<Ended>>,
-    windows: Query<&RawHandleWrapper, With<PrimaryWindow>>,
-    mut commands: Commands,
-    _main_thread: NonSendMarker,
-) {
-    for view in &views {
-        commands.entity(view).remove::<Ended>();
-    }
-    if !views.is_empty()
-        && let Ok(handle) = windows.single()
-    {
-        discard_marked_text(handle);
-    }
-}
-
 #[cfg(target_os = "macos")]
-fn discard_marked_text(handle: &RawHandleWrapper) {
+fn discard(
+    views: Query<&Ended>,
+    windows: Query<
+        &bevy::window::RawHandleWrapper,
+        With<PrimaryWindow>,
+    >,
+    _main_thread: bevy::ecs::system::NonSendMarker,
+) {
     use objc2_app_kit::NSView;
     use raw_window_handle::RawWindowHandle;
 
+    if !views.iter().any(|ended| *ended == Ended::Off) {
+        return;
+    }
+    let Ok(handle) = windows.single() else {
+        return;
+    };
     let RawWindowHandle::AppKit(handle) = handle.get_window_handle()
     else {
         return;
@@ -257,12 +294,12 @@ fn discard_marked_text(handle: &RawHandleWrapper) {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-fn discard_marked_text(_: &RawHandleWrapper) {}
-
 /// Keeps the window's IME on while an editable view holds the focus,
-/// with the candidate box at the bottom-left of the primary caret, or
-/// at the top-left of the view's rows while the caret has no rect.
+/// except for the frame of a press that ended a composition, when it
+/// goes off so that the input method drops the composition too, and
+/// is on again the frame after. The candidate box sits at the
+/// bottom-left of the primary caret, or at the top-left of the view's
+/// rows while the caret has no rect.
 ///
 /// Bevy's `TextInputPlugin` turns the IME off in `PreUpdate` whenever
 /// no `EditableText` has the focus, and winit reads the window in
@@ -271,7 +308,7 @@ fn discard_marked_text(_: &RawHandleWrapper) {}
 /// next frame.
 fn enable(
     focus: Option<Res<InputFocus>>,
-    views: Query<(&EditView, Has<Ended>)>,
+    views: Query<(&EditView, Option<&Ended>)>,
     areas: Query<(&ComputedNode, &UiGlobalTransform)>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     ui_scale: Option<Res<UiScale>>,
@@ -285,7 +322,7 @@ fn enable(
     let Ok(mut window) = windows.single_mut() else {
         return;
     };
-    let on = !ended;
+    let on = ended != Some(&Ended::Off);
     if window.ime_enabled != on {
         window.ime_enabled = on;
     }
