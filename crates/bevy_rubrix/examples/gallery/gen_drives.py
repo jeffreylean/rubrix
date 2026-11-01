@@ -2230,7 +2230,10 @@ at_first = [CENTER, TOP, "wait 10", at_changed]
 steps = [at_changed, "key space", "type one", "wait 5", diff_edit(f"file 0 hunks 3 undo 1 rediff")]
 steps += [reached, at_end(y), diff_edit(f"file 1 hunks 2 undo 0 rediff")]
 steps += ["key space", "type two", "wait 5", diff_edit(f"file 1 hunks 2 undo 1 rediff"), copy_line(MERGE_V3 + " two")]
-steps += [at_end(y), "key mod+z", "wait 5", diff_edit(f"file 1 hunks 2 undo 0 rediff"), at_end(y), copy_line(MERGE_V3)]
+# The drive runs about a frame a millisecond, and Bevy counts presses on one
+# row within 500 ms as a double or triple click, so each click waits past it.
+APART = "wait 600"
+steps += [APART, at_end(y), "key mod+z", "wait 5", diff_edit(f"file 1 hunks 2 undo 0 rediff"), APART, at_end(y), copy_line(MERGE_V3)]
 steps += [at_first, diff_edit(f"file 0 hunks 3 undo 1 rediff", FRESH), copy_line(CHANGED + " one")]
 diff_edit_lane("undo", PAIRS, steps, "wait 30", "screenshot e7-undo.png")
 
