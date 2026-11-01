@@ -3404,6 +3404,17 @@ doc.lines[LINE - 1] = line[: TONE_COLUMN - 1] + line[TONE_COLUMN] + line[TONE_CO
 steps += [f"click {doc.at(LINE, TONE_COLUMN + 1)}", os_text("ctrl+t", doc, LINE), caret((LINE, TONE_COLUMN + 2)), undo(3, 0)]
 editor("mac-emacs", steps)
 
+ACUTE = "\u00b4"
+doc = Doc(LARGE_RS_LINES)
+steps = [at_ime_line(doc), os_key("alt+e", "ime", f"last preedit {ime_debug(ACUTE)}")]
+clicked = (IME_LINE + 3, 1)
+steps += [f"click {doc.at(*clicked)}", "wait 5"]
+doc.insert((IME_LINE, IME_COLUMN), ACUTE)
+steps += [ime_text(doc, IME_LINE), caret(clicked), ime("page preedit none"), undo(1, 0)]
+doc.insert(clicked, "a")
+steps += [os_text("a", doc, clicked[0]), ime_text(doc, IME_LINE), undo(2, 0)]
+editor("mac-ime-click", steps)
+
 
 def paste_pieces(doc, carets, pieces):
     lines = [n for n, _ in carets]
