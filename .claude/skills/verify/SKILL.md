@@ -56,6 +56,7 @@ Scripts for each check are in `crates/bevy_rubrix/examples/gallery/drive/`. One 
 
 ```
 page <name>        wait <frames>        exit
+wait <frames> until <topic> <text>
 move <x> <y>       click <x> <y> [double|triple] [shift] [mod] [alt]
 drag <x0> <y0> <x1> <y1> [shift] [mod] [alt]
 press <x> <y>      release              scroll <dx> <dy>     wheel <dx> <dy>
