@@ -26,15 +26,17 @@ VARIABLES
     dd,       \* EditDoc.damage
     md,       \* Marks.damage, on the view
     count,    \* VirtualList.count
-    slots,    \* VirtualList.slots[_].index
+    slots,    \* VirtualList.slots[_]: its index, and filled_at, the fills
+              \* when a fill last gave it a row
+    fills,    \* VirtualList.fills
     rows,     \* per slot: what its row read, as fynix's Mount keeps it
     phase,    \* where the frame is: "apply", "update" or "post"
     frame,
     notes,
     mounted   \* the last step was a Mount
 
-vars == <<doc, marksAt, dd, md, count, slots, rows, phase, frame, notes,
-          mounted>>
+vars == <<doc, marksAt, dd, md, count, slots, fills, rows, phase, frame,
+          notes, mounted>>
 
 Min(a, b) == IF a < b THEN a ELSE b
 Max(a, b) == IF a > b THEN a ELSE b
@@ -165,14 +167,14 @@ RowSplices(edits, i) ==
          IN (IF replaces /\ counts THEN <<row>> ELSE <<>>)
             \o RowSplices(edits, i + 1)
 
-\* VirtualList::splice, for the slots.
+\* VirtualList::splice, for the slots. It leaves `filled_at` as it is.
 SpliceSlots(sl, at, removed, inserted) ==
     LET end == at + removed
         Moved(v) == IF v >= end THEN v - removed + inserted ELSE Min(v, at)
-    IN Tuple([p \in 1..Len(sl) |->
-                 IF at <= sl[p] /\ sl[p] < end THEN Gone
-                 ELSE IF sl[p] # Gone THEN Moved(sl[p])
-                 ELSE Gone])
+        To(v) == IF at <= v /\ v < end THEN Gone
+                 ELSE IF v # Gone THEN Moved(v)
+                 ELSE Gone
+    IN Tuple([p \in 1..Len(sl) |-> [sl[p] EXCEPT !.index = To(@)]])
 
 RECURSIVE ApplySplices(_, _, _, _)
 ApplySplices(sl, cnt, splices, i) ==
@@ -253,6 +255,7 @@ Init ==
     /\ md = NoDamage
     /\ count = InitLines
     /\ slots = <<>>
+    /\ fills = 0
     /\ rows = <<>>
     /\ phase = "post"
     /\ frame = 0
@@ -268,7 +271,7 @@ StartFrame ==
     /\ phase' = "apply"
     /\ frame' = frame + 1
     /\ mounted' = FALSE
-    /\ UNCHANGED <<doc, marksAt, count, slots, rows, notes>>
+    /\ UNCHANGED <<doc, marksAt, count, slots, fills, rows, notes>>
 
 \* Tx::transact: EditDoc::run edits, lexes and notes, then
 \* EditView::splice splices the view's list, in frame::apply.
@@ -286,7 +289,7 @@ Change ==
             /\ count' = spliced[2]
     /\ notes' = notes + 1
     /\ mounted' = FALSE
-    /\ UNCHANGED <<marksAt, md, rows, phase, frame>>
+    /\ UNCHANGED <<marksAt, md, fills, rows, phase, frame>>
 
 \* EditDoc::catch_up, at the end of frame::apply and in diff_edit's
 \* catch_up: notes the lines whose runs changed, with no line edits.
@@ -298,7 +301,7 @@ CatchUp ==
         /\ dd' = Note(dd, <<>>, UnitRanges(lexed, Len(doc)))
     /\ notes' = notes + 1
     /\ mounted' = FALSE
-    /\ UNCHANGED <<marksAt, md, count, slots, rows, phase, frame>>
+    /\ UNCHANGED <<marksAt, md, count, slots, fills, rows, phase, frame>>
 
 \* Marks::set, from any system in any schedule: notes the lines of the
 \* layer's old and new marks.
@@ -310,7 +313,7 @@ SetMarks ==
         /\ md' = Note(md, <<>>, UnitRanges(lines, MaxLines))
     /\ notes' = notes + 1
     /\ mounted' = FALSE
-    /\ UNCHANGED <<doc, dd, count, slots, rows, phase, frame>>
+    /\ UNCHANGED <<doc, dd, count, slots, fills, rows, phase, frame>>
 
 \* fynix's read_sources then place_rows, in Update before Mount:
 \* VirtualList::fill places the slots over the rows near the view.
@@ -324,20 +327,24 @@ Fill ==
                start == Min(first, cnt - pool)
                kept == SubSeq(slots, 1, Min(Len(slots), pool))
                InWindow(p) ==
-                   kept[p] # Gone /\ kept[p] >= start
-                   /\ kept[p] - start < pool
+                   kept[p].index # Gone /\ kept[p].index >= start
+                   /\ kept[p].index - start < pool
                Keeps(p) ==
                    InWindow(p)
-                   /\ \A q \in 1..p - 1 : ~(InWindow(q) /\ kept[q] = kept[p])
+                   /\ \A q \in 1..p - 1 :
+                          ~(InWindow(q) /\ kept[q].index = kept[p].index)
                free == SelectSeq([p \in 1..pool |-> p],
                                  LAMBDA p : p > Len(kept) \/ ~Keeps(p))
                missing == SelectSeq([k \in 1..pool |-> start + k - 1],
                                     LAMBDA v : ~\E p \in 1..Len(kept) :
-                                                  Keeps(p) /\ kept[p] = v)
+                                                  Keeps(p)
+                                                  /\ kept[p].index = v)
            IN slots' = Tuple([p \in 1..pool |->
                            IF p <= Len(kept) /\ Keeps(p) THEN kept[p]
-                           ELSE missing[CHOOSE j \in 1..Len(free) :
-                                            free[j] = p]])
+                           ELSE [index |-> missing[CHOOSE j \in 1..Len(free) :
+                                                     free[j] = p],
+                                 filled_at |-> fills + 1]])
+    /\ fills' = fills + 1
     /\ count' = Len(doc)
     /\ phase' = "update"
     /\ mounted' = FALSE
@@ -347,17 +354,19 @@ Fill ==
 Now == [doc |-> dd.seq, marks |-> md.seq]
 
 \* A row built at Mount reads at once.
-Built(index) == [seen |-> index, read |-> Now, shown |-> Content(index)]
+Built(slot) ==
+    [seen |-> slot, read |-> Now, shown |-> Content(slot.index)]
 
 \* rows.rs `line`: the slot moved by RowSlot::index's check, which
-\* compares the index with the one it saw last; or EditFeed::reread
-\* fires on the doc's or the marks' damage.
-Checked(row, index) ==
-    LET moved == index # row.seen
-        fires == Fires(dd, index, row.read.doc)
-                 \/ Fires(md, index, row.read.marks)
-    IN [seen |-> index, read |-> Now,
-        shown |-> IF moved \/ fires THEN Content(index) ELSE row.shown]
+\* compares the index and its filled_at with the ones it saw last; or
+\* EditFeed::reread fires on the doc's or the marks' damage.
+Checked(row, slot) ==
+    LET moved == slot # row.seen
+        fires == Fires(dd, slot.index, row.read.doc)
+                 \/ Fires(md, slot.index, row.read.marks)
+    IN [seen |-> slot, read |-> Now,
+        shown |-> IF moved \/ fires THEN Content(slot.index)
+                  ELSE row.shown]
 
 \* fynix's Mount, an exclusive system in Update: update_structure builds
 \* a row for each new slot and drops the rows of slots fill truncated,
@@ -369,14 +378,15 @@ Mount ==
                    ELSE Built(slots[p])])
     /\ phase' = "post"
     /\ mounted' = TRUE
-    /\ UNCHANGED <<doc, marksAt, dd, md, count, slots, frame, notes>>
+    /\ UNCHANGED <<doc, marksAt, dd, md, count, slots, fills, frame, notes>>
 
 \* A frame whose Mount does not run.
 SkipMount ==
     /\ phase = "update"
     /\ phase' = "post"
     /\ mounted' = FALSE
-    /\ UNCHANGED <<doc, marksAt, dd, md, count, slots, rows, frame, notes>>
+    /\ UNCHANGED <<doc, marksAt, dd, md, count, slots, fills, rows, frame,
+                   notes>>
 
 Next == StartFrame \/ Change \/ CatchUp \/ SetMarks \/ Fill \/ Mount
         \/ SkipMount
@@ -405,6 +415,7 @@ DamageView == <<doc, marksAt, dd, md, phase, frame, notes>>
 
 \* After each Mount, every row shows what its line holds now.
 RowsFresh ==
-    mounted => \A p \in 1..Len(rows) : rows[p].shown = Content(slots[p])
+    mounted =>
+        \A p \in 1..Len(rows) : rows[p].shown = Content(slots[p].index)
 
 =============================================================================

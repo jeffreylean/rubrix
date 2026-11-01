@@ -22,44 +22,46 @@ The script downloads tla2tools.jar v1.7.4 into `~/.cache/tla2tools/` once, check
 
 | Check | Invariants | Bounds | Time |
 | --- | --- | --- | --- |
-| `damage` | `DamageSound` | 3 lines growing to 4, 3 frames, 2 notes, up to 2 line edits a change | about 11 s |
-| `rows` | `ListCountIsDocRows`, `RowsFresh` | 3 lines, 2 slots, 3 frames, 2 notes, up to 2 line edits a change | fails in about 6 s on F1 |
-| `damage-deep` | `DamageSound` | as `damage`, with 3 notes | about 6 min |
+| `damage` | `DamageSound` | 3 lines growing to 4, 3 frames, 2 notes, up to 2 line edits a change | about 12 s |
+| `rows` | `ListCountIsDocRows`, `RowsFresh` | 3 lines, 2 slots, 3 frames, 2 notes, up to 2 line edits a change | about 45 s |
+| `damage-deep` | `DamageSound` | as `damage`, with 3 notes | about 8 min |
 
 Run `damage` and `rows` on every change that touches the covered code. Run `damage-deep` before you move the sync commit.
 
 - `DamageSound` is the promise in `Damage`'s doc comment, on `Damage` alone. For every line and every generation `read` up to `seq`, a line whose spans a note changed after `read` gets `fires(line, read) == true`. It holds for the doc's damage and for the marks' damage. The `damage` checks fingerprint states by `DamageView`, which leaves out the slots and rows, because nothing that `DamageSound` reads depends on them.
-- `RowsFresh` is the end-to-end property above. It needs `DamageSound`, and it also needs fynix's slot bookkeeping to tell a row that its slot moved.
+- `RowsFresh` is the end-to-end property above. It needs `DamageSound`, and it also needs fynix's slot bookkeeping to tell a row that its slot moved, which F1 broke.
 - `ListCountIsDocRows` says that `splice_rows` never meets a list whose count differs from the doc's rows, so its error branch never runs.
 
 ## Status at the sync commit
 
-`damage` and `damage-deep` pass. `rows` fails on finding F1. Until F1 is fixed, a `rows` trace that matches one of F1's paths is the known finding, and any other trace is new.
+`damage`, `rows` and `damage-deep` pass. Any `rows` failure is new.
 
-**F1. A row can keep drawing a line that moved away from its slot.** `rows.rs` `line` learns that its slot moved only from `RowSlot::index`'s check. That check is `follow` in virtual_list.rs, and it compares the slot's index with the one it saw at the last Mount. When the index changes and comes back to the same number between two Mounts, the row sees no move. Its line number now holds another line, and `Damage` has no entry for it, because that line's spans did not change. TLC finds three paths.
+**F1, fixed. A row could keep drawing a line that moved away from its slot.** `rows.rs` `line` learns that its slot moved only from `RowSlot::index`'s check, which is `follow` in virtual_list.rs. Before the fix, that check compared the slot's index with the one it saw at the last Mount. When the index changed and came back to the same number between two Mounts, the row saw no move. Its line number then held another line, and `Damage` had no entry for it, because that line's spans did not change. TLC found three paths.
 
-1. A join in one frame. This path is confirmed on the real code: `f1_repro.rs` fails with row 1 drawing `bbb`.
+1. A join in one frame. `crates/bevy_rubrix/tests/row_redraw.rs` replays it on the real code.
    1. A doc of three lines, `aaa`, `bbb` and `ccc`, is shown. A slot shows row 1, and its row read `bbb`.
    2. Backspace at the start of `bbb` gives `LineEdit { first: 0, removed: 2, inserted: 1 }`. `row_edits` makes it `(1, 1, 0)`, and `VirtualList::splice(1, 1, 0)` sets the slot's index to `usize::MAX`, because its row was removed.
    3. `Damage::note` records line 0, the edit's inserted line. Line 1 is now `ccc`, whose spans did not change.
    4. In the same frame, `fill` gives the free slot the first missing index, which is 1 again.
-   5. At Mount, `RowSlot::index` reports no move, and `fires(1, read)` is false. The row keeps drawing `bbb` where `ccc` belongs.
-2. A splice, then a scroll back, in one frame. This path comes from TLC only. An Enter above a slot moves the slot's index from 2 to 3. A scroll in the same frame makes `fill` place the slot at 2 again, and line 2 now holds the line that was line 1. With many slots, this needs an insert of more than half the built rows above them, such as a paste.
-3. A scroll away and back across a frame whose Mount does not run, for example while `Theme<T>` is absent. This path comes from TLC only. `fires`'s `read < since` arm does not catch it when nothing was noted between the row's read and the start of the skipped frame.
+   5. At Mount, `RowSlot::index` reported no move, and `fires(1, read)` was false. The row kept drawing `bbb` where `ccc` belongs.
+2. A splice, then a scroll back, in one frame. An Enter above a slot moves the slot's index from 2 to 3. A scroll in the same frame makes `fill` place the slot at 2 again, and line 2 now holds the line that was line 1. With many slots, this needs an insert of more than half the built rows above them, such as a paste.
+3. A scroll away and back across a frame whose Mount does not run, for example while `Theme<T>` is absent. `fires`'s `read < since` arm does not catch it when nothing was noted between the row's read and the start of the skipped frame.
 
-A scratch fix resets a row's `seen` whenever `splice` or `fill` changes its slot's index, which models a generation per slot in place of the value compare. With it, `rows` passes in about 29 s, so F1 is the only failure `rows` finds in these bounds. Until F1 is fixed in the code, `rows` stops at F1 and cannot catch a new row regression. When it is fixed, mirror the fix in `SpliceSlots`, `Fill` and `Checked`, and expect `rows` to pass.
+The fix gives each slot `Placed::filled_at`, the list's `fills` count when a fill last gave the slot a row. `RowSlot::index` compares the index together with `filled_at`, so every slot that a fill gives a row reads as moved, even at the index it had. A splice leaves `filled_at` alone, because a splice moves a slot together with its row. In the model, `Fill` sets `filled_at` to `fills + 1`, `SpliceSlots` keeps it, and `Checked` compares the whole slot record with the one the row saw.
 
-To rerun the confirmed path on the real code, copy `f1_repro.rs` to `crates/bevy_rubrix/tests/`, run `cargo test -p bevy_rubrix --test f1_repro`, and delete the copy.
+Two fynix tests in `vendor/fynix/crates/bevy_fynix/src/tests/virtual_list.rs` check the slot side on a plain list. In `a_slot_freed_and_given_its_index_again_shows_the_new_row`, a removal frees a slot and fill gives it the same index, as in path 1. In `a_slot_moved_off_its_index_and_back_shows_the_new_row`, an insert at the last built row moves its slot off and fill puts it back, as in path 2 without the scroll. Path 3 needs a skipped Mount, and only the model checks it.
 
 ## Shown to fail
 
-On the sync commit, each of these breaks of the code, mirrored in the model, made a check fail. With the scratch fix in place, the `settle` and `fires` breaks also failed `rows`.
+On the sync commit, each of these breaks of the code, mirrored in the model, made a check fail.
 
-- `Damage::settle` drops the last frame's entries as well: `damage` fails at depth 3.
-- `Damage::note` stops moving kept entries through the edits: `damage` fails at depth 4.
-- `Damage::fires` loses its `read < self.since` arm: `damage` fails at depth 7. This break was also made in damage.rs and caught by following this skill.
-- `Shift::line` forgets the delta of earlier edits: `damage` fails at depth 4.
-- rows.rs `line` ignores `moved`: `rows` fails in 2 s.
+- `Damage::settle` drops the last frame's entries as well: `damage` fails with a trace of 3 states, and `rows` with one of 8.
+- `Damage::note` stops moving kept entries through the edits: `damage` fails with a trace of 4 states.
+- `Damage::fires` loses its `read < self.since` arm: `damage` fails with a trace of 6 states, and `rows` with one of 12. At `218d8a3`, this break was also made in damage.rs and caught by following this skill.
+- `Shift::line` forgets the delta of earlier edits: `damage` fails with a trace of 4 states.
+- `RowSlot::index` compares the index only, as before the F1 fix: `rows` fails in 8 s with a trace of 8 states.
+- `fill` stops setting `filled_at`: `rows` fails in 9 s. This break was also made in virtual_list.rs, where the two fynix tests above fail on it.
+- rows.rs `line` ignores `moved`: `rows` fails in 4 s.
 
 ## Tell a real bug from a modeling error
 
@@ -72,7 +74,7 @@ Read the trace in `~/.cache/redraw-damage/<check>/tlc.log`. Each state names the
 ## Does a change touch the verified code?
 
 ```sh
-git diff --stat 218d8a3e510d03391da3ea04eadc8c5b9bf146da -- \
+git diff --stat 24b97b01b787dd7a1d0a41ca125d8c0b8a588cbd -- \
   crates/bevy_rubrix/src/damage.rs crates/bevy_rubrix/src/editor.rs \
   crates/bevy_rubrix/src/frame.rs crates/bevy_rubrix/src/marks.rs \
   crates/bevy_rubrix/src/rows.rs crates/bevy_rubrix/src/lib.rs \
@@ -87,7 +89,7 @@ If the diff touches a function in the table, update the matching operator so tha
 
 ## Coverage
 
-Sync commit: `218d8a3e510d03391da3ea04eadc8c5b9bf146da`. At this commit the model was confirmed to describe the code below. Move the sync commit forward only after you confirm that the model describes the code at the new commit, and record the new status.
+Sync commit: `24b97b01b787dd7a1d0a41ca125d8c0b8a588cbd`. At this commit the model was confirmed to describe the code below. Move the sync commit forward only after you confirm that the model describes the code at the new commit, and record the new status.
 
 | Model | Code |
 | --- | --- |
@@ -95,14 +97,14 @@ Sync commit: `218d8a3e510d03391da3ea04eadc8c5b9bf146da`. At this commit the mode
 | `Merged`, `SortByStart` | `merged`, and `sort_unstable_by_key` in `Damage::note` |
 | `Note`, `Settle`, `Fires` | `Damage::note`, `Damage::settle`, `Damage::fires` |
 | `RowSplices`, `SpliceRows` | `row_edits`, `row_splices`, `splice_rows`, damage.rs |
-| `SpliceSlots` | `VirtualList::splice`, its loop over `self.slots` (vendor/fynix/crates/bevy_fynix/src/views/virtual_list.rs) |
+| `SpliceSlots` | `VirtualList::splice`, its loop over `self.slots`, which leaves `Placed::filled_at` as it is (vendor/fynix/crates/bevy_fynix/src/views/virtual_list.rs) |
 | `EditsOn`, `Changes` | the contract on `Change::line_edits` (crates/rubrix_edit/src/change.rs): at least one line removed and one inserted, ascending, `first + inserted <= next.first` |
 | `Change` | `Tx::transact` (frame.rs): `EditDoc::run`, which lexes and calls `Damage::note`, then `EditView::splice`, which calls `splice_rows` |
 | `CatchUp` | `EditDoc::catch_up`, from the end of `frame::apply` and from `diff_edit::catch_up` |
 | `SetMarks` | `Marks::set` (marks.rs), from `match_brackets`, `draw_markers`, `find::follow`, ime and app code, in any schedule |
 | `StartFrame` | the settle loop at the top of `frame::apply`, PreUpdate in `EditSystems::Apply` |
-| `Fill` | `read_sources` then `place_rows`, which calls `VirtualList::place` and `fill`, in fynix's Update `Prepare` set |
-| `Mount`, `Built`, `Checked` | fynix's `mounted::update`, an exclusive system in Update's `Mount` set: `update_structure` builds and drops the `each` rows keyed by slot, `update_elements` polls every row. Each row's `line` signal in rows.rs checks `RowSlot::index` (`follow`, by value) and `EditFeed::reread` (editor.rs) |
+| `Fill` | `read_sources` then `place_rows`, which calls `VirtualList::place` and `fill`, in fynix's Update `Prepare` set. `fill` adds one to `fills` and gives each slot it places that count as `filled_at` |
+| `Mount`, `Built`, `Checked` | fynix's `mounted::update`, an exclusive system in Update's `Mount` set: `update_structure` builds and drops the `each` rows keyed by slot, `update_elements` polls every row. Each row's `line` signal in rows.rs checks `RowSlot::index` (`follow` on the slot's index and `filled_at`) and `EditFeed::reread` (editor.rs) |
 | `SkipMount` | a frame whose Mount does not run, for example while `Theme<T>` is absent |
 | `Content` | `EditFeed::spans`: `EditDoc::line` and `runs`, and `Marks::on` by line number |
 
@@ -115,4 +117,7 @@ Each action is one indivisible step because the code makes it one. `frame::apply
 - Edits come from the `Change::line_edits` contract. `Change::map` and range remapping are left out because PR M3FA rewrites them.
 - Diff rows are not modeled. `diff_edit::fires` gates its `Damage::fires` call on `Session.reads`, and its rows map through `rubrix_diff` rows, whose gap expansion PR M3FB rewrites. The find scan's pause and resume are left out because seeded differential tests cover them.
 - `Marks` and `EditDoc` are never replaced on their entities. A new `Damage` restarts `seq` at 0, and that case is not checked.
-- The bounds are small: at most 4 lines, 2 slots, 3 frames and 3 notes. A pass covers those bounds only. The `rows` check stops at 3 lines, because at 4 lines a run of the scratch fix had not finished after 5 minutes.
+- The bounds are small: at most 4 lines, 2 slots, 3 frames and 3 notes. A pass covers those bounds only. The `rows` check stops at 3 lines, because at 4 lines a run of an earlier scratch fix had not finished after 5 minutes.
+- `fills` is a `u64` in the code and is never near its limit, so the model does not wrap it.
+- A count per slot, which starts again when `fill` drops a slot and builds it again, also passes `rows` in these bounds. The code keeps one count for the list because that count never repeats a value a row saw, not because the check tells the two apart.
+- The gutter's line number in rows.rs reads the same `RowSlot::index` check, and the model leaves it out.
