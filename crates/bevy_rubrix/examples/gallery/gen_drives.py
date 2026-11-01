@@ -1923,6 +1923,22 @@ after = doc.insert(after, "y")
 steps += [ime_text(doc, IME_LINE), caret(after)]
 ime_editor("keys", steps, "wait 30", "screenshot e3-keys.png")
 
+doc = Doc(LARGE_RS_LINES)
+steps = [at_ime_line(doc), composing(doc)]
+clicked = (IME_LINE + 3, 1)
+steps += [f"click {doc.at(*clicked)}", "wait 5"]
+doc.insert((IME_LINE, IME_COLUMN), COMPOSED)
+steps += [ime_text(doc, IME_LINE), caret(clicked), ime("page preedit none"), undo(1, 0)]
+steps += ["type x", "wait 5"]
+typed = doc.insert(clicked, "x")
+steps += [ime_text(doc, clicked[0]), caret(typed), undo(2, 0)]
+steps += [preedit(COMPOSED), "wait 5", ime(f"page preedit {ime_debug(COMPOSED)} cursor 6..6")]
+dragged = ((IME_LINE + 4, 5), (IME_LINE + 4, 10))
+steps += [f"drag {doc.at(*dragged[0])} {doc.at(*dragged[1])}", "wait 5"]
+doc.insert(typed, COMPOSED)
+steps += [ime_text(doc, clicked[0]), caret(*dragged), ime("page preedit none"), undo(3, 0)]
+ime_editor("click", steps, "wait 30", "screenshot e3-click.png")
+
 
 def candidate_box(doc, at, dy=0):
     """The window's IME position and the page's caret, both at the
