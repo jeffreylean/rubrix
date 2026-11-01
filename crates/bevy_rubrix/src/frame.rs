@@ -17,23 +17,23 @@ use bevy::math::Vec2;
 use bevy::time::Time;
 use bevy_fynix::views::VirtualList;
 use rubrix_edit::{
-    Affinity, Buffer, Change, Command, Editor, Layout, Monospace,
-    Selection, Selections,
+    Affinity, Assoc, Buffer, Change, Command, Editor, Layout,
+    Monospace, Selection, Selections,
 };
 use rubrix_highlight::LineEdit;
 
 use crate::caret::{Geometry, Hit, Reveal, RowParts};
-use crate::clipboard;
 use crate::damage::{BUILT_MAX, reach, splice_rows};
 use crate::editor::{
     Applied, Composing, Drag, EditDoc, EditInput, EditLine,
-    EditRequest, EditView, EditorChanged,
+    EditRequest, EditView, EditorChanged, Pressed,
 };
 use crate::keymap::{
     Action, Gesture, Keymap, Keys, Resolved, Stroke,
 };
 use crate::marks::Marks;
 use crate::select::{self, Over, Pointers};
+use crate::{clipboard, ime};
 
 const PARTS: &str = "the editor's resources, which RubrixPlugin adds";
 
@@ -657,31 +657,16 @@ fn strokes(
             .unwrap_or_default();
         let pressed_now = !pressed.is_empty();
         for press in pressed {
-            let found = {
-                let parts = frame.parts.get_mut(world).expect(PARTS);
-                let gesture = parts.scene.keymap.gesture(
-                    parts.scene.keys.for_press(),
-                    press.count,
-                );
-                parts.docs.get(doc).ok().and_then(|(_, held)| {
-                    let (hit, _) = EditView::hit(
-                        &parts.scene,
-                        view,
-                        held.editor().buffer(),
-                        press.at,
-                        false,
-                    )
-                    .filter(|(_, over)| !over.bar)?;
-                    Some((
-                        gesture,
-                        hit,
-                        held.editor().selections().clone(),
-                    ))
-                })
-            };
-            let Some((gesture, hit, base)) = found else {
+            let Some((gesture, mut hit, mut base)) =
+                located(world, frame, view, doc, &press)
+            else {
                 continue;
             };
+            if let Some(preedit) = ime::end(world, view) {
+                (hit, base) = commit_preedit(
+                    world, frame, doc, view, &preedit, hit, &base,
+                );
+            }
             Tx::new(world, &mut frame.parts, doc, Some(view))
                 .stroke(gesture, hit, hit, &base);
             pressed_views.push(view);
@@ -746,6 +731,72 @@ fn strokes(
         }
     }
     pressed_views
+}
+
+fn located(
+    world: &mut World,
+    frame: &mut Frame,
+    view: Entity,
+    doc: Entity,
+    press: &Pressed,
+) -> Option<(Gesture, Hit, Selections)> {
+    let parts = frame.parts.get_mut(world).expect(PARTS);
+    let gesture = parts
+        .scene
+        .keymap
+        .gesture(parts.scene.keys.for_press(), press.count);
+    let (_, held) = parts.docs.get(doc).ok()?;
+    let (hit, _) = EditView::hit(
+        &parts.scene,
+        view,
+        held.editor().buffer(),
+        press.at,
+        false,
+    )
+    .filter(|(_, over)| !over.bar)?;
+    Some((gesture, hit, held.editor().selections().clone()))
+}
+
+/// Puts the preedit a press ended into the doc at every caret, as one
+/// undo step, and returns `hit` and `base` moved into the new text.
+/// `hit` stays resolved against the rows as they were drawn, with the
+/// preedit at the primary caret only, because a hit test of the new
+/// buffer against those rows lands short on a line with another
+/// caret.
+fn commit_preedit(
+    world: &mut World,
+    frame: &mut Frame,
+    doc: Entity,
+    view: Entity,
+    preedit: &str,
+    mut hit: Hit,
+    base: &Selections,
+) -> (Hit, Selections) {
+    let mut pasted = None;
+    Tx::new(world, &mut frame.parts, doc, Some(view)).transact(
+        &mut |editor, layout| {
+            let change =
+                editor.apply(Command::Paste(preedit), &layout);
+            pasted = change.clone();
+            change
+        },
+    );
+    let parts = frame.parts.get_mut(world).expect(PARTS);
+    let Ok((_, held)) = parts.docs.get(doc) else {
+        return (hit, base.clone());
+    };
+    let editor = held.editor();
+    if let Some(change) = pasted {
+        let drawn_at = base.primary().start();
+        let at = if hit.in_insert > 0 {
+            drawn_at
+        } else {
+            hit.offset
+        };
+        hit.offset = change.map(at, Assoc::Before) + hit.in_insert;
+        hit.line = editor.buffer().line_of(hit.offset);
+    }
+    (hit, editor.selections().clone())
 }
 
 /// One key, through the transaction of the view it was sent to.

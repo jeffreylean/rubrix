@@ -71,6 +71,9 @@ pub struct Hit {
     /// the text, so past the end of a short line it stays where the
     /// pointer is.
     pub pointer: f32,
+    /// Bytes into the text an insert mark draws at `offset`, which
+    /// the buffer does not hold, and 0 off such a mark.
+    pub(crate) in_insert: usize,
 }
 
 /// How carets blink: on for `period`, then off for `period`, and on
@@ -540,16 +543,18 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
                 rich_point(laid.node, laid.transform, camera, point)?;
             let cursor =
                 Cursor::from_point(laid.layout, local.x, local.y);
+            let (at, into) =
+                self.shown(buffer, line).resolve(cursor.index());
             Some((
-                start
-                    + self.shown(buffer, line).source(cursor.index()),
+                start + at,
+                into,
                 rubrix_affinity(cursor.affinity()),
                 local.x * laid.node.inverse_scale_factor(),
             ))
         });
         let (offset, affinity) = pointed.map_or(
             (start, Affinity::Downstream),
-            |(at, side, _)| {
+            |(at, _, side, _)| {
                 let row = self.row(buffer, at, side);
                 (
                     at,
@@ -567,6 +572,7 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
                 affinity,
                 x,
                 pointer,
+                in_insert: pointed.map_or(0, |(_, into, ..)| into),
             },
             over,
         ))

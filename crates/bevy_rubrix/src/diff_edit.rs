@@ -783,6 +783,7 @@ fn hit(
         affinity: Affinity::Downstream,
         x,
         pointer,
+        in_insert: 0,
     }
 }
 

@@ -369,22 +369,32 @@ impl<'a> Shown<'a> {
     /// The source byte a drawn byte shows, the nearer end of a tab
     /// inside one, and an insert's byte inside an insert.
     pub(crate) fn source(&self, shown_byte: usize) -> usize {
+        self.resolve(shown_byte).0
+    }
+
+    /// [`Shown::source`], and the bytes into an insert's text the
+    /// drawn byte is: its length right after the insert, 0 off one.
+    pub(crate) fn resolve(
+        &self,
+        shown_byte: usize,
+    ) -> (usize, usize) {
         let mut extra = 0;
         for gap in &self.gaps {
             let at = gap.byte + extra;
             if shown_byte < at {
                 break;
             }
+            if gap.source == 0 && shown_byte <= at + gap.drawn {
+                return (gap.byte, shown_byte - at);
+            }
             if shown_byte < at + gap.drawn {
-                return gap.byte
-                    + usize::from(
-                        gap.source > 0
-                            && shown_byte - at > gap.drawn / 2,
-                    );
+                let nearer =
+                    usize::from(shown_byte - at > gap.drawn / 2);
+                return (gap.byte + nearer, 0);
             }
             extra += gap.drawn - gap.source;
         }
-        shown_byte - extra
+        (shown_byte - extra, 0)
     }
 
     /// Where a source byte is drawn: before an insert at it.
