@@ -1,4 +1,5 @@
 import argparse
+import unicodedata
 from pathlib import Path
 
 parser = argparse.ArgumentParser(
@@ -3410,3 +3411,72 @@ steps += [f"pbcopy {drive_escaped(joined)}", "log pbpaste", paste_at(doc, [(16, 
 other = joined.replace("Body", "Bold")
 steps += [f"pbcopy {drive_escaped(other)}", "log pbpaste", paste_at(doc, [(n, len(doc.line(n)) + 1) for n in [13, 15]], [other, other], 4)]
 editor("mac-clipboard", steps)
+
+
+GRAPHEMES = "../../../../rubrix_edit/tests/replay/graphemes.txt"
+ZWJ = "\u200d"
+WIDE_ADVANCE = 14
+TEXT_X_ONE_DIGIT = round(TEXT_X - 4 * ADVANCE)  # Bevy snaps the text node to a pixel, so 237.4 put two carets a pixel off
+
+
+def graphemes(line):
+    clusters = []
+    for c in line:
+        if clusters and (unicodedata.combining(c) or c == ZWJ or clusters[-1].endswith(ZWJ)):
+            clusters[-1] += c
+        else:
+            clusters.append(c)
+    return clusters
+
+
+def debug_text(text):
+    """`{:?}` of text, which escapes a ZWJ and a combining mark."""
+    return "".join(f"\\u{{{ord(c):x}}}" if c == ZWJ or unicodedata.combining(c) else c for c in ime_debug(text))
+
+
+def drawn_x(line, column):
+    x, chars = TEXT_X_ONE_DIGIT, 0
+    for cluster in graphemes(line):
+        if chars == column - 1:
+            break
+        x += WIDE_ADVANCE if unicodedata.east_asian_width(cluster[0]) == "W" else ADVANCE
+        chars += len(cluster)
+    assert chars == column - 1, (line, column)
+    assert abs(x % 1 - 0.5) > 0.05, x
+    return round(x)
+
+
+def font_step(doc, combo, at, shot):
+    n, column = at
+    return [
+        os_caret(combo, at),
+        f"wait {OS_KEY_TIMEOUT_FRAMES} until ime caret {drawn_x(doc.line(n), column)}",
+        "log ime",
+        f"log text {n}",
+        f"expect text {n} {debug_text(doc.line(n))}",
+        f"screenshot {shot}.png",
+    ]
+
+
+lines = (Path(__file__).parent / "drive" / GRAPHEMES).read_text().split("\n")
+doc = Doc(lines[:-1], text_x=TEXT_X_ONE_DIGIT)
+assert [len(graphemes(doc.line(n))) for n in [1, 2, 3]] == [12, 15, 12], doc.lines
+steps = [f"open {GRAPHEMES}", "wait 30", "screenshot fonts-load.png", SEAMS_CLEAN]
+steps += [[f"log runs {n}", f"log row {n}", f"log text {n}", f"expect text {n} {debug_text(doc.line(n))}"] for n in [1, 2, 3]]
+rights = backs = 0
+for n, column in [(1, 8), (2, 11), (3, 5)]:
+    line = doc.line(n)
+    clusters = graphemes(line)
+    first = len(graphemes(line[: column - 1]))
+    moves = 4 if n == 3 else 2
+    steps += [f"click {doc.at(n, column)}", caret((n, column)), f"wait 5 until ime caret {drawn_x(line, column)}", "log ime"]
+    for cluster in clusters[first : first + moves]:
+        column += len(cluster)
+        rights += 1
+        steps += [font_step(doc, "right", (n, column), f"fonts-right-{rights}")]
+    for cluster in reversed(clusters[first : first + moves]):
+        column -= len(cluster)
+        doc.lines[n - 1] = doc.line(n)[: column - 1] + doc.line(n)[column - 1 + len(cluster) :]
+        backs += 1
+        steps += [font_step(doc, "backspace", (n, column), f"fonts-backspace-{backs}")]
+editor("mac-fonts", steps)
