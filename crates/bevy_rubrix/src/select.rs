@@ -683,7 +683,7 @@ pub(crate) fn keys<D: Selectable>(
             continue;
         }
         commands.queue(move |world: &mut World| {
-            clipboard::copy(world, view, text);
+            clipboard::copy(world, view, text, Vec::new());
         });
     }
 }

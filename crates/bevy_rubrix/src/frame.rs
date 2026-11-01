@@ -118,10 +118,17 @@ impl<'w> Tx<'w> {
     /// Copies `text` from the view, or the doc without one, to the
     /// app's clipboard.
     pub fn copy(&mut self, text: String) {
+        self.copy_each(text, Vec::new());
+    }
+
+    /// Copies `text` as [`copy`](Self::copy) does, with the piece
+    /// each selection gave it, for a paste at as many selections.
+    fn copy_each(&mut self, text: String, pieces: Vec<String>) {
         clipboard::copy(
             self.world,
             self.view.unwrap_or(self.doc),
             text,
+            pieces,
         );
     }
 
@@ -475,7 +482,7 @@ pub(crate) fn apply(world: &mut World, mut frame: Local<Frame>) {
             Ok(text) => {
                 let mut tx =
                     Tx::new(world, &mut frame.parts, doc, view);
-                tx.apply(Command::Paste(&text));
+                paste_text(&mut tx, &text);
                 acted.extend(view.filter(|_| tx.acted));
             }
             Err(error) => warn!("clipboard: read failed {error}"),
@@ -749,8 +756,21 @@ pub(crate) fn dispatch(tx: &mut Tx, act: &Act) {
 fn copy(tx: &mut Tx) {
     let text = tx.editor().copy_text();
     if !text.is_empty() {
-        tx.copy(text);
+        let pieces = tx.editor().copy_pieces();
+        tx.copy_each(text, pieces);
     }
+}
+
+/// Pastes `text` read from the clipboard: when the last copy wrote it
+/// and gave one piece to each selection there is now, each piece goes
+/// back to its own selection, as in Pierre. Otherwise the text goes
+/// in as [`Command::Paste`] puts it.
+fn paste_text(tx: &mut Tx, text: &str) {
+    let selections = tx.editor().selections().len();
+    match clipboard::pieces(tx.world, text, selections) {
+        Some(pieces) => tx.apply(Command::PasteEach(&pieces)),
+        None => tx.apply(Command::Paste(text)),
+    };
 }
 
 /// Pastes at once when the clipboard read is ready, and otherwise
@@ -759,7 +779,7 @@ fn paste(tx: &mut Tx) {
     let mut read = clipboard::read(tx.world);
     match read.poll_result() {
         Some(Ok(text)) => {
-            tx.apply(Command::Paste(&text));
+            paste_text(tx, &text);
         }
         Some(Err(error)) => warn!("clipboard: read failed {error}"),
         None => {

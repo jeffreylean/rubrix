@@ -169,3 +169,42 @@ fn a_line_copied_at_a_caret_pastes_back_whole_at_one_caret() {
     assert_eq!(text(&editor), "ab\nab\ncd");
     assert_eq!(caret_offsets(&editor), [3]);
 }
+
+#[test]
+fn lines_cut_whole_at_n_carets_paste_back_whole_at_n_carets() {
+    let mut editor = carets("ab\ncd\nef\ngh", &[1, 7]);
+    let pieces = editor.copy_pieces();
+    assert_eq!(pieces, ["ab\n", "ef\n"]);
+    apply(&mut editor, Command::Cut);
+    assert_eq!(text(&editor), "cd\ngh");
+    assert_eq!(caret_offsets(&editor), [0, 3]);
+    apply(&mut editor, Command::PasteEach(&pieces));
+    assert_eq!(text(&editor), "ab\ncd\nef\ngh");
+    assert_eq!(caret_offsets(&editor), [3, 9]);
+    assert_eq!(editor.history().undo_depth(), 2);
+    apply(&mut editor, Command::Undo);
+    assert_eq!(text(&editor), "cd\ngh");
+    assert_eq!(caret_offsets(&editor), [0, 3]);
+}
+
+#[test]
+fn a_piece_per_selection_goes_to_its_own_in_the_buffers_line_ending()
+{
+    let mut editor = editor(
+        "x\r\ny\r\nz",
+        &[Selection::caret(0), Selection { anchor: 3, head: 4 }],
+    );
+    let pieces = ["a\nb".into(), "c".into()];
+    apply(&mut editor, Command::PasteEach(&pieces));
+    assert_eq!(text(&editor), "a\r\nbx\r\nc\r\nz");
+}
+
+#[test]
+fn pieces_for_another_number_of_selections_paste_nothing() {
+    let mut editor = carets("x\ny", &[0, 2]);
+    let pieces = ["a".into(), "b".into(), "c".into()];
+    let change = editor
+        .apply(Command::PasteEach(&pieces), &Monospace::default());
+    assert!(change.is_none());
+    assert_eq!(text(&editor), "x\ny");
+}
