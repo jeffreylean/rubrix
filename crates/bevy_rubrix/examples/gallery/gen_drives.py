@@ -1323,14 +1323,14 @@ def word_around(line, column):
     return word_left(line, column + 1), word_right(line, column)
 
 
-def caret(anchor, head=None, count=1, primary=1):
+def caret_text(anchor, head=None, count=1, primary=1):
     head = head or anchor
     anchor, head = min(anchor, head), max(anchor, head)
-    return [
-        "log caret",
-        f"expect caret {count} primary {primary} "
-        f"{anchor[0]}:{anchor[1]}..{head[0]}:{head[1]} visible true",
-    ]
+    return f"{count} primary {primary} {anchor[0]}:{anchor[1]}..{head[0]}:{head[1]} visible true"
+
+
+def caret(anchor, head=None, count=1, primary=1):
+    return ["log caret", f"expect caret {caret_text(anchor, head, count, primary)}"]
 
 
 def undo(depth, redo):
@@ -2993,12 +2993,12 @@ def m3_caret(count, *ranges, bracket="none"):
 pair_rows = m3_rows(LARGE_PAIR)
 changed_y = m3_y(pair_rows, row_of(pair_rows, 0, new=CHANGED_NEW))
 text_x = 318
-column_x = lambda column: round(text_x + 8.571 * column, 1)
+diff_column_x = lambda column: round(text_x + 8.571 * column, 1)
 big = m3_rows(hundred_k)
 first_shown = row_of(big, 0, new=1)
 far = 80
 reached, far_y = m3_reach(big, far)
-steps = [f"drag {column_x(7)} {changed_y} {column_x(21)} {changed_y}", "wait 5", "key mod+c", "log copied", f"expect copied {rust_debug(CHANGED[7:21])}"]
+steps = [f"drag {diff_column_x(7)} {changed_y} {diff_column_x(21)} {changed_y}", "wait 5", "key mod+c", "log copied", f"expect copied {rust_debug(CHANGED[7:21])}"]
 steps += [HUNDRED_K_PAIR, SETTLE, reached, f"press 339 {far_y}", "move 700 60", "wait 240"]
 steps += ["log diff", f"expect diff first 0 {described(big, 0)}", "release", "wait 5", m3_caret(1, f"1:1..{big[far][3]}:1")]
 steps += ["type X", "wait 10", diff_edit("line 1 "), m3_caret(1, "1:2..1:2"), "key mod+z", "wait 10"]
@@ -3080,7 +3080,7 @@ steps = [at_end(m3_y(big, above_gap)), diff_edit("line 104 "), "key down", "wait
 steps += ["key up", "wait 10", diff_edit("line 104 ")]
 m3_script("down", HUNDRED_K_PAIR, steps, "move 740 400", "wait 30", "screenshot m3fb-down.png")
 
-steps = [at_end(changed_y), "wait 60", f"click {column_x(9)} {changed_y} double mod", "type Q", "wait 3"]
+steps = [at_end(changed_y), "wait 60", f"click {diff_column_x(9)} {changed_y} double mod", "type Q", "wait 3"]
 steps += ["key end", "key shift+home", "key mod+c", "log copied", f"expect copied {rust_debug(CHANGED.replace('Component', 'Q') + 'Q')}"]
 m3_script("add-words", PAIR, steps, "wait 30", "screenshot m3fb-add-words.png")
 
