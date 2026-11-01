@@ -2469,8 +2469,6 @@ fn a_splice_of_the_first_visible_row_leaves_no_gap() {
     assert_apart(&mut app, area, "settled");
 }
 
-/// A row that reads its id again only when its slot moves, the way an
-/// editor's row reads its text.
 fn read_on_move(slot: RowSlot) -> AnyView<Bevy, Plain> {
     AnyView::new(move |cx| {
         let node = cx.build(frame().height(px(ESTIMATE)));
