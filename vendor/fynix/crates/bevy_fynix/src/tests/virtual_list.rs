@@ -2469,6 +2469,61 @@ fn a_splice_of_the_first_visible_row_leaves_no_gap() {
     assert_apart(&mut app, area, "settled");
 }
 
+fn read_on_move(slot: RowSlot) -> AnyView<Bevy, Plain> {
+    AnyView::new(move |cx| {
+        let node = cx.build(frame().height(px(ESTIMATE)));
+        let index = slot.index();
+        let mut moved = slot.index();
+        let shows = derived(move |world| {
+            let index = index.get(world);
+            (index, world.resource::<Model>().0[index].0)
+        })
+        .when(move |world| moved.changed(world));
+        cx.effect(node, shows.into(), |world, node, &(index, id)| {
+            world.entity_mut(node).insert((Shows(index), Id(id)));
+        });
+        node
+    })
+}
+
+fn read_on_move_list(app: &mut App, count: usize) -> Entity {
+    app.insert_resource(Model(model(count)));
+    list_in(app, count, read_on_move, px(VIEW))
+}
+
+fn shown_ids(app: &mut App, area: Entity) -> Vec<(usize, u32)> {
+    let mut shown = ids(app, area)
+        .into_iter()
+        .map(|(id, (index, ..))| (index, id))
+        .collect::<Vec<_>>();
+    shown.sort();
+    shown
+}
+
+#[test]
+fn a_slot_freed_and_given_its_index_again_shows_the_new_row() {
+    let mut app = laid_out();
+    let area = read_on_move_list(&mut app, 3);
+
+    splice_rows(&mut app, area, 1, 1, 0);
+    app.update();
+    assert_eq!(shown_ids(&mut app, area), [(0, 0), (1, 2)]);
+}
+
+#[test]
+fn a_slot_moved_off_its_index_and_back_shows_the_new_row() {
+    let mut app = laid_out();
+    let area = read_on_move_list(&mut app, 2_100);
+    let last = *state(&app, area).spawned().expect("rows").end();
+
+    splice_rows(&mut app, area, last, 0, 1);
+    app.update();
+    assert_eq!(
+        shown_ids(&mut app, area).last(),
+        Some(&(last, 2_100))
+    );
+}
+
 fn splitmix64(state: &mut u64) -> u64 {
     *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
     let mut z = *state;

@@ -271,13 +271,18 @@ pub struct RowSlot {
 impl RowSlot {
     /// The index of the row the slot shows. It is re-read only when
     /// the slot moves to another row, so a slot that keeps its row
-    /// reads and writes nothing.
+    /// reads and writes nothing. A slot that fill gives a row moves
+    /// even when the row's index is the one it had, because a splice
+    /// can put another row at that index.
     pub fn index(self) -> Signal<usize> {
         follow(self.list, move |state| {
             state
                 .and_then(|s| s.slots.get(self.slot))
-                .map_or(0, |placed| placed.index)
+                .map_or((0, 0), |placed| {
+                    (placed.index, placed.filled_at)
+                })
         })
+        .map(|(index, _)| index)
     }
 
     /// A cell of the row that clips `content` to the room the row
@@ -353,6 +358,7 @@ pub struct VirtualList {
     heights: Heights,
     spacer: Entity,
     slots: Vec<Placed>,
+    fills: u64,
     spawned: Range<usize>,
     first_visible: usize,
     anchor: Anchor,
@@ -407,6 +413,7 @@ struct RevealX {
 struct Placed {
     node: Option<Entity>,
     index: usize,
+    filled_at: u64,
     top: f32,
     height: f32,
 }
@@ -432,6 +439,7 @@ impl VirtualList {
             heights: Heights::default(),
             spacer,
             slots: Vec::new(),
+            fills: 0,
             spawned: 0..0,
             first_visible: 0,
             anchor: Anchor::FirstRow,
@@ -888,8 +896,10 @@ impl VirtualList {
         self.slots.resize_with(pool, Placed::default);
         let missing = (start..start + pool)
             .filter(|&index| !shown[index - start]);
+        self.fills += 1;
         for (slot, index) in free.into_iter().zip(missing) {
             self.slots[slot].index = index;
+            self.slots[slot].filled_at = self.fills;
         }
         let whole = |y: f64| {
             (y * self.physical_per_logical).round()
