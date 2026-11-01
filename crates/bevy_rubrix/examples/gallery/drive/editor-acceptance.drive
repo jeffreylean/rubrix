@@ -117,31 +117,31 @@ log undo
 expect undo 1 redo 0
 key home
 log caret
-expect caret 1 primary 1 5004:9..5004:9 visible true
+expect caret 1 primary 1 5004:1..5004:1 visible true
 key shift+down
 log caret
-expect caret 1 primary 1 5004:9..5005:9 visible true
+expect caret 1 primary 1 5004:1..5005:1 visible true
 key shift+down
 log caret
-expect caret 1 primary 1 5004:9..5006:9 visible true
+expect caret 1 primary 1 5004:1..5006:1 visible true
 key mod+c
 log copied
-expect copied "let Ok(mut entity) = world.get_entity_mut(node) else {xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n            continue;\n        "
+expect copied "        let Ok(mut entity) = world.get_entity_mut(node) else {xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n            continue;\n"
 click 235 381
 log caret
 expect caret 1 primary 1 5014:1..5014:1 visible true
 key mod+v
 wait 5
 log text 5014
-expect text 5014 "let Ok(mut entity) = world.get_entity_mut(node) else {xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+expect text 5014 "        let Ok(mut entity) = world.get_entity_mut(node) else {xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 log text 5015
 expect text 5015 "            continue;"
 log text 5016
-expect text 5016 "        }"
+expect text 5016 "}"
 log text 5017
 expect text 5017 ""
 log caret
-expect caret 1 primary 1 5016:9..5016:9 visible true
+expect caret 1 primary 1 5016:1..5016:1 visible true
 log undo
 expect undo 2 redo 0
 key mod+z
@@ -277,31 +277,31 @@ log undo
 expect undo 1 redo 0
 key home
 log caret
-expect caret 1 primary 1 50004:17..50004:17 visible true
+expect caret 1 primary 1 50004:1..50004:1 visible true
 key shift+down
 log caret
-expect caret 1 primary 1 50004:17..50005:17 visible true
+expect caret 1 primary 1 50004:1..50005:1 visible true
 key shift+down
 log caret
-expect caret 1 primary 1 50004:17..50006:11 visible true
+expect caret 1 primary 1 50004:1..50006:1 visible true
 key mod+c
 log copied
-expect copied ".when::<Hovered, _>(accent)xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n                .transition(Motion::Interact),\n        );"
+expect copied "                .when::<Hovered, _>(accent)xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n                .transition(Motion::Interact),\n"
 click 235 381
 log caret
 expect caret 1 primary 1 50014:1..50014:1 visible true
 key mod+v
 wait 5
 log text 50014
-expect text 50014 ".when::<Hovered, _>(accent)xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+expect text 50014 "                .when::<Hovered, _>(accent)xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 log text 50015
 expect text 50015 "                .transition(Motion::Interact),"
 log text 50016
-expect text 50016 "        );"
+expect text 50016 ""
 log text 50017
 expect text 50017 "        app.update();"
 log caret
-expect caret 1 primary 1 50016:11..50016:11 visible true
+expect caret 1 primary 1 50016:1..50016:1 visible true
 log undo
 expect undo 2 redo 0
 key mod+z

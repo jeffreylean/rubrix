@@ -6,7 +6,6 @@ wait 10
 click 1250 211
 paste abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij
 key home
-key home
 wait 5
 move 740 400
 scroll -30 0

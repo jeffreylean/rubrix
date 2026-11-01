@@ -33,7 +33,7 @@ expect diff-edit file 1 hunks 2 undo 1 rediff
 key shift+home
 key mod+c
 log copied
-expect copied "let v3 = values[3] * 2; two"
+expect copied "    let v3 = values[3] * 2; two"
 wait 600
 click 1250 210
 key end
@@ -49,7 +49,7 @@ wait 5
 key shift+home
 key mod+c
 log copied
-expect copied "let v3 = values[3] * 2;"
+expect copied "    let v3 = values[3] * 2;"
 move 740 400
 scroll 0 100000000
 wait 10
