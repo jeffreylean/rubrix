@@ -272,7 +272,8 @@ pub fn typing(world: &World) -> String {
 
 /// The frames that changed the doc on show or its wrap, with the
 /// frame after each, and how many of those drew a gap or an overlap
-/// between two shown rows. `log seams` reads only a settled frame.
+/// between two shown rows or a line number off its row. `log seams`
+/// reads only a settled frame.
 #[derive(Resource, Default)]
 struct Torn {
     doc: Option<Entity>,
@@ -310,7 +311,9 @@ fn count_torn(world: &mut World) {
     (torn.seq, torn.overflow, torn.after) = (seq, overflow, changed);
     if let Some(seams) = drawn {
         torn.frames += 1;
-        torn.torn += u32::from(seams.gaps + seams.overlaps > 0);
+        torn.torn += u32::from(
+            seams.gaps + seams.overlaps > 0 || seams.jump.is_some(),
+        );
     }
 }
 
@@ -438,11 +441,13 @@ fn expand_tabs(line: &str) -> String {
 }
 
 /// Where neighbouring rows fail to meet: a gap or an overlap between
-/// them, or a line skipped.
+/// them, or a line skipped, and the first line whose number is not
+/// its own or not at its row's top.
 struct Seams {
     gaps: u32,
     overlaps: u32,
     missing: u32,
+    jump: Option<u32>,
 }
 
 fn seams_of(rows: &[Shown]) -> Seams {
@@ -450,6 +455,7 @@ fn seams_of(rows: &[Shown]) -> Seams {
         gaps: 0,
         overlaps: 0,
         missing: 0,
+        jump: None,
     };
     for pair in rows.windows(2) {
         let (above, below) = (&pair[0], &pair[1]);
@@ -458,6 +464,15 @@ fn seams_of(rows: &[Shown]) -> Seams {
         seams.gaps += u32::from(seam > 0.5);
         seams.overlaps += u32::from(seam < -0.5);
     }
+    seams.jump = rows
+        .iter()
+        .find(|row| {
+            row.number.as_ref().is_none_or(|(number, top)| {
+                number.trim() != (row.line + 1).to_string()
+                    || (top - row.top).abs() > 0.5
+            })
+        })
+        .map(|row| row.line + 1);
     seams
 }
 
@@ -479,6 +494,7 @@ pub fn seams(world: &mut World) -> String {
         gaps,
         overlaps,
         missing,
+        jump,
     } = seams_of(&rows);
     let edit = world.get::<EditDoc>(doc);
     let mismatched = rows
@@ -490,18 +506,8 @@ pub fn seams(world: &mut World) -> String {
                 != Some(row.text.as_str())
         })
         .count();
-    let numbers = rows
-        .iter()
-        .find(|row| {
-            row.number.as_ref().is_none_or(|(number, top)| {
-                number.trim() != (row.line + 1).to_string()
-                    || (top - row.top).abs() > 0.5
-            })
-        })
-        .map_or_else(
-            || "ok".into(),
-            |row| format!("jump {}", row.line + 1),
-        );
+    let numbers = jump
+        .map_or_else(|| "ok".into(), |line| format!("jump {line}"));
     format!(
         "seams shown {}..={} gaps {gaps} overlaps {overlaps} \
          missing {missing} mismatched {mismatched} numbers {numbers}",

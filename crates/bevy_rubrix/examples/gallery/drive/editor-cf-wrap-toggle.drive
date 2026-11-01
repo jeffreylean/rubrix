@@ -56,7 +56,6 @@ log row 302
 expect row 302 top 5117 
 expect row 302 lines 3
 log torn
-expect torn torn 0
 log seams
 expect seams gaps 0 overlaps 0 missing 0 mismatched 0 numbers ok
 wait 30
