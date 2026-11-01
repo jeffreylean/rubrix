@@ -3,17 +3,17 @@ set -euo pipefail
 
 [ "$#" -ge 1 ] && [ "$#" -le 2 ] || { echo "usage: $0 <out dir> [runs, default 4]" >&2; exit 64; }
 here=$(cd "$(dirname "$0")" && pwd)
-out=$(realpath -m "$1")
+mkdir -p "$1"
+out=$(cd "$1" && pwd -P)
 runs=${2:-4}
 budget_ms=16.7
-mkdir -p "$out"
 
 over=0
 for run in $(seq 1 "$runs"); do
   dir="$out/cold$run"
   mkdir -p "$dir"
   {
-    date -Is
+    date -Iseconds
     uptime
     echo "pgrep -a cargo:"
     pgrep -a cargo || echo none

@@ -26,8 +26,8 @@ graphemes.keys  crates/rubrix_edit/tests/replay/graphemes.txt
 [ "$#" -eq 1 ] || { echo "usage: $0 <out dir>" >&2; exit 64; }
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
-out=$(realpath -m "$1")
-mkdir -p "$out"
+mkdir -p "$1"
+out=$(cd "$1" && pwd -P)
 os=$(uname -s)
 
 passed=0
