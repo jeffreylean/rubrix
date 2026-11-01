@@ -56,12 +56,15 @@ type Brush = bevy::text::TextBrush;
 pub(crate) const CARET_WIDTH: f32 = 2.0;
 
 /// A point resolved to the text: its line, its byte offset in the
-/// buffer, and its x in logical pixels from the start of its visual
-/// line.
+/// buffer, the row the offset is on when it is a wrap point, and its
+/// x in logical pixels from the start of its visual line.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Hit {
     pub line: u32,
     pub offset: usize,
+    /// `Upstream` for a point right of the last glyph of a row the
+    /// line wraps after, and `Downstream` anywhere else.
+    pub affinity: Affinity,
     pub x: f32,
     /// The pointer's own x in the units of `x`, before it snapped to
     /// the text, so past the end of a short line it stays where the
@@ -525,22 +528,38 @@ impl<'a, 'w, 's> Geometry<'a, 'w, 's> {
             }
             let local =
                 rich_point(laid.node, laid.transform, camera, point)?;
-            let drawn =
-                Cursor::from_point(laid.layout, local.x, local.y)
-                    .index();
+            let cursor =
+                Cursor::from_point(laid.layout, local.x, local.y);
             Some((
-                start + self.shown(buffer, line).source(drawn),
+                start
+                    + self.shown(buffer, line).source(cursor.index()),
+                match cursor.affinity() {
+                    parley::Affinity::Downstream => {
+                        Affinity::Downstream
+                    }
+                    parley::Affinity::Upstream => Affinity::Upstream,
+                },
                 local.x * laid.node.inverse_scale_factor(),
             ))
         });
-        let offset = pointed.map_or(start, |(offset, _)| offset);
-        let x = self.caret(buffer, offset, Affinity::Downstream).x;
-        let pointer = pointed.map_or(x, |(_, pointer)| pointer);
+        let (offset, affinity) = pointed.map_or(
+            (start, Affinity::Downstream),
+            |(at, side, _)| {
+                let row = self.row(buffer, at, side);
+                (
+                    at,
+                    Affinity::on_row(at, &row, buffer.line_end(line)),
+                )
+            },
+        );
+        let x = self.caret(buffer, offset, affinity).x;
+        let pointer = pointed.map_or(x, |(.., pointer)| pointer);
         over.caret_x = x;
         Some((
             Hit {
                 line,
                 offset,
+                affinity,
                 x,
                 pointer,
             },

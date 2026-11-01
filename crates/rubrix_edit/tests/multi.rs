@@ -1,5 +1,5 @@
 use rubrix_edit::{
-    Buffer, Command, Editor, History, Monospace, Selection,
+    Affinity, Buffer, Command, Editor, History, Monospace, Selection,
     Selections, column, toggle_caret,
 };
 
@@ -22,7 +22,8 @@ fn listed(selections: &Selections) -> Vec<Selection> {
 
 #[test]
 fn toggle_caret_adds_a_caret_as_the_primary() {
-    let toggled = toggle_caret(&carets(&[2]), 9);
+    let toggled =
+        toggle_caret(&carets(&[2]), 9, Affinity::Downstream);
     assert_eq!(
         listed(&toggled),
         [Selection::caret(2), Selection::caret(9)]
@@ -32,7 +33,8 @@ fn toggle_caret_adds_a_caret_as_the_primary() {
 
 #[test]
 fn toggle_caret_removes_the_caret_it_lands_on() {
-    let toggled = toggle_caret(&carets(&[2, 9, 14]), 9);
+    let toggled =
+        toggle_caret(&carets(&[2, 9, 14]), 9, Affinity::Downstream);
     assert_eq!(
         listed(&toggled),
         [Selection::caret(2), Selection::caret(14)]
@@ -45,7 +47,8 @@ fn toggle_caret_removes_a_range_that_holds_the_click() {
     let mut selections = Selections::new(range(4, 8));
     selections.add(Selection::caret(20));
     for at in [4, 6, 8] {
-        let toggled = toggle_caret(&selections, at);
+        let toggled =
+            toggle_caret(&selections, at, Affinity::Downstream);
         assert_eq!(
             listed(&toggled),
             [Selection::caret(20)],
@@ -57,9 +60,9 @@ fn toggle_caret_removes_a_range_that_holds_the_click() {
 #[test]
 fn toggle_caret_keeps_the_last_selection() {
     let one = carets(&[5]);
-    assert_eq!(toggle_caret(&one, 5), one);
+    assert_eq!(toggle_caret(&one, 5, Affinity::Downstream), one);
     let range = Selections::new(range(2, 7));
-    assert_eq!(toggle_caret(&range, 4), range);
+    assert_eq!(toggle_caret(&range, 4, Affinity::Downstream), range);
 }
 
 const FIVE: &str = "abcdef\nabcdef\nab\nabcdef\nabcdef";
@@ -70,8 +73,8 @@ fn column_selects_one_range_per_line_clamped_at_a_short_line() {
     let selections = column(
         &buffer,
         &Monospace::default(),
-        (0, 1.0),
-        (buffer.line_start(4), 4.0),
+        (0, Affinity::Downstream, 1.0),
+        (buffer.line_start(4), Affinity::Downstream, 4.0),
     );
     assert_eq!(
         listed(&selections),
@@ -92,8 +95,8 @@ fn column_dragged_up_and_left_puts_the_primary_on_the_top_line() {
     let selections = column(
         &buffer,
         &Monospace::default(),
-        (buffer.line_start(3), 5.0),
-        (buffer.line_start(1), 2.0),
+        (buffer.line_start(3), Affinity::Downstream, 5.0),
+        (buffer.line_start(1), Affinity::Downstream, 2.0),
     );
     assert_eq!(
         listed(&selections),
@@ -108,10 +111,54 @@ fn column_snaps_to_grapheme_boundaries() {
     let selections = column(
         &buffer,
         &Monospace::default(),
-        (0, 1.0),
-        (buffer.line_start(1), 2.0),
+        (0, Affinity::Downstream, 1.0),
+        (buffer.line_start(1), Affinity::Downstream, 2.0),
     );
     assert_eq!(listed(&selections), [range(3, 4), range(8, 9)]);
+}
+
+#[test]
+fn column_takes_each_end_on_the_row_its_affinity_names() {
+    let buffer = Buffer::new("abcd efgh\nabcd efgh");
+    let layout = Monospace {
+        columns: Some(5),
+        ..Monospace::default()
+    };
+    let (wrap, below) = (5, buffer.line_start(1));
+    let selections = column(
+        &buffer,
+        &layout,
+        (wrap, Affinity::Upstream, 9.0),
+        (wrap, Affinity::Upstream, 9.0),
+    );
+    assert_eq!(listed(&selections), [Selection::caret(wrap)]);
+    assert_eq!(
+        selections.affinity(0),
+        Affinity::Upstream,
+        "right of row 0 stays at its end"
+    );
+    let selections = column(
+        &buffer,
+        &layout,
+        (wrap, Affinity::Upstream, 0.0),
+        (below, Affinity::Downstream, 9.0),
+    );
+    assert_eq!(
+        listed(&selections),
+        [range(0, 5), range(below, below + 5)]
+    );
+    assert_eq!(selections.affinity(0), Affinity::Upstream);
+    assert_eq!(selections.affinity(1), Affinity::Upstream);
+}
+
+#[test]
+fn toggle_caret_adds_its_caret_on_the_named_row() {
+    let toggled = toggle_caret(&carets(&[0]), 5, Affinity::Upstream);
+    assert_eq!(toggled.primary(), Selection::caret(5));
+    assert_eq!(
+        toggled.affinity(toggled.primary_index()),
+        Affinity::Upstream
+    );
 }
 
 fn ranges(list: &[(usize, usize)]) -> Selections {

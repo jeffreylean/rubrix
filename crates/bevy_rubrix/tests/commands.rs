@@ -14,10 +14,10 @@ use bevy::input_focus::{
 use bevy::math::Vec2;
 use bevy::window::{PrimaryWindow, Window};
 use bevy_rubrix::{
-    Action, BRACKET, BracketMatch, Brackets, Command, EditDoc,
-    EditRequest, Keymap, Lang, Mark, MarkKind, Marks, Motion,
-    Overflow, Request, Selection, Selections, toggle_block_comment,
-    toggle_line_comment,
+    Action, Affinity, BRACKET, BracketMatch, Brackets, Command,
+    EditDoc, EditRequest, Keymap, Lang, Mark, MarkKind, Marks,
+    Motion, Overflow, Request, Selection, Selections,
+    toggle_block_comment, toggle_line_comment,
 };
 use support::{
     Wrapping, chord, drag_end_on, drag_on, edit_line, hold_key,
@@ -370,6 +370,59 @@ fn alt_drag_from_a_wrapped_row_takes_the_column_on_that_row() {
         ],
         "the press line takes its column on the row under the press"
     );
+}
+
+fn head(app: &App, entity: Entity) -> (usize, Affinity) {
+    let selections = doc(app, entity).editor().selections();
+    let primary = selections.primary_index();
+    (selections.primary().head, selections.affinity(primary))
+}
+
+#[test]
+fn a_press_right_of_a_wrapped_row_lands_at_its_end() {
+    let mut app = laid_out();
+    let long = "word ".repeat(40);
+    let source = format!("{long}\nnext\n");
+    let (view, entity) =
+        mount_editor(&mut app, Lang::Plain, &source, 300.0, 300.0);
+    app.world_mut().resource_mut::<Wrapping>().0 = Overflow::Wrap;
+    settle(&mut app);
+    let top = edit_line(&mut app, view, 0);
+    let row_one = point_at(&app, top, 0).y;
+    let second = (0..long.len())
+        .find(|&byte| point_at(&app, top, byte).y > row_one + 1.0)
+        .expect("the long line wraps");
+    let advance = point_at(&app, top, 1).x - point_at(&app, top, 0).x;
+    let right = Vec2::new(
+        point_at(&app, top, second - 1).x + 0.75 * advance,
+        row_one,
+    );
+    let wrapped = (second, Affinity::Upstream);
+    let row_two = point_at(&app, top, second);
+    press_on(&mut app, top, row_two, 1);
+    assert_eq!(
+        head(&app, entity),
+        (second, Affinity::Downstream),
+        "a press at the start of row 1"
+    );
+    press_on(&mut app, top, right, 1);
+    assert_eq!(head(&app, entity), wrapped, "a press");
+    let from = point_at(&app, top, 2);
+    hold_on(&mut app, top, from, 1);
+    drag_on(&mut app, top, from, right);
+    drag_end_on(&mut app, top, from, right);
+    assert_eq!(head(&app, entity), wrapped, "a drag");
+    for key in [KeyCode::ShiftLeft, mod_key(), KeyCode::AltLeft] {
+        press_on(&mut app, top, from, 1);
+        hold_key(&mut app, key, true);
+        press_on(&mut app, top, right, 1);
+        hold_key(&mut app, key, false);
+        assert_eq!(
+            head(&app, entity),
+            wrapped,
+            "a press with {key:?}"
+        );
+    }
 }
 
 #[derive(Resource, Default)]

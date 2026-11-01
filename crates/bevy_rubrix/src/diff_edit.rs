@@ -780,6 +780,7 @@ fn hit(
     Hit {
         line: buffer.line_of(offset),
         offset,
+        affinity: Affinity::Downstream,
         x,
         pointer,
     }

@@ -45,16 +45,17 @@ fn toggle_comment(tx: &mut Tx<'_>, block: bool) {
 /// `mod+click` adds a caret, or removes the one it lands on. A drag
 /// after the press adds the dragged range instead, as in Pierre.
 pub(crate) const ADD_CARET: Gesture = Gesture(|stroke| {
-    let (from, to) = (stroke.from.offset, stroke.to.offset);
-    if from == to {
-        return toggle_caret(stroke.base, to);
+    let (from, to) = (stroke.from, stroke.to);
+    if from.offset == to.offset {
+        return toggle_caret(stroke.base, to.offset, to.affinity);
     }
     added(
         stroke.base,
         Selection {
-            anchor: from,
-            head: to,
+            anchor: from.offset,
+            head: to.offset,
         },
+        to.affinity,
     )
 });
 
@@ -66,8 +67,8 @@ pub(crate) const COLUMN: Gesture = Gesture(|stroke| {
     column(
         stroke.buffer,
         stroke.layout,
-        (from.offset, from.pointer),
-        (to.offset, to.pointer),
+        (from.offset, from.affinity, from.pointer),
+        (to.offset, to.affinity, to.pointer),
     )
 });
 

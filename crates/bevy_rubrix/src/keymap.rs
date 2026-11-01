@@ -19,7 +19,8 @@ use bevy::input::keyboard::{
 use bevy::input::{ButtonInput, ButtonState};
 use bevy::input_focus::InputFocus;
 use rubrix_edit::{
-    Buffer, Command, Layout, Motion, Selection, Selections, word_at,
+    Affinity, Buffer, Command, Layout, Motion, Selection, Selections,
+    word_at,
 };
 use rubrix_highlight::Lines;
 
@@ -361,18 +362,24 @@ pub struct Stroke<'a> {
 
 /// One caret at the press, extended to the pointer.
 const PLACE: Gesture = Gesture(|stroke| {
-    Selections::new(Selection {
-        anchor: stroke.from.offset,
-        head: stroke.to.offset,
-    })
+    Selections::with_affinity(
+        Selection {
+            anchor: stroke.from.offset,
+            head: stroke.to.offset,
+        },
+        stroke.to.affinity,
+    )
 });
 
 /// The primary's anchor kept, its head at the pointer.
 const EXTEND: Gesture = Gesture(|stroke| {
-    Selections::new(Selection {
-        anchor: stroke.base.primary().anchor,
-        head: stroke.to.offset,
-    })
+    Selections::with_affinity(
+        Selection {
+            anchor: stroke.base.primary().anchor,
+            head: stroke.to.offset,
+        },
+        stroke.to.affinity,
+    )
 });
 
 /// The word at the press through the word at the pointer.
@@ -402,18 +409,23 @@ const LINES: Gesture = Gesture(|stroke| {
     spanning(line(&stroke.from), line(&stroke.to))
 });
 
-const ADD_WORDS: Gesture =
-    Gesture(|stroke| added(stroke.base, (WORDS.0)(stroke).primary()));
+const ADD_WORDS: Gesture = Gesture(|stroke| {
+    let word = (WORDS.0)(stroke).primary();
+    added(stroke.base, word, Affinity::Downstream)
+});
 
-const ADD_LINES: Gesture =
-    Gesture(|stroke| added(stroke.base, (LINES.0)(stroke).primary()));
+const ADD_LINES: Gesture = Gesture(|stroke| {
+    let line = (LINES.0)(stroke).primary();
+    added(stroke.base, line, Affinity::Downstream)
+});
 
 pub(crate) fn added(
     base: &Selections,
     selection: Selection,
+    affinity: Affinity,
 ) -> Selections {
     let mut selections = base.clone();
-    selections.add(selection);
+    selections.add_with_affinity(selection, affinity);
     selections
 }
 

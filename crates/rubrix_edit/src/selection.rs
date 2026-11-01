@@ -123,12 +123,21 @@ pub struct Selections {
 impl Selections {
     /// One selection, which is the primary.
     pub fn new(selection: Selection) -> Selections {
+        Selections::with_affinity(selection, Affinity::Downstream)
+    }
+
+    /// One selection, which is the primary, its head on the row
+    /// `affinity` names when it sits at a wrap point.
+    pub fn with_affinity(
+        selection: Selection,
+        affinity: Affinity,
+    ) -> Selections {
         Selections {
             items: Vec::from([Item {
                 selection,
                 age: 0,
                 goal: None,
-                affinity: Affinity::Downstream,
+                affinity,
             }]),
             next_age: 1,
         }
@@ -175,11 +184,22 @@ impl Selections {
     /// Adds `selection` as the newest, so it becomes the primary,
     /// then merges it with any selection it overlaps.
     pub fn add(&mut self, selection: Selection) {
+        self.add_with_affinity(selection, Affinity::Downstream);
+    }
+
+    /// [`Selections::add`], with the head on the row `affinity` names
+    /// when it sits at a wrap point. A merge keeps `affinity` only
+    /// when the union's head is this selection's head.
+    pub fn add_with_affinity(
+        &mut self,
+        selection: Selection,
+        affinity: Affinity,
+    ) {
         self.items.push(Item {
             selection,
             age: self.next_age,
             goal: None,
-            affinity: Affinity::Downstream,
+            affinity,
         });
         self.next_age += 1;
         self.normalize();

@@ -68,7 +68,7 @@ pub use remote::{
 };
 pub use rubrix_diff::{Layout, Row, Side};
 pub use rubrix_edit::{
-    Brackets, Buffer, Command, EditState, Editor, History,
+    Affinity, Brackets, Buffer, Command, EditState, Editor, History,
     LineAnchors, Motion, Ranges, Selection, Selections,
 };
 pub use rubrix_highlight::{Kind, Lang, Run};

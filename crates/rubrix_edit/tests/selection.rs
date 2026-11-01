@@ -1,6 +1,6 @@
 use rubrix_edit::{
-    Assoc, Buffer, Command, Editor, History, Monospace, Selection,
-    Selections,
+    Affinity, Assoc, Buffer, Command, Editor, History, Monospace,
+    Selection, Selections,
 };
 
 mod common;
@@ -33,6 +33,31 @@ fn overlapping_selections_merge_into_the_newest_slot() {
     selections.add(Selection::caret(16));
     assert_eq!(all(&selections), [range(10, 20), range(30, 31)]);
     assert_eq!(selections.primary(), range(10, 20));
+}
+
+#[test]
+fn an_added_head_keeps_its_affinity_unless_a_merge_moves_it() {
+    let mut selections = Selections::new(Selection::caret(2));
+    selections
+        .add_with_affinity(Selection::caret(12), Affinity::Upstream);
+    assert_eq!(selections.affinity(0), Affinity::Downstream);
+    assert_eq!(selections.affinity(1), Affinity::Upstream);
+    selections.add_with_affinity(range(5, 12), Affinity::Upstream);
+    assert_eq!(all(&selections), [Selection::caret(2), range(5, 12)]);
+    assert_eq!(
+        selections.affinity(1),
+        Affinity::Upstream,
+        "the union's head is the added head"
+    );
+    let mut selections = Selections::new(range(10, 14));
+    selections
+        .add_with_affinity(Selection::caret(12), Affinity::Upstream);
+    assert_eq!(all(&selections), [range(10, 14)]);
+    assert_eq!(
+        selections.affinity(0),
+        Affinity::Downstream,
+        "the union's head is not the added head"
+    );
 }
 
 #[test]

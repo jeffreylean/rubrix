@@ -18,7 +18,7 @@ use bevy::time::Time;
 use bevy_fynix::views::VirtualList;
 use rubrix_edit::{
     Affinity, Buffer, Change, Command, Editor, Layout, Monospace,
-    Selections,
+    Selection, Selections,
 };
 use rubrix_highlight::LineEdit;
 
@@ -157,7 +157,7 @@ impl<'w> Tx<'w> {
                 from,
                 to,
             });
-            if !selections.iter().eq(editor.selections().iter()) {
+            if !placed(&selections).eq(placed(editor.selections())) {
                 editor.set_selections(selections);
             }
             None
@@ -307,6 +307,14 @@ pub(crate) trait EditTarget {
         head: usize,
         affinity: Affinity,
     ) -> Option<(Entity, Reveal)>;
+}
+
+fn placed(
+    selections: &Selections,
+) -> impl Iterator<Item = (Selection, Affinity)> + '_ {
+    selections.iter().enumerate().map(|(index, selection)| {
+        (selection, selections.affinity(index))
+    })
 }
 
 fn geometry<'a, 'w, 's>(
