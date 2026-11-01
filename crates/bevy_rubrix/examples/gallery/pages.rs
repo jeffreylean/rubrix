@@ -105,7 +105,7 @@ pub const PAGES: &[Page] = &[
         name: "diff",
         build: diff::build,
         open: Some(diff::open),
-        answer: None,
+        answer: Some(diff::answer),
     },
     Page {
         name: "hamlet_rich",

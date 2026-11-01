@@ -79,6 +79,11 @@ pub enum Row {
     /// A removed line.
     Deletion { old: LineRef },
     /// An added line.
+    ///
+    /// When a full diff's new side has no lines, its last hunk ends
+    /// with one `Addition` naming new line 0, so a view still has a
+    /// row to put the caret on. That line is past the end of the
+    /// side's [`Lines`](crate::Lines): read no text for it.
     Addition { new: LineRef },
     /// Split only: a removed line beside the added line it pairs
     /// with.
@@ -88,8 +93,11 @@ pub enum Row {
     /// `hunk` to [`Expansion::reveal`]. `up` and `down` tell which
     /// of [`Side::Up`](crate::Side::Up) and
     /// [`Side::Down`](crate::Side::Down) a view should offer: `up`
-    /// needs a hunk below, `down` a hunk above, and both are false
-    /// on a partial diff, whose gaps cannot expand.
+    /// needs a hunk or shown lines right below, `down` a hunk or
+    /// shown lines right above, and both are false on a partial
+    /// diff, whose gaps cannot expand. A gap that shows lines in its
+    /// middle has a gap row for each hidden run;
+    /// [`Expansion::reveal_at`] reveals from the row's own run.
     Gap {
         hunk: u32,
         hidden: u32,
@@ -251,6 +259,7 @@ enum Piece {
     Expanded { len: u32 },
     Change { old_len: u32, new_len: u32 },
     Gap { hidden: u32, up: bool, down: bool },
+    EmptyNew,
 }
 
 /// Derives the rows of `diff` for `layout`, showing what
@@ -260,6 +269,8 @@ enum Piece {
 /// diff's gaps, the trailing one included, follow `expansion`; a
 /// partial diff's gaps before each hunk show as `Gap` rows that
 /// cannot expand, and its trailing gap, of unknown size, not at all.
+/// A full diff whose new side is empty gets one more row, an
+/// [`Row::Addition`] of new line 0 after its deletions.
 pub fn rows(
     diff: &FileDiff,
     layout: Layout,
@@ -294,7 +305,12 @@ enum Lane {
 
 impl Piece {
     fn is_block(self) -> bool {
-        matches!(self, Piece::Context { .. } | Piece::Change { .. })
+        matches!(
+            self,
+            Piece::Context { .. }
+                | Piece::Change { .. }
+                | Piece::EmptyNew
+        )
     }
 
     fn rows(self, layout: Layout) -> u32 {
@@ -302,7 +318,7 @@ impl Piece {
             (Piece::Context { len } | Piece::Expanded { len }, _) => {
                 len
             }
-            (Piece::Gap { .. }, _) => 1,
+            (Piece::Gap { .. } | Piece::EmptyNew, _) => 1,
             (Piece::Change { old_len, new_len }, Layout::Stacked) => {
                 old_len + new_len
             }
@@ -358,6 +374,12 @@ impl<'a> Builder<'a> {
                 self.gap(h, size, old_end, new_end);
             }
             self.blocks(h, hunk);
+            if h + 1 == self.hunk_count
+                && !diff.is_partial()
+                && diff.new_lines().is_empty()
+            {
+                self.push_file(h, hunk.old_end(), 0, Piece::EmptyNew);
+            }
             (old_end, new_end) = (hunk.old_end(), hunk.new_end());
         }
         if all.is_empty() || diff.is_partial() {
@@ -401,7 +423,6 @@ impl<'a> Builder<'a> {
     }
 
     fn gap(&mut self, hunk: u32, size: u32, old: u32, new: u32) {
-        let first = self.segments.len();
         let mut hidden_from = 0;
         let mut shown_from = None;
         let shown = self.expansion.shown(hunk, size);
@@ -420,8 +441,8 @@ impl<'a> Builder<'a> {
                 }
                 let gap = Piece::Gap {
                     hidden: run.start - hidden_from,
-                    up: false,
-                    down: false,
+                    up: run.start < size || hunk < self.hunk_count,
+                    down: hidden_from > 0 || hunk > 0,
                 };
                 let at = hidden_from;
                 self.push_file(hunk, old + at, new + at, gap);
@@ -434,18 +455,6 @@ impl<'a> Builder<'a> {
         if let Some(from) = shown_from {
             let expanded = Piece::Expanded { len: size - from };
             self.push_file(hunk, old + from, new + from, expanded);
-        }
-        let (up, down) = (hunk < self.hunk_count, hunk > 0);
-        let mut gaps =
-            self.segments[first..].iter_mut().filter_map(|segment| {
-                match &mut segment.piece {
-                    Piece::Gap { up, down, .. } => Some((up, down)),
-                    _ => None,
-                }
-            });
-        if let Some(top) = gaps.next() {
-            *top.1 = down;
-            *gaps.last().unwrap_or(top).0 = up;
         }
     }
 
@@ -543,7 +552,7 @@ impl Rows {
         }
         .min(end);
         let seg = if start < end {
-            self.segments.partition_point(|s| s.row <= start) - 1
+            self.segment_at(start)
         } else {
             0
         };
@@ -603,8 +612,98 @@ impl Rows {
                 };
                 (new_len, after_deletions + at)
             }
+            Piece::EmptyNew => (u32::from(lane == Lane::New), 0),
         };
         (at < lines).then_some(segment.row + row)
+    }
+
+    /// The new line row `row` shows, or, for a row that shows none (a
+    /// deletion or a gap row), the first new line after it. `None`
+    /// past the last row.
+    pub fn new_at(&self, row: u32) -> Option<u32> {
+        if row >= self.len {
+            return None;
+        }
+        let k = self.segment_at(row);
+        let segment = &self.segments[k];
+        let shown = row_at(segment, row - segment.row, self.layout);
+        if let Some(line) = shown.new_line() {
+            return Some(line.index);
+        }
+        if let Some(hidden) = self.hidden(k) {
+            return Some(hidden.end);
+        }
+        Some(match segment.piece {
+            Piece::Change { new_len, .. }
+                if self.layout == Layout::Split =>
+            {
+                segment.new.index + new_len
+            }
+            _ => segment.new.index,
+        })
+    }
+
+    /// The new lines the gap rows hide, in order, as index ranges
+    /// into the new side's [`Lines`](crate::Lines). Empty on a
+    /// partial diff, whose `Lines` holds no gap lines.
+    pub fn hidden_new(
+        &self,
+    ) -> impl Iterator<Item = Range<u32>> + '_ {
+        (0..self.segments.len())
+            .filter_map(|k| self.hidden(k))
+            .filter(|hidden| !hidden.is_empty())
+    }
+
+    fn hidden(&self, k: usize) -> Option<Range<u32>> {
+        let segment = &self.segments[k];
+        let Piece::Gap { hidden, .. } = segment.piece else {
+            return None;
+        };
+        let start = segment.new.index;
+        let end = self
+            .segments
+            .get(k + 1)
+            .map_or(start + hidden, |next| next.new.index);
+        Some(start..end)
+    }
+
+    /// For gap row `row` with a button: its gap's key and size, and
+    /// the lines it hides, counted from the gap's first line.
+    pub(crate) fn hidden_run(
+        &self,
+        row: u32,
+    ) -> Option<(u32, u32, Range<u32>)> {
+        if row >= self.len {
+            return None;
+        }
+        let k = self.segment_at(row);
+        let segment = &self.segments[k];
+        let Piece::Gap { hidden, up, down } = segment.piece else {
+            return None;
+        };
+        if !(up || down) {
+            return None;
+        }
+        let in_gap = |s: &&Segment| {
+            s.hunk == segment.hunk && !s.piece.is_block()
+        };
+        let lines = |s: &Segment| match s.piece {
+            Piece::Gap { hidden, .. } => hidden,
+            Piece::Expanded { len } => len,
+            _ => 0,
+        };
+        let above =
+            self.segments[..k].iter().rev().take_while(in_gap);
+        let start = above.last().unwrap_or(segment).old.index;
+        let below = self.segments[k + 1..].iter().take_while(in_gap);
+        let last = below.last().unwrap_or(segment);
+        let size = last.old.index + lines(last) - start;
+        let from = segment.old.index - start;
+        Some((segment.hunk, size, from..from + hidden))
+    }
+
+    fn segment_at(&self, row: u32) -> usize {
+        self.segments.partition_point(|s| s.row <= row) - 1
     }
 
     /// Moves the rows through `rediff`, which
@@ -710,6 +809,7 @@ fn row_at(segment: &Segment, at: u32, layout: Layout) -> Row {
             up,
             down,
         },
+        Piece::EmptyNew => Row::Addition { new: line(new, 0) },
         Piece::Change { old_len, new_len } => match layout {
             Layout::Stacked if at < old_len => {
                 Row::Deletion { old: line(old, at) }

@@ -91,7 +91,12 @@ fn expected_block_rows(diff: &FileDiff, layout: Layout) -> Vec<u32> {
     };
     let hunk_rows =
         |hunk: &Hunk| hunk.blocks().iter().map(rows).sum();
-    diff.hunks().iter().map(hunk_rows).collect()
+    let mut counts: Vec<u32> =
+        diff.hunks().iter().map(hunk_rows).collect();
+    if let Some(last) = counts.last_mut() {
+        *last += u32::from(diff.new_lines().is_empty());
+    }
+    counts
 }
 
 #[test]
@@ -520,7 +525,7 @@ fn the_trailing_gap_expands_from_the_hunk_above() {
     );
     let tags = show(&table);
     let tail = &tags[tags.len() - 3..];
-    assert_eq!(tail, ["G1 22 down", "E 29/29", "E 30/30"]);
+    assert_eq!(tail, ["G1 22 up down", "E 29/29", "E 30/30"]);
 
     let table = rows(
         &diff,
@@ -806,6 +811,95 @@ fn partial_diff() -> FileDiff {
 }
 
 #[test]
+fn reveal_at_on_a_gap_without_middle_runs_matches_reveal() {
+    let (old, new) = pair(30, &[5, 15, 25]);
+    let diff = diff_texts(&old, &new, 1);
+    for start in [Expansion::new(), revealed(&[(1, Side::Down, 2)])] {
+        let table = rows(&diff, Layout::Stacked, &start);
+        for row in 0..table.len() {
+            let Some(Row::Gap { hunk, .. }) = table.get(row) else {
+                continue;
+            };
+            for side in [Side::Up, Side::Down, Side::All] {
+                for lines in [1, 3, 100] {
+                    let (mut at, mut by_hunk) =
+                        (start.clone(), start.clone());
+                    at.reveal_at(&table, row, side, lines);
+                    by_hunk.reveal(hunk, side, lines);
+                    assert_eq!(
+                        show(&rows(&diff, Layout::Stacked, &at)),
+                        show(&rows(&diff, Layout::Stacked, &by_hunk)),
+                        "row {row} {side:?} {lines}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn reveal_at_does_nothing_off_a_gap_row_or_on_a_partial_diff() {
+    let (old, new) = pair(30, &[5]);
+    let full = diff_texts(&old, &new, 1);
+    for diff in [full, partial_diff()] {
+        let table = build(&diff, Layout::Stacked);
+        let mut expansion = Expansion::new();
+        for row in 0..=table.len() {
+            let gap = matches!(table.get(row), Some(Row::Gap { .. }));
+            if !gap || diff.is_partial() {
+                expansion.reveal_at(&table, row, Side::All, 0);
+            }
+        }
+        assert_eq!(expansion, Expansion::new());
+    }
+}
+
+#[test]
+fn new_at_names_the_new_line_a_row_shows_or_the_next_one() {
+    let old = "1\n2\n3\n4\n5\n6\n7\n8\n";
+    let new = "1\nX\n3\n4\nY\nZ\n8\n";
+    let diff = diff_texts(old, new, 0);
+    let stacked = build(&diff, Layout::Stacked);
+    let split = build(&diff, Layout::Split);
+    let at = |table: &Rows| {
+        (0..=table.len())
+            .map(|row| table.new_at(row))
+            .collect::<Vec<_>>()
+    };
+    let some = |lines: &[u32]| {
+        lines
+            .iter()
+            .map(|&line| Some(line))
+            .chain([None])
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(at(&stacked), some(&[0, 1, 1, 4, 4, 4, 4, 4, 5, 6]));
+    assert_eq!(at(&split), some(&[0, 1, 4, 4, 5, 6, 6]));
+}
+
+#[test]
+fn hidden_new_gives_the_new_lines_each_gap_row_hides() {
+    let (old, new) = pair(30, &[5, 15, 25]);
+    let diff = diff_texts(&old, &new, 1);
+    let hidden = |expansion: &Expansion| {
+        rows(&diff, Layout::Split, expansion)
+            .hidden_new()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        hidden(&Expansion::new()),
+        [0..3, 6..13, 16..23, 26..30]
+    );
+    let middle = revealed(&[(1, Side::Down, 2), (3, Side::All, 0)]);
+    assert_eq!(hidden(&middle), [0..3, 8..13, 16..23]);
+    let partial = partial_diff();
+    assert_eq!(
+        build(&partial, Layout::Split).hidden_new().count(),
+        0
+    );
+}
+
+#[test]
 fn a_partial_diff_has_non_expandable_gap_rows_sized_on_the_new_side()
 {
     let diff = partial_diff();
@@ -1033,9 +1127,10 @@ fn property_rows_show_every_line_once_or_hide_it_in_a_gap() {
                 diff.old_lines().len(),
                 "{case}"
             );
+            let caret_row = u32::from(diff.new_lines().is_empty());
             assert_eq!(
                 new_seen.len() as u32 + hidden,
-                diff.new_lines().len(),
+                diff.new_lines().len() + caret_row,
                 "{case}"
             );
 

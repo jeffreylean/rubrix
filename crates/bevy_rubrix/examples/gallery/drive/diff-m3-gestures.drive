@@ -1,0 +1,41 @@
+page diff
+wait 30
+click 380 32
+wait 120
+click 1178 68
+wait 10
+click 339 276
+wait 30
+click 339 293 mod
+wait 5
+type Z
+wait 5
+key mod+c
+log copied
+expect copied "Zuse bevy::DefaultPlugins;\nZuse bevy::app::{App, Startup};\n"
+log caret
+expect caret 2 primary 2 98:2..98:2 99:2..99:2 bracket none
+key mod+z
+wait 10
+drag 339 226 339 293 alt
+wait 5
+type W
+wait 5
+key mod+c
+log copied
+expect copied "W\nWuse bevy::DefaultPlugins;\nWuse bevy::app::{App, Startup};\n"
+log caret
+expect caret 3 primary 3 4:2..4:2 98:2..98:2 99:2..99:2 bracket none
+key mod+z
+wait 10
+key escape
+click 380 276
+wait 30
+click 380 293 shift
+wait 5
+key mod+c
+log copied
+expect copied "evy::DefaultPlugins;\nuse b"
+wait 30
+screenshot m3fb-gestures.png
+exit

@@ -1,0 +1,23 @@
+page diff
+wait 30
+click 380 32
+wait 120
+click 1178 68
+wait 10
+click 1250 395
+key end
+wait 5
+log diff-edit
+expect diff-edit line 104 
+key down
+wait 10
+log diff-edit
+expect diff-edit line 198 
+key up
+wait 10
+log diff-edit
+expect diff-edit line 104 
+move 740 400
+wait 30
+screenshot m3fb-down.png
+exit
