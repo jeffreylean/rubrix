@@ -38,8 +38,8 @@ use bevy_rubrix::{
 use rubrix_highlight::{Run, highlight, spans};
 use support::{
     Distinct, Editing, chord, colour, edit_line, edit_lines, editor,
-    hold_key, key_with, laid_out, laid_out_at, list, mount_editor,
-    point_at, press_on, spans_of, text_of, type_text,
+    hold_key, key_with, laid_out, laid_out_at, list, mod_key,
+    mount_editor, point_at, press_on, spans_of, text_of, type_text,
 };
 
 fn settle(app: &mut App) {
@@ -447,7 +447,7 @@ fn a_key_handler_edits_through_the_transaction() {
     settle(&mut app);
     caret_at(&mut app, entity, view, 1);
     focus(&mut app, view);
-    chord(&mut app, &[KeyCode::ControlLeft], KeyCode::KeyD, "d");
+    chord(&mut app, &[mod_key()], KeyCode::KeyD, "d");
     assert_eq!(text(&app, entity), "a\nxb\ncd\n");
     let rows = edit_lines(&mut app, view);
     assert_eq!(rows.len(), 4, "both changes reach the rows");

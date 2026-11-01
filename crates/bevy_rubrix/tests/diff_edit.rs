@@ -22,8 +22,8 @@ use support::diff::{
     texts,
 };
 use support::{
-    chord, copy, keep_copies, key_with, lay_out, point_in, press_on,
-    type_text,
+    chord, copy, keep_copies, key_with, lay_out, mod_key, point_in,
+    press_on, type_text,
 };
 
 const OLD: &str =
@@ -156,7 +156,7 @@ fn undo_in_one_file_leaves_another_files_edit_alone() {
     }
     assert_eq!(new_text(&mut app, 0), NEW.replace("let x", "alet x"));
     assert_eq!(new_text(&mut app, 1), NEW.replace("let x", "blet x"));
-    chord(&mut app, &[KeyCode::ControlLeft], KeyCode::KeyZ, "z");
+    chord(&mut app, &[mod_key()], KeyCode::KeyZ, "z");
     settle(&mut app);
     assert_eq!(new_text(&mut app, 1), NEW);
     assert_eq!(new_text(&mut app, 0), NEW.replace("let x", "alet x"));
@@ -361,7 +361,7 @@ fn a_new_source_gives_the_read_only_selection_its_keys_back() {
     app.world_mut().resource_mut::<Source>().0 =
         DiffSource::texts("b.rs", OLD, NEW);
     settle(&mut app);
-    chord(&mut app, &[KeyCode::ControlLeft], KeyCode::KeyA, "a");
+    chord(&mut app, &[mod_key()], KeyCode::KeyA, "a");
     assert!(copy(&mut app).contains("let keep = 1;"));
 }
 

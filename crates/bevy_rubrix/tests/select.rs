@@ -12,9 +12,9 @@ use bevy::ui::{ComputedNode, Display, Node, UiGlobalTransform};
 use bevy_fynix::views::VirtualList;
 use bevy_rubrix::{CodeSelection, CodeSource, Lang, Overflow};
 use support::{
-    Wrapping, copy, corner, ctrl, doc, drag_end_on, drag_on, hold_on,
-    keep_copies, laid_out, line, list, list_state, mount_view,
-    point_in, press_on, shift, spans_of, view,
+    Wrapping, chord, copy, corner, doc, drag_end_on, drag_on,
+    hold_on, keep_copies, laid_out, line, list, list_state, mod_key,
+    mount_view, point_in, press_on, shift, spans_of, view,
 };
 
 fn selecting(source: CodeSource) -> App {
@@ -143,11 +143,11 @@ fn a_selection_outlives_its_anchor_row() {
 }
 
 #[test]
-fn ctrl_a_selects_the_whole_source_built_or_not() {
+fn mod_a_selects_the_whole_source_built_or_not() {
     let text = numbered(10_000);
     let mut app =
         selecting(CodeSource::new(Lang::Plain, text.as_str()));
-    ctrl(&mut app, KeyCode::KeyA, "a");
+    chord(&mut app, &[mod_key()], KeyCode::KeyA, "a");
     assert_eq!(selected(&mut app), 0..text.len());
     assert_eq!(copy(&mut app), text);
 }

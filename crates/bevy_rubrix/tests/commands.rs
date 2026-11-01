@@ -21,8 +21,8 @@ use bevy_rubrix::{
 };
 use support::{
     Wrapping, chord, drag_end_on, drag_on, edit_line, hold_key,
-    hold_on, key_with, laid_out, mount_editor, point_at, press_on,
-    type_text,
+    hold_on, key_with, laid_out, mod_key, mount_editor, point_at,
+    press_on, type_text,
 };
 
 fn settle(app: &mut App) {
@@ -154,14 +154,14 @@ fn mod_click_adds_carets_and_removes_the_one_it_lands_on() {
     let (row, first) = at(&mut app, 0);
     press_on(&mut app, row, first, 1);
     assert_eq!(carets(&app, entity), 1);
-    hold_key(&mut app, KeyCode::ControlLeft, true);
+    hold_key(&mut app, mod_key(), true);
     let mut counts = Vec::new();
     for line in [1, 2, 3, 1] {
         let (row, point) = at(&mut app, line);
         press_on(&mut app, row, point, 1);
         counts.push(carets(&app, entity));
     }
-    hold_key(&mut app, KeyCode::ControlLeft, false);
+    hold_key(&mut app, mod_key(), false);
     assert_eq!(counts, [2, 3, 4, 3]);
     let lines: Vec<u32> = doc(&app, entity)
         .editor()
@@ -245,7 +245,7 @@ fn mod_double_and_triple_clicks_add_the_word_and_the_line() {
     let top = edit_line(&mut app, view, 0);
     let first = point_at(&app, top, 0);
     press_on(&mut app, top, first, 1);
-    hold_key(&mut app, KeyCode::ControlLeft, true);
+    hold_key(&mut app, mod_key(), true);
     let middle = edit_line(&mut app, view, 1);
     let ddd = point_at(&app, middle, 5);
     for count in 1..=2 {
@@ -261,7 +261,7 @@ fn mod_double_and_triple_clicks_add_the_word_and_the_line() {
     for count in 1..=3 {
         press_on(&mut app, bottom, eee, count);
     }
-    hold_key(&mut app, KeyCode::ControlLeft, false);
+    hold_key(&mut app, mod_key(), false);
     assert_eq!(
         ranges(&app, entity),
         [(0, 0), (12, 15), (16, 24)],
@@ -411,7 +411,7 @@ fn mod_slash_comments_a_rust_line() {
     settle(&mut app);
     caret_at(&mut app, entity, view, 0);
     focus(&mut app, view);
-    chord(&mut app, &[KeyCode::ControlLeft], KeyCode::Slash, "/");
+    chord(&mut app, &[mod_key()], KeyCode::Slash, "/");
     assert_eq!(text(&app, entity), "// let a = 1;\n");
 }
 

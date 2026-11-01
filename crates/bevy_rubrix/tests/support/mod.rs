@@ -39,11 +39,18 @@ use bevy_fynix::views::{
 use bevy_fynix::{FynixPlugin, Theme, mount, resource};
 use bevy_rubrix::{
     CodeCopied, CodeDoc, CodeLine, CodeSource, EditDoc, EditLine,
-    EditView, Kind, Lang, Overflow, RubrixPlugin, SyntaxStyle,
-    SyntaxTokens, code_editor, code_view, resolve,
+    EditView, Kind, Lang, Overflow, Platform, RubrixPlugin,
+    SyntaxStyle, SyntaxTokens, code_editor, code_view, resolve,
 };
 
 pub const BODY: Color = Color::WHITE;
+
+pub fn mod_key() -> KeyCode {
+    match Platform::host() {
+        Platform::Linux => KeyCode::ControlLeft,
+        Platform::MacOs => KeyCode::SuperLeft,
+    }
+}
 
 const WINDOW: u32 = 1000;
 
@@ -269,7 +276,7 @@ pub fn keep_copies(app: &mut App) {
 
 pub fn copy(app: &mut App) -> String {
     let before = app.world().resource::<Copied>().0.len();
-    ctrl(app, KeyCode::KeyC, "c");
+    chord(app, &[mod_key()], KeyCode::KeyC, "c");
     let copied = &app.world().resource::<Copied>().0;
     copied.get(before).cloned().unwrap_or_default()
 }
@@ -404,36 +411,6 @@ pub fn shift(app: &mut App, held: bool) {
     }
 }
 
-pub fn ctrl(app: &mut App, key: KeyCode, letter: &str) {
-    let send = |app: &mut App, key_code, logical_key, state| {
-        app.world_mut().write_message(KeyboardInput {
-            key_code,
-            logical_key,
-            state,
-            text: None,
-            repeat: false,
-            window: Entity::PLACEHOLDER,
-        });
-    };
-    let letter = Key::Character(letter.into());
-    send(
-        app,
-        KeyCode::ControlLeft,
-        Key::Control,
-        ButtonState::Pressed,
-    );
-    send(app, key, letter.clone(), ButtonState::Pressed);
-    app.update();
-    send(app, key, letter, ButtonState::Released);
-    send(
-        app,
-        KeyCode::ControlLeft,
-        Key::Control,
-        ButtonState::Released,
-    );
-    app.update();
-}
-
 #[derive(Resource)]
 pub struct Editing(pub Entity);
 
@@ -565,8 +542,6 @@ pub fn key_with(
     app.update();
 }
 
-/// A letter chord, such as `chord(app, &[KeyCode::ControlLeft],
-/// KeyCode::KeyV, "v")`.
 pub fn chord(
     app: &mut App,
     mods: &[KeyCode],
