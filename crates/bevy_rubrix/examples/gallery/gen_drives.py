@@ -3334,6 +3334,9 @@ steps += [f"click {doc.at(LINE, 5)}", f"click {past_row_one} shift", caret((LINE
 steps += [f"drag {doc.at(LINE, 7)} {past_row_one}", caret((LINE, 7), (LINE, second)), on_row_one]
 steps += [f"click {doc.at(LINE, 9)}", f"click {past_row_one} mod", carets_at([(LINE, 9), (LINE, second)]), on_row_one]
 steps += [f"click {doc.at(LINE, 11)}", f"click {past_row_one} alt", caret((LINE, second)), on_row_one]
+assert doc.line(LINE)[second - 6 : second + 3] == "abcd abcd", doc.line(LINE)
+steps += [f"click {doc.at(LINE, 13)}", "wait 60", f"click {past_row_one} double", caret((LINE, second - 5), (LINE, second - 1))]
+steps += [f"click {row_two} double", caret((LINE, second), (LINE, second + 4))]
 editor("wrap-click", steps, "wait 30", "screenshot wrap-click.png")
 
 doc = Doc(LARGE_RS_LINES)

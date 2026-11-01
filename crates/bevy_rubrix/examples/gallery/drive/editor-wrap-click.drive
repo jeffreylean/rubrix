@@ -48,6 +48,14 @@ log caret
 expect caret 1 primary 1 23:112..23:112 visible true
 log ime
 expect ime caret 1203 509
+click 373.8 500
+wait 60
+click 1250 500 double
+log caret
+expect caret 1 primary 1 23:107..23:111 visible true
+click 273.0 517 double
+log caret
+expect caret 1 primary 1 23:112..23:116 visible true
 wait 30
 screenshot wrap-click.png
 exit
