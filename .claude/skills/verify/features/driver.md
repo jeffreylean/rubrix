@@ -20,6 +20,8 @@ A drive script is a text file of steps that the gallery runs one per line, with 
 - `drive-wait-until` ends `wait <frames> until <topic> <text>` on the first frame the topic's line holds the text, so a script waits out an animation timed in seconds at any frame rate. It counts as a check, which fails when the frames run out first. `a_wait_until_ends_on_the_frame_its_topic_holds_the_text` and `a_wait_until_fails_its_check_when_the_frames_run_out` cover it.
 - `drive-summary` counts every `expect` and ends with `drive: <passed> of <checks> checks pass` and exit code 0 or 1.
 - `drive-wtype` runs `wtype` only under `launch.sh --ime-live`.
+- `drive-oskey` sends a combo's keys through AppKit on macOS, each modifier as its own key event around the key. `an_oskey_sends_each_modifier_as_its_own_key_around_the_key` and `an_oskey_with_no_macos_key_code_is_refused` cover the parse on any system.
+- `drive-pasteboard` writes the macOS pasteboard with `pbcopy`, reads it with the `pbpaste` topic, and switches the editor to the system clipboard with `clipboard system`. `clipboard_system_takes_copies_off_the_gallery_clipboard` covers the switch, and on Linux `the_macos_steps_exit_with_code_2_elsewhere` covers the exit code of `oskey`, `pbcopy` and `pbpaste`.
 - `run-all` runs every saved script and prints one row per script.
 
 ## How to get to it (user POV)
@@ -44,6 +46,7 @@ A drive script is a text file of steps that the gallery runs one per line, with 
 - **Page topics.** Run `.../driver-topics.drive`. Its nine `expect` lines match `n/a` on the `code`, `diff` and `virtual_list` pages.
 - **Summary.** Run `.../driver-summary.drive`. It ends with `drive: 3 of 3 checks pass`, `drive: exit ok` and `exit=0`. `.../driver-summary-fail.drive` ends with `drive: 2 of 3 checks pass`, `drive: exit failed` and `exit=1`.
 - **wtype guard.** Run `.../driver-wtype.drive` without `--ime-live`. It exits with code 2 and `drive: line 3: wtype needs launch.sh --ime-live`.
+- **macOS keys and pasteboard.** On a Mac, run `.../driver-mac.drive`. `oskey mod+right` moves the caret to `3:26`, `oskey alt+f` types `ƒ` at the end of line 3, `oskey mod+shift+right` and `oskey mod+c` after `clipboard system` put line 1 in `pbpaste`, and `pbcopy` then `oskey mod+v` pastes `from pbcopy\tvia NSPasteboard` on line 4. It ends with `drive: 7 of 7 checks pass` and `exit=0`. It overwrites your pasteboard, so save it first with `pbpaste > saved.txt` and put it back with `pbcopy < saved.txt`. `run-all.sh` skips it on Linux.
 - **Run all.** Run `scripts/run-all.sh <out dir>`. It ends with `run-all: <n> of <n> scripts pass, <k> skipped`, and each must-fail script exits with the code its table row names.
 
 ## Gotchas
