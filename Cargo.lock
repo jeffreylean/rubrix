@@ -1524,6 +1524,7 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-core-graphics",
  "parley",
+ "raw-window-handle",
  "rubrix_diff",
  "rubrix_edit",
  "rubrix_highlight",

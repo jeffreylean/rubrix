@@ -20,7 +20,7 @@ use bevy_rubrix::{
 };
 use support::{
     Wrapping, edit_line, key_with, laid_out, mod_key, mount_editor,
-    text_of, type_text,
+    point_at, press_on, text_of, type_text,
 };
 
 const TEXT: &str = "fn main() {\n    run();\n}\n";
@@ -322,6 +322,153 @@ fn the_window_takes_ime_while_the_editor_has_focus() {
     assert!(!last_seen(&mut app).0, "off a frame after it leaves");
 }
 
+#[test]
+fn a_click_during_a_preedit_commits_it_where_it_was_then_moves_the_caret()
+ {
+    let mut app = laid_out();
+    app.add_plugins((InputFocusPlugin, TextInputPlugin))
+        .init_resource::<Seen>()
+        .add_systems(Last, see);
+    app.world_mut().spawn((Window::default(), PrimaryWindow));
+    let (view, doc) =
+        mount_editor(&mut app, Lang::Rust, TEXT, 600.0, 300.0);
+    settle(&mut app);
+    select(&mut app, doc, view, &[TEXT.find("run").expect("run")]);
+    focus(&mut app, view);
+    settle(&mut app);
+    send(&mut app, [preedit("你好", Some((6, 6)))]);
+    settle(&mut app);
+    assert!(last_seen(&mut app).0, "on while composing");
+    let row = edit_line(&mut app, view, 2);
+    let at = point_at(&app, row, 1);
+    press_on(&mut app, row, at, 1);
+    let committed = "fn main() {\n    你好run();\n}\n";
+    assert_eq!(
+        text(&app, doc),
+        committed,
+        "the preedit went in where the caret was"
+    );
+    assert_eq!(undo_depth(&app, doc), 1, "as one undo step");
+    assert_eq!(
+        editor(&app, doc).selections().primary().head,
+        committed.find('}').expect("}") + 1,
+        "then the click placed the caret"
+    );
+    assert!(app.world().get::<Preedit>(view).is_none());
+    let seen = &app.world().resource::<Seen>().0;
+    let (off, on) = (seen[seen.len() - 2].0, seen[seen.len() - 1].0);
+    assert_eq!(
+        (off, on),
+        (false, true),
+        "the window's IME goes off for the frame of the click, \
+         which tells the input method to drop its composition, and \
+         comes back the frame after"
+    );
+    type_text(&mut app, "y");
+    assert_eq!(
+        text(&app, doc),
+        "fn main() {\n    你好run();\n}y\n",
+        "keys type again"
+    );
+}
+
+fn composing(carets: &[usize]) -> (App, Entity, Entity) {
+    let mut app = laid_out();
+    app.add_plugins((InputFocusPlugin, TextInputPlugin));
+    app.world_mut().spawn((Window::default(), PrimaryWindow));
+    let (view, doc) =
+        mount_editor(&mut app, Lang::Rust, TEXT, 600.0, 300.0);
+    settle(&mut app);
+    select(&mut app, doc, view, carets);
+    focus(&mut app, view);
+    settle(&mut app);
+    send(&mut app, [preedit("你好", Some((6, 6)))]);
+    settle(&mut app);
+    (app, view, doc)
+}
+
+#[test]
+fn a_click_on_a_line_with_another_caret_lands_after_the_text_put_there()
+ {
+    let (mut app, view, doc) = composing(&[
+        TEXT.find('}').expect("}"),
+        TEXT.find("run").expect("run"),
+    ]);
+    let row = edit_line(&mut app, view, 2);
+    let at = point_at(&app, row, 1);
+    press_on(&mut app, row, at, 1);
+    let committed = "fn main() {\n    你好run();\n你好}\n";
+    assert_eq!(
+        text(&app, doc),
+        committed,
+        "the preedit went in at both carets"
+    );
+    assert_eq!(undo_depth(&app, doc), 1, "as one undo step");
+    let selections = editor(&app, doc).selections();
+    assert_eq!(selections.len(), 1, "the click placed one caret");
+    assert_eq!(
+        selections.primary().head,
+        committed.find('}').expect("}") + 1,
+        "after the brace the click was right of, which the text put \
+         there pushed along"
+    );
+}
+
+#[test]
+fn a_click_inside_the_drawn_preedit_lands_inside_the_text_it_becomes()
+{
+    let (mut app, view, doc) =
+        composing(&[TEXT.find("run").expect("run")]);
+    let row = edit_line(&mut app, view, 1);
+    let at = point_at(&app, row, "    你".len());
+    press_on(&mut app, row, at, 1);
+    let committed = "fn main() {\n    你好run();\n}\n";
+    assert_eq!(text(&app, doc), committed);
+    assert_eq!(
+        editor(&app, doc).selections().primary().head,
+        committed.find('好').expect("好"),
+        "between the two characters the click fell between"
+    );
+}
+
+#[test]
+fn the_input_methods_commit_of_an_ended_composition_goes_in_once() {
+    let (mut app, view, doc) =
+        composing(&[TEXT.find("run").expect("run")]);
+    let row = edit_line(&mut app, view, 2);
+    let at = point_at(&app, row, 1);
+    press_on(&mut app, row, at, 1);
+    let committed = "fn main() {\n    你好run();\n}\n";
+    assert_eq!(text(&app, doc), committed);
+    send(&mut app, [preedit("", None), commit("你好")]);
+    settle(&mut app);
+    assert_eq!(
+        text(&app, doc),
+        committed,
+        "the input method's commit of the composition the click \
+         ended, as winit sends it when the text input goes off, is \
+         the text the click already put in"
+    );
+    assert_eq!(undo_depth(&app, doc), 1);
+    let enabled = Ime::Enabled {
+        window: Entity::PLACEHOLDER,
+    };
+    send(&mut app, [enabled, preedit("n", Some((1, 1)))]);
+    settle(&mut app);
+    assert_eq!(
+        app.world().get::<Preedit>(view).map(Preedit::value),
+        Some("n"),
+        "the first preedit of the next composition, which follows \
+         the IME coming back on, shows"
+    );
+    send(&mut app, [preedit("", None), commit("你")]);
+    assert_eq!(
+        text(&app, doc),
+        "fn main() {\n    你好run();\n}你\n",
+        "and its commit goes in"
+    );
+}
+
 fn caret_rect(app: &App, view: Entity) -> Option<Rect> {
     app.world()
         .get::<EditView>(view)
@@ -386,4 +533,33 @@ fn a_preedit_past_the_right_edge_scrolls_to_its_cursor() {
         .expect("the view scrolls to the preedit's cursor");
     let (_, position) = last_seen(&mut app);
     assert_eq!(position, Vec2::new(caret.min.x, caret.max.y));
+}
+
+#[test]
+fn a_view_that_loses_the_focus_after_a_click_takes_its_next_preedit()
+{
+    let (mut app, view, _) =
+        composing(&[TEXT.find("run").expect("run")]);
+    let row = edit_line(&mut app, view, 2);
+    let at = point_at(&app, row, 1);
+    press_on(&mut app, row, at, 1);
+    settle(&mut app);
+    send(&mut app, [preedit("x", Some((1, 1)))]);
+    settle(&mut app);
+    assert!(
+        app.world().get::<Preedit>(view).is_none(),
+        "still the ended composition's"
+    );
+    app.world_mut().resource_mut::<InputFocus>().clear();
+    settle(&mut app);
+    focus(&mut app, view);
+    settle(&mut app);
+    send(&mut app, [preedit("n", Some((1, 1)))]);
+    settle(&mut app);
+    assert_eq!(
+        app.world().get::<Preedit>(view).map(Preedit::value),
+        Some("n"),
+        "the IME can come back on while another view has the focus, \
+         so this view may see no Enabled before its next composition"
+    );
 }
